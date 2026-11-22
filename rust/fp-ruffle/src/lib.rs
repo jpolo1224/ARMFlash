@@ -223,7 +223,8 @@ async fn run(app: AndroidApp) {
                             if let Err(e) = renderer.target().recreate(renderer.descriptors(), unsafe { surface_target(window) }, (window.width() as u32, window.height() as u32)) {
                                 log::warn!("surface: {e}");
                             }
-                            player_lock.set_is_playing(true);
+                            // Back from the background: stay paused if the pause menu is open.
+                            player_lock.set_is_playing(!MENU_PAUSED.load(std::sync::atomic::Ordering::Relaxed));
                         } else {
                             let wanted = backends(&settings.backend);
                             // A custom Vulkan driver first, when one was loaded.
@@ -383,7 +384,10 @@ async fn run(app: AndroidApp) {
                         });
                     }
                 }
-                RuffleEvent::SetPlaying(on) => player.player.lock().unwrap().set_is_playing(on),
+                RuffleEvent::SetPlaying(on) => {
+                    MENU_PAUSED.store(!on, std::sync::atomic::Ordering::Relaxed);
+                    player.player.lock().unwrap().set_is_playing(on)
+                }
                 RuffleEvent::Volume(v) => player.player.lock().unwrap().set_volume(v),
                 RuffleEvent::Display { scale, quality } => {
                     apply_display(&mut player.player.lock().unwrap(), scale, quality);
@@ -550,6 +554,10 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFra
 ) -> jni::sys::jlong {
     FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
 }
+
+/// The pause menu (or the touch layout editor) has the game paused; a new window after the app
+/// was in the background must not start it again.
+static MENU_PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Times Ruffle reported trouble running this game: an error from the player (a script error,
 /// a file the movie could not load, a failed loader) or a panic. The pause menu suggests Flash
