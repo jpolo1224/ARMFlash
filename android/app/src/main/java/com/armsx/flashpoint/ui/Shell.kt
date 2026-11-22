@@ -1,5 +1,6 @@
 package com.armsx.flashpoint.ui
 
+import androidx.compose.foundation.layout.fillMaxHeight
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -122,8 +123,24 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
-    // Switch to the game's tab first: switching libraries clears the selection.
-    fun open(g: Game) { go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES); vm.select(g) }
+    // A game picked on Home opens its details over Home: you stay on Home, and Back or the
+    // arrow closes them.
+    var picked by remember { mutableStateOf<Game?>(null) }
+    fun open(g: Game) { vm.select(g); picked = g }
+    picked?.let { g ->
+        val close = { picked = null; vm.clearSelection() }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = close,
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier.fillMaxWidth(0.62f).widthIn(min = 340.dp).fillMaxHeight(0.94f)
+                    .clip(RoundedCornerShape(8.dp)).background(Fp.Panel),
+            ) {
+                Details(vm, vm.selected ?: g, onPlay = { picked = null; onPlay(it) }, onClose = close)
+            }
+        }
+    }
     LaunchedEffect(Unit) { if (vm.randomPicks.isEmpty()) vm.rerollPicks() }
     BoxWithConstraints(Modifier.fillMaxSize().background(Fp.Browse)) {
         val wide = maxWidth >= 840.dp
