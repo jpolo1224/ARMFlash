@@ -239,6 +239,7 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                     "Removing the SD card later hides your games until it is back.",
                     color = Fp.TextDim, fontSize = 12.sp, modifier = Modifier.widthIn(max = 560.dp),
                 )
+                com.armsx.flashpoint.ui.SetupDriverOffer()
                 Spacer(Modifier.height(20.dp))
                 Chip("Download the game database", on = true) { vm.syncDatabase(fresh = true) }
                 Spacer(Modifier.height(10.dp))

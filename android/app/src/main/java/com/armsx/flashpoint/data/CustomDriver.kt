@@ -182,8 +182,25 @@ object CustomDriver {
     private fun setupSource(renderer: String?): DriverSource? = when {
         MALISX2_SOURCE.supports(renderer) -> MALISX2_SOURCE
         isAdreno6xxOr7xx(renderer) -> ARMSX2_TURNIP_SOURCE
+        // FlashARM: Adreno 8xx gets the Turnip gen8 builds the driver card recommends there,
+        // since the stock driver's leak in native Flash hits these phones too.
+        isAdreno8xx(renderer) -> STEVENMXZ_SOURCE
         else -> null
     }
+
+    private val TURNIP_GEN8 = Regex("""^Turnip_Gen8_V\d+\.zip$""", RegexOption.IGNORE_CASE)
+    private val ADRENO_8XX = Regex("""Adreno\D*(8\d\d)(?!\d)""", RegexOption.IGNORE_CASE)
+    internal fun isAdreno8xx(renderer: String?): Boolean =
+        withAdrenoModelNumber(renderer)?.let { ADRENO_8XX.containsMatchIn(it) } == true
+
+    // Scheduled biweekly freedreno/Turnip adrenotools builds (incl. Gen8 + a7xx Qualcomm driver
+    // packages). Same GitHub-releases meta.json format as the others.
+    private val STEVENMXZ_SOURCE = DriverSource(
+        "StevenMXZ · Adreno-Tools",
+        "https://api.github.com/repos/StevenMXZ/Adreno-Tools-Drivers/releases",
+        "stevenmxz",
+        supports = ::isAdreno,
+    )
 
     /** Name of the source the first-run setup offers for [renderer] ("ARMSX2 · MaliSX2"), or null
      *  when it offers nothing. Cheap and offline, so the setup can decide whether it has a driver
@@ -195,8 +212,10 @@ object CustomDriver {
      *  releases newest first, and a source's list order is kept. */
     fun fetchSetupOffer(renderer: String?): RemoteDriver? {
         val src = setupSource(renderer) ?: return null
-        return fetchSource(src, "FlashARM/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrNull().orEmpty().ifEmpty { "dev" })
-            .firstOrNull()
+        val list = fetchSource(src, "FlashARM/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrNull().orEmpty().ifEmpty { "dev" })
+        // StevenMXZ's repo also carries Qualcomm's own driver packs and patched builds: offer the
+        // newest plain Turnip Gen8 build.
+        return if (src === STEVENMXZ_SOURCE) list.firstOrNull { TURNIP_GEN8.matches(it.assetName) } else list.firstOrNull()
     }
 
     private val DRIVER_SOURCES = listOf(
@@ -214,14 +233,7 @@ object CustomDriver {
             "purpleturnip",
             supports = ::isAdreno,
         ),
-        // Scheduled biweekly freedreno/Turnip adrenotools builds (incl. Gen8 + a7xx
-        // Qualcomm driver packages). Same GitHub-releases meta.json format as above.
-        DriverSource(
-            "StevenMXZ · Adreno-Tools",
-            "https://api.github.com/repos/StevenMXZ/Adreno-Tools-Drivers/releases",
-            "stevenmxz",
-            supports = ::isAdreno,
-        ),
+        STEVENMXZ_SOURCE,
         // crueter's GameHub Turnip packs, tuned for Snapdragon 8 Elite / Adreno 8xx
         // (Gen 8). Same GitHub-releases adrenotools zip format as the sources above.
         DriverSource(
