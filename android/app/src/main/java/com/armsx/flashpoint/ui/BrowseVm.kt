@@ -28,7 +28,11 @@ enum class Shelf(val label: String) { ALL("All"), INSTALLED("Installed"), FAVORI
 
 data class Download(val done: Long, val total: Long)
 
-data class Ready(val game: Game, val plan: LaunchPlan, val zips: List<String>)
+/** [winApp]/[winArgs]: the Windows program and arguments when the game runs under Wine. */
+data class Ready(val game: Game, val plan: LaunchPlan, val zips: List<String>, val winApp: String? = null, val winArgs: String = "")
+
+/** Flashpoint's usual Flash Player (most Flash games name it as their program). */
+const val DEFAULT_FLASH_PLAYER = "FPSoftware\\Flash\\flashplayer_32_sa.exe"
 
 class BrowseVm(app: Application) : AndroidViewModel(app) {
     val library = (app as FpApp).library
@@ -393,7 +397,38 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             }
             zips += zip.path
         }
-        onReady(Ready(game, plan, zips))
+        // Windows players (and Flash Player for a Flash game set to it): the runtime, then the
+        // game's support pack, downloaded the first time.
+        val ctx = getApplication<Application>()
+        val flashPlayer = plan.runner == com.armsx.flashpoint.game.Runner.FLASH &&
+            com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id) == "flashplayer"
+        val winApp = when {
+            plan.runner == com.armsx.flashpoint.game.Runner.WINDOWS -> game.applicationPath
+            flashPlayer -> game.applicationPath.takeIf { "flashplayer" in it.lowercase() } ?: DEFAULT_FLASH_PLAYER
+            else -> null
+        }
+        if (winApp != null) {
+            if (!com.armsx.flashpoint.win.WinRuntime(ctx).installed) {
+                status = "Windows support is not installed yet."
+                return@launch
+            }
+            val id = com.armsx.flashpoint.win.SupportPacks.idFor(winApp)
+            if (id != null && !com.armsx.flashpoint.win.SupportPacks.installed(library.root, id)) {
+                downloads[game.id] = Download(0, 0)
+                try {
+                    withContext(Dispatchers.IO) {
+                        com.armsx.flashpoint.win.SupportPacks.install(library.root, id) { d, t -> downloads[game.id] = Download(d, t) }
+                    }
+                } catch (e: Exception) {
+                    status = "Could not get the $id player: ${e.message}"
+                    return@launch
+                } finally {
+                    downloads.remove(game.id)
+                }
+            }
+        }
+        val args = if (flashPlayer && "flashplayer" !in game.applicationPath.lowercase()) plan.url else game.launchCommand
+        onReady(Ready(game, plan, zips, winApp, args))
     }
 
     /** A game started: count the play and its date now, so it is in Play History even if it never returns cleanly. */

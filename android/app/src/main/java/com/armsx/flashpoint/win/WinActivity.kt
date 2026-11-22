@@ -70,6 +70,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         override val logoUrl get() = intent.getStringExtra(GameActivity.EXTRA_LOGO).orEmpty()
         override val gameId get() = intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()
         override val usesDriver = false
+        // A Flash game played in Flash Player: the pause menu can switch it back to Ruffle.
+        override val isFlash get() = "flashplayer" in program().lowercase()
         override val runner get() = "Windows: " + intent.getStringExtra(EXTRA_APP).orEmpty().substringAfterLast('\\')
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() {
@@ -78,7 +80,10 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         override fun restart() {
             rt.stopAll()
-            startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            val target = if (isFlash) com.armsx.flashpoint.game.FlashPrefs.activity(this@WinActivity, gameId) else WinActivity::class.java
+            restarting = true
+            startActivity(Intent(intent).setClass(this@WinActivity, target)
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
             finish()
         }
         override fun exit() = quit()
@@ -144,7 +149,18 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Game server, X server, Wine prefix, then the game's own program. */
     private fun boot() {
-        if (!rt.installed) { say("Windows support is not installed."); return }
+        if (!rt.installed) { say("Windows support is not installed yet."); return }
+        // The game's support pack (normally fetched by the launcher; a pause-menu switch to
+        // Flash Player lands here without it).
+        val fpRoot = File(intent.getStringExtra(EXTRA_ROOT) ?: (application as com.armsx.flashpoint.FpApp).library.root.path)
+        SupportPacks.idFor(program())?.let { id ->
+            if (!SupportPacks.installed(fpRoot, id)) {
+                say("Downloading the $id player…")
+                try {
+                    SupportPacks.install(fpRoot, id) { d, t -> if (t > 0) say("Downloading the $id player… ${d * 100 / t}%") }
+                } catch (e: Exception) { say("Could not get the $id player: ${e.message}"); return }
+            }
+        }
         try {
             FpCore.startServer(
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),
@@ -159,10 +175,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
-        val fp = File(intent.getStringExtra(EXTRA_ROOT).orEmpty())
+        val fp = fpRoot
         rt.mapDrive('f', fp)
-        val app = intent.getStringExtra(EXTRA_APP).orEmpty().replace('/', '\\')
-        val args = WinRuntime.splitArgs(intent.getStringExtra(EXTRA_ARGS).orEmpty())
+        val app = program()
+        // Without a launch command (a switch from Ruffle), Flash Player gets the game's SWF.
+        val args = WinRuntime.splitArgs(intent.getStringExtra(EXTRA_ARGS) ?: intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())
         val cwd = File(fp, app.replace('\\', '/').substringBeforeLast('/', ""))
         say("Starting the game…")
         val p = rt.run(listOf("F:\\$app") + args, cwd.takeIf { it.isDirectory })
@@ -294,6 +311,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /** The Windows program: from the launcher, or Flash Player when switched to from the pause menu. */
+    private fun program() = (intent.getStringExtra(EXTRA_APP) ?: com.armsx.flashpoint.ui.DEFAULT_FLASH_PLAYER).replace('/', '\\')
+
+    private var restarting = false
+
     override fun surfaceCreated(h: SurfaceHolder) { holder = h }
     override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) { holder = h }
     override fun surfaceDestroyed(h: SurfaceHolder) { holder = null }
@@ -334,7 +356,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         x?.close()
         rt.stopAll()
         super.onDestroy()
-        if (isFinishing) android.os.Process.killProcess(android.os.Process.myPid())
+        if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     /** GameInput onto the virtual screen: view coordinates map through the game's placement. */

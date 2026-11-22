@@ -7,7 +7,7 @@ import android.content.Context
  * Config sets them for every game, the pause menu can override them for one game.
  */
 object FlashPrefs {
-    val players = listOf("" to "Same as Config", "native" to "Native", "web" to "Browser")
+    val players = listOf("" to "Same as Config", "native" to "Native", "web" to "Browser", "flashplayer" to "Flash Player")
     val backends = listOf("" to "Same as Config", "auto" to "Auto", "vulkan" to "Vulkan", "gl" to "OpenGL ES")
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -25,6 +25,9 @@ object FlashPrefs {
     fun backend(ctx: Context, id: String) = gameBackend(ctx, id).ifEmpty { prefs(ctx).getString("flashBackend", "auto")!! }
 
     /** The activity a Flash game runs in with its current settings. */
-    fun activity(ctx: Context, id: String): Class<*> =
-        if (player(ctx, id) == "native") RuffleActivity::class.java else GameActivity::class.java
+    fun activity(ctx: Context, id: String): Class<*> = when (player(ctx, id)) {
+        "native" -> RuffleActivity::class.java
+        "flashplayer" -> com.armsx.flashpoint.win.WinActivity::class.java
+        else -> GameActivity::class.java
+    }
 }

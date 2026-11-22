@@ -13,6 +13,8 @@ enum class Runner(val label: String, val ready: Boolean) {
     UNITY("Unity Web Player", false),
     SILVERLIGHT("Silverlight", false),
     OTHER("Unsupported", false),
+    /** The game's own Windows player from its Flashpoint support pack, under Wine. */
+    WINDOWS("Windows player", true),
 }
 
 data class LaunchPlan(val runner: Runner, val url: String)
@@ -61,6 +63,8 @@ object Launch {
             ("basilisk" in app || "fpnavigator" in app || "firefox" in app) && platform == "flash" -> Runner.WEB
             else -> Runner.OTHER
         }
-        return LaunchPlan(runner, url)
+        // Everything FlashARM has no native player for runs the desktop's own Windows player.
+        val windows = !runner.ready && com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
+        return LaunchPlan(if (windows) Runner.WINDOWS else runner, url)
     }
 }

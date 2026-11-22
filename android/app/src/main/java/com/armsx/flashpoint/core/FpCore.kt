@@ -30,6 +30,9 @@ object FpCore {
     @JvmStatic private external fun platforms(): String
     @JvmStatic private external fun markDataOnDisk(path: String, gameDataId: Long): String
     @JvmStatic private external fun markDataOffDisk(gameDataId: Long): String
+    @JvmStatic private external fun unpackTarZst(src: String, dest: String): String
+    @JvmStatic private external fun unpackZip(src: String, dest: String): String
+    @JvmStatic private external fun unpackProgress(): String
     @JvmStatic private external fun addPlaytime(id: String, seconds: Long): String
 
     @JvmStatic private external fun addSeconds(id: String, seconds: Long): String
@@ -71,6 +74,18 @@ object FpCore {
 
     fun markOnDisk(gameDataId: Long, path: String) {
         check(markDataOnDisk(path, gameDataId))
+    }
+
+    /** Unpack [src] (.zip) into [dest]; blocks. */
+    fun unzip(src: String, dest: String) { check(unpackZip(src, dest)) }
+
+    /** Unpack [src] (.tar.zst) into [dest]; blocks. */
+    fun untarZst(src: String, dest: String) { check(unpackTarZst(src, dest)) }
+
+    /** Bytes of the archive being unpacked read so far, and its size. */
+    fun unpackDone(): Pair<Long, Long> {
+        val o = check(unpackProgress()) as JsonObject
+        return o["done"]!!.jsonPrimitive.content.toLong() to o["total"]!!.jsonPrimitive.content.toLong()
     }
 
     fun markOffDisk(gameDataId: Long) {

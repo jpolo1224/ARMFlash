@@ -151,7 +151,13 @@ private fun App(vm: BrowseVm) {
                             vm.library.htdocs.path, vm.library.legacyBase, ready.game.title, vm.library.logoUrl(ready.game.id),
                         )
                         val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && com.armsx.flashpoint.game.FlashPrefs.player(ctx, ready.game.id) == "native"
-                        playLauncher.launch(if (native) com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web) else web)
+                        playLauncher.launch(
+                            when {
+                                ready.winApp != null -> com.armsx.flashpoint.win.WinActivity.intent(ctx, web, ready.winApp, ready.winArgs, vm.library.root.path)
+                                native -> com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web)
+                                else -> web
+                            },
+                        )
                     }
                 },
                 configPage = { ConfigPage(vm, onImport = { pickDb.launch(arrayOf("*/*")) }) },
