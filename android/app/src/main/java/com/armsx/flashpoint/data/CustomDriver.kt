@@ -51,7 +51,10 @@ object CustomDriver {
         prefs.edit().putString(KEY_SELECTED, id ?: "").apply()
     }
 
-    /** A game's own pick ("" = follow the global pick). */
+    /** A game's pick that forces the system driver even when the global pick is a custom one. */
+    const val SYSTEM_FOR_GAME = "system"
+
+    /** A game's own pick ("" = follow the global pick, [SYSTEM_FOR_GAME] = the system driver). */
     fun gameId(game: String): String = prefs.getString("driver.game.$game", "") ?: ""
 
     fun selectForGame(game: String, id: String?) {
@@ -60,6 +63,7 @@ object CustomDriver {
 
     /** The driver [game] runs with (its pick, else the global pick), or null for the system driver. */
     fun selected(context: Context, game: String = ""): InstalledDriver? {
+        if (game.isNotBlank() && gameId(game) == SYSTEM_FOR_GAME) return null
         val installed = listInstalled(context)
         val ids = installed.map { it.id }
         val id = if (game.isBlank()) globalId().takeIf { it in ids } else effectiveId(gameId(game), globalId(), ids) ?: globalId().takeIf { it in ids }

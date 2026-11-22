@@ -1,79 +1,216 @@
 package com.armsx.flashpoint.game
 
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
+
 /**
  * Controllers for every player: buttons and D-pad to keyboard keys and mouse buttons (per the
  * game's layout), left stick as arrows or cursor, right stick moves the cursor, analog
  * triggers as clicks, Back / Home opens the in-game menu.
+ *
+ * Every key the game sees has one owner here. A press is recorded per source (a button, the
+ * D-pad hat, the stick), the game gets a key down when the first source presses it and a key up
+ * when the last one lets go, so a D-pad that reports as both keys and a hat, or a stick and a
+ * D-pad on the same arrow, can never leave a key held. Opening the menu or leaving the game
+ * lets go of everything.
+ *
+ * While the menu is open the pad drives the menu instead: D-pad and stick move focus, A selects,
+ * B closes, L1 / R1 switch tabs. [ui] hands a key to the menu (the activity's own dispatch).
  */
-class PadMapper(private val inj: GameInput, private val overlay: OverlayState, private val viewWidth: () -> Int) {
+class PadMapper(
+    private val inj: GameInput,
+    private val overlay: OverlayState,
+    private val viewWidth: () -> Int,
+    private val ui: (KeyEvent) -> Boolean,
+) {
 
     private fun isPad(e: android.view.InputEvent): Boolean {
         val src = e.source
-        return src and android.view.InputDevice.SOURCE_GAMEPAD == android.view.InputDevice.SOURCE_GAMEPAD ||
-            src and android.view.InputDevice.SOURCE_JOYSTICK == android.view.InputDevice.SOURCE_JOYSTICK ||
-            (src and android.view.InputDevice.SOURCE_DPAD == android.view.InputDevice.SOURCE_DPAD &&
-                e.device?.let { !it.isVirtual && it.keyboardType != android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC } == true)
+        return src and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+            src and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
+            (src and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD &&
+                e.device?.let { !it.isVirtual && it.keyboardType != InputDevice.KEYBOARD_TYPE_ALPHABETIC } == true)
     }
 
-    fun key(event: android.view.KeyEvent): Boolean {
+    // ---- who holds what ------------------------------------------------------------------
+
+    /** Game key (or Keys.MOUSE_*) -> the sources holding it down. */
+    private val holders = HashMap<Int, MutableSet<String>>()
+
+    private fun press(source: String, target: Int) {
+        val set = holders.getOrPut(target) { HashSet() }
+        if (!set.add(source) || set.size > 1) return
+        when (target) {
+            Keys.MOUSE_LEFT -> { showCursor(); inj.mouseDown() }
+            Keys.MOUSE_RIGHT -> { showCursor(); inj.mouseDown(MotionEvent.BUTTON_SECONDARY) }
+            else -> inj.key(target, true)
+        }
+    }
+
+    private fun release(source: String, target: Int) {
+        val set = holders[target] ?: return
+        if (!set.remove(source) || set.isNotEmpty()) return
+        holders.remove(target)
+        when (target) {
+            Keys.MOUSE_LEFT -> { showCursor(); inj.mouseUp() }
+            Keys.MOUSE_RIGHT -> { showCursor(); inj.mouseUp(MotionEvent.BUTTON_SECONDARY) }
+            else -> inj.key(target, false)
+        }
+    }
+
+    /** What each button pressed down, so its release lets go of the same key even if the mapping changed meanwhile. */
+    private val buttonTarget = HashMap<Int, Int>()
+
+    /** Let go of everything the pad holds (menu opened, game paused or left). */
+    fun reset() {
+        holders.clear()
+        buttonTarget.clear()
+        hatMask = 0; stickMask = 0; trig = 0
+        aimX = 0f; aimY = 0f
+        inj.releaseAll()
+    }
+
+    private val menuOpen get() = overlay.menu || overlay.padPick != null || overlay.picking
+
+    // ---- keys ----------------------------------------------------------------------------
+
+    fun key(event: KeyEvent): Boolean {
+        com.armsx.flashpoint.ui.PadInput.onKey(event)
         if (!isPad(event)) return false
         val code = event.keyCode
-        if (code == android.view.KeyEvent.KEYCODE_BACK || code == android.view.KeyEvent.KEYCODE_BUTTON_MODE) {
-            if (event.action == android.view.KeyEvent.ACTION_UP) overlay.menu = !overlay.menu
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_BUTTON_MODE) {
+            if (event.action == KeyEvent.ACTION_UP) toggleMenu()
             return true
         }
-        val target = overlay.layout.pad[code] ?: return false
+        if (menuOpen) return menuKey(event, code, down)
+
         if (event.repeatCount > 0) return true
-        val down = event.action == android.view.KeyEvent.ACTION_DOWN
-        when (target) {
-            Keys.MOUSE_LEFT -> { showCursor(); if (down) inj.mouseDown() else inj.mouseUp() }
-            Keys.MOUSE_RIGHT -> { showCursor(); if (down) inj.mouseDown(android.view.MotionEvent.BUTTON_SECONDARY) else inj.mouseUp(android.view.MotionEvent.BUTTON_SECONDARY) }
-            else -> inj.key(target, down)
+        if (down) {
+            val target = overlay.layout.pad[code] ?: return false
+            buttonTarget[code] = target
+            press("k$code", target)
+        } else {
+            val target = buttonTarget.remove(code) ?: return overlay.layout.pad.containsKey(code)
+            release("k$code", target)
         }
         return true
     }
+
+    private fun toggleMenu() {
+        if (overlay.padPick != null) { overlay.padPick = null; return }
+        if (overlay.picking) { overlay.picking = false; return }
+        overlay.editing = false
+        if (!overlay.menu) reset()
+        overlay.menu = !overlay.menu
+    }
+
+    private fun menuKey(event: KeyEvent, code: Int, down: Boolean): Boolean {
+        if (holders.isNotEmpty()) reset()
+        val first = down && event.repeatCount == 0
+        return when (code) {
+            // Focus moves: let the menu have the D-pad as it is.
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> false
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                ui(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount, 0, event.deviceId, 0, 0, InputDevice.SOURCE_DPAD))
+                true
+            }
+            KeyEvent.KEYCODE_BUTTON_B -> { if (event.action == KeyEvent.ACTION_UP) closeMenuLayer(); true }
+            KeyEvent.KEYCODE_BUTTON_START -> { if (event.action == KeyEvent.ACTION_UP) toggleMenu(); true }
+            KeyEvent.KEYCODE_BUTTON_L1 -> { if (first) stepTab(-1); true }
+            KeyEvent.KEYCODE_BUTTON_R1 -> { if (first) stepTab(1); true }
+            // Nothing else may leak past the menu into the game behind it.
+            else -> true
+        }
+    }
+
+    private fun closeMenuLayer() {
+        when {
+            overlay.padPick != null -> overlay.padPick = null
+            overlay.picking -> overlay.picking = false
+            else -> { overlay.menu = false; return } // the menu's own close plays its sound
+        }
+        MenuSfx.play(MenuSfx.Event.BACK)
+    }
+
+    private fun stepTab(d: Int) {
+        if (overlay.padPick != null || overlay.picking) return
+        val tabs = MenuTab.entries
+        overlay.tab = tabs[(overlay.tab.ordinal + d + tabs.size) % tabs.size]
+        MenuSfx.play(MenuSfx.Event.NAV)
+    }
+
+    // ---- sticks, hat, triggers -----------------------------------------------------------
 
     private var stickMask = 0
     private var hatMask = 0
     private var aimX = 0f
     private var aimY = 0f
     private var trig = 0
+    private val arrows = intArrayOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
 
-    fun motion(ev: android.view.MotionEvent): Boolean {
-        if (!isPad(ev) || ev.action != android.view.MotionEvent.ACTION_MOVE) return false
-        val arrows = intArrayOf(android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
-        fun mask(x: Float, y: Float, t: Float) = (if (y < -t) 1 else 0) or (if (y > t) 2 else 0) or (if (x < -t) 4 else 0) or (if (x > t) 8 else 0)
-        fun apply(old: Int, new: Int) {
-            for (i in 0..3) { val b = 1 shl i; if ((old and b) != (new and b)) inj.key(arrows[i], new and b != 0) }
+    private fun applyMask(source: String, old: Int, new: Int) {
+        for (i in 0..3) {
+            val b = 1 shl i
+            if ((old and b) != (new and b)) {
+                if (new and b != 0) press(source, arrows[i]) else release(source, arrows[i])
+            }
         }
-        // D-pad as a hat.
-        val hat = mask(ev.getAxisValue(android.view.MotionEvent.AXIS_HAT_X), ev.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y), 0.5f)
-        apply(hatMask, hat); hatMask = hat
-        val lx = ev.getAxisValue(android.view.MotionEvent.AXIS_X)
-        val ly = ev.getAxisValue(android.view.MotionEvent.AXIS_Y)
-        val rx = ev.getAxisValue(android.view.MotionEvent.AXIS_Z)
-        val ry = ev.getAxisValue(android.view.MotionEvent.AXIS_RZ)
+    }
+
+    fun motion(ev: MotionEvent): Boolean {
+        if (!isPad(ev) || ev.action != MotionEvent.ACTION_MOVE) return false
+        // In the menu, leave the hat and stick to Android, which turns them into D-pad keys for focus.
+        if (menuOpen) { if (holders.isNotEmpty()) reset(); return false }
+        com.armsx.flashpoint.ui.PadInput.active.value = true
+
+        val hat = hatMask(ev.getAxisValue(MotionEvent.AXIS_HAT_X), ev.getAxisValue(MotionEvent.AXIS_HAT_Y))
+        applyMask("hat", hatMask, hat); hatMask = hat
+
+        val lx = ev.getAxisValue(MotionEvent.AXIS_X)
+        val ly = ev.getAxisValue(MotionEvent.AXIS_Y)
+        val rx = ev.getAxisValue(MotionEvent.AXIS_Z)
+        val ry = ev.getAxisValue(MotionEvent.AXIS_RZ)
         if (overlay.layout.stickMovesCursor) {
             aimX = rx + lx; aimY = ry + ly
-            apply(stickMask, 0); stickMask = 0
+            applyMask("stick", stickMask, 0); stickMask = 0
         } else {
-            val m = mask(lx, ly, 0.5f)
-            apply(stickMask, m); stickMask = m
+            val m = stickDirections(lx, ly, stickMask)
+            applyMask("stick", stickMask, m); stickMask = m
             aimX = rx; aimY = ry
         }
         // Analog triggers on pads that report them as axes instead of L2/R2 keys.
-        val t = (if (ev.getAxisValue(android.view.MotionEvent.AXIS_RTRIGGER) > 0.5f || ev.getAxisValue(android.view.MotionEvent.AXIS_GAS) > 0.5f) 1 else 0) or
-            (if (ev.getAxisValue(android.view.MotionEvent.AXIS_LTRIGGER) > 0.5f || ev.getAxisValue(android.view.MotionEvent.AXIS_BRAKE) > 0.5f) 2 else 0)
+        val t = (if (ev.getAxisValue(MotionEvent.AXIS_RTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_GAS) > 0.5f) 1 else 0) or
+            (if (ev.getAxisValue(MotionEvent.AXIS_LTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_BRAKE) > 0.5f) 2 else 0)
         if (t != trig) {
-            if ((t xor trig) and 1 != 0) { showCursor(); if (t and 1 != 0) inj.mouseDown() else inj.mouseUp() }
-            if ((t xor trig) and 2 != 0) { showCursor(); if (t and 2 != 0) inj.mouseDown(android.view.MotionEvent.BUTTON_SECONDARY) else inj.mouseUp(android.view.MotionEvent.BUTTON_SECONDARY) }
+            if ((t xor trig) and 1 != 0) { if (t and 1 != 0) press("rt", Keys.MOUSE_LEFT) else release("rt", Keys.MOUSE_LEFT) }
+            if ((t xor trig) and 2 != 0) { if (t and 2 != 0) press("lt", Keys.MOUSE_RIGHT) else release("lt", Keys.MOUSE_RIGHT) }
             trig = t
         }
-        if (hypot2(aimX, aimY) > 0.04f) startAim()
+        if (aimX * aimX + aimY * aimY > 0.04f) startAim()
         return true
     }
 
-    private fun hypot2(x: Float, y: Float) = x * x + y * y
+    private fun hatMask(x: Float, y: Float) =
+        (if (y < -0.5f) 1 else 0) or (if (y > 0.5f) 2 else 0) or (if (x < -0.5f) 4 else 0) or (if (x > 0.5f) 8 else 0)
+
+    /**
+     * The stick as eight directions: a round dead zone with a gap between press (0.5) and
+     * release (0.35), so resting near the edge never chatters, and diagonals only in the 45
+     * degrees around them, so pushing right is right even when the thumb is a little off.
+     */
+    private fun stickDirections(x: Float, y: Float, prev: Int): Int {
+        val mag = kotlin.math.hypot(x, y)
+        if (mag < (if (prev != 0) 0.35f else 0.5f)) return 0
+        val a = Math.toDegrees(kotlin.math.atan2(y.toDouble(), x.toDouble()))
+        var m = 0
+        if (a in -157.5..-22.5) m = m or 1
+        if (a in 22.5..157.5) m = m or 2
+        if (kotlin.math.abs(a) >= 112.5) m = m or 4
+        if (kotlin.math.abs(a) <= 67.5) m = m or 8
+        return m
+    }
 
     private fun showCursor() {
         overlay.cursor = androidx.compose.ui.geometry.Offset(inj.cursorX, inj.cursorY)
@@ -90,8 +227,8 @@ class PadMapper(private val inj: GameInput, private val overlay: OverlayState, p
             override fun doFrame(t: Long) {
                 val dt = if (last == 0L) 0.016f else (t - last) / 1e9f
                 last = t
-                val mag = kotlin.math.sqrt(hypot2(aimX, aimY))
-                if (mag < 0.15f) { aiming = false; return }
+                val mag = kotlin.math.sqrt(aimX * aimX + aimY * aimY)
+                if (mag < 0.15f || menuOpen) { aiming = false; return }
                 val speed = viewWidth() * 0.9f * ((mag - 0.15f) / 0.85f).let { it * it + 0.15f }
                 inj.moveCursor(inj.cursorX + aimX / mag * speed * dt, inj.cursorY + aimY / mag * speed * dt)
                 showCursor()
@@ -99,5 +236,4 @@ class PadMapper(private val inj: GameInput, private val overlay: OverlayState, p
             }
         })
     }
-
 }

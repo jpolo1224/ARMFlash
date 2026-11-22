@@ -48,7 +48,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
-    Column(Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
         Text("Config", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
 
         Section("Preferences") {
@@ -279,7 +279,7 @@ private fun DriverSection(vm: BrowseVm) {
             else -> remote!!.groupBy { it.source }.forEach { (source, drivers) ->
                 val open = expanded[source] ?: false
                 Row(
-                    Modifier.fillMaxWidth().clickable { expanded[source] = !open }.padding(vertical = 8.dp),
+                    Modifier.fillMaxWidth().padFocus().clickable { expanded[source] = !open }.padding(vertical = 8.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
                     Text(if (open) "\u25BE " else "\u25B8 ", color = Fp.TextDim)
@@ -313,7 +313,7 @@ private fun DriverSection(vm: BrowseVm) {
 @Composable
 private fun DriverRow(title: String, subtitle: String, active: Boolean, onUse: () -> Unit, onDelete: (() -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+        Modifier.fillMaxWidth().padding(vertical = 3.dp).padFocus(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             .background(if (active) Fp.Play.copy(alpha = 0.15f) else Fp.Field, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
             .clickable(onClick = onUse).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,

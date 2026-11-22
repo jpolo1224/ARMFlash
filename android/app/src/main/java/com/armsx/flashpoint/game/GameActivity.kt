@@ -60,7 +60,8 @@ class GameActivity : ComponentActivity() {
         override fun restart() = web.reload()
         override fun exit() = quit()
         override fun menuOpen(open: Boolean) {
-            if (open) { web.onPause(); web.pauseTimers() } else { web.resumeTimers(); web.onResume() }
+            screen?.onMenu(open)
+            if (open) { web.onPause(); web.pauseTimers() } else { web.resumeTimers(); web.onResume(); web.requestFocus() }
         }
         override fun display(scale: String, quality: String) {
             setDisplayScript(scale, quality)
@@ -144,7 +145,8 @@ class GameActivity : ComponentActivity() {
             addView(web)
             addView(ui)
         })
-        pad = PadMapper(inj, overlay) { web.width }
+        pad = PadMapper(inj, overlay, { web.width }) { e -> super@GameActivity.dispatchKeyEvent(e) }
+        screen = GameScreen(this, overlay) { if (::pad.isInitialized) pad else null }.also { it.onCreate() }
         setDisplayScript(overlay.layout.scale, overlay.layout.quality)
         web.post { inj.moveCursor(web.width / 2f, web.height / 2f) }
 
@@ -194,6 +196,13 @@ class GameActivity : ComponentActivity() {
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean =
         (::pad.isInitialized && pad.motion(ev)) || super.dispatchGenericMotionEvent(ev)
 
+    private var screen: GameScreen? = null
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        screen?.onTouch(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
     private fun quit() {
         if (::inj.isInitialized) inj.releaseAll()
         val secs = (SystemClock.elapsedRealtime() - started) / 1000
@@ -203,15 +212,18 @@ class GameActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::web.isInitialized) web.onResume()
+        if (::web.isInitialized && !overlay.menu) web.onResume()
+        screen?.onResume()
     }
 
     override fun onPause() {
+        screen?.onPause()
         if (::web.isInitialized) web.onPause()
         super.onPause()
     }
 
     override fun onDestroy() {
+        screen?.onDestroy()
         if (::web.isInitialized) web.destroy()
         super.onDestroy()
         // The game process exists for one game; take everything it loaded with it.

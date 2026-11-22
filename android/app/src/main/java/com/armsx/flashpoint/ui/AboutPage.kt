@@ -53,7 +53,7 @@ fun AboutPage() {
     var picked by remember { mutableStateOf<Credits.Profile?>(null) }
     fun open(url: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
-    Column(Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
         Text("About", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
         Spacer(Modifier.height(10.dp))
         HomeBox("Flashpoint Archive") {
@@ -96,7 +96,7 @@ fun AboutPage() {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     people.forEach { p ->
                         Column(
-                            Modifier.width(76.dp).clickable { picked = if (picked == p) null else p },
+                            Modifier.width(76.dp).padFocus().clickable { picked = if (picked == p) null else p },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Box(Modifier.size(52.dp).clip(CircleShape).background(Fp.Card)) {

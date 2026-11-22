@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,7 +92,19 @@ class OverlayState(layout: TouchLayout) {
     var selected by mutableStateOf<Int?>(null)
     var picking by mutableStateOf(false)
     var cursor by mutableStateOf<Offset?>(null)
+    /** Bumped on every touch so the auto-hide timer starts over. */
+    var touchTick by mutableStateOf(0)
+    /** A controller is attached (kept current by the game screen). */
+    var padConnected by mutableStateOf(false)
 }
+
+/** Whether a real controller is attached: what "Auto" hides the touch keys and menu button for. */
+fun gamepadAttached(): Boolean = android.view.InputDevice.getDeviceIds().any { id ->
+    val d = android.view.InputDevice.getDevice(id) ?: return@any false
+    !d.isVirtual && (d.supportsSource(android.view.InputDevice.SOURCE_GAMEPAD) || d.supportsSource(android.view.InputDevice.SOURCE_JOYSTICK))
+}
+
+private const val PauseRevealMs = 3000L
 
 private val Accent = Color(0xFF5CB531)
 
@@ -122,20 +135,54 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
             }
         }
 
-        if (l.visible || st.editing) {
+        // ARMSX2's on-screen controls modes. Auto-hide: hidden once the screen has gone untouched
+        // for the set time, back on the next touch (which the keys then also receive).
+        var timedOut by remember { mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(st.touchTick, l.showMode, l.hideAfter) {
+            timedOut = false
+            if (l.showMode == "timed") { kotlinx.coroutines.delay(l.hideAfter * 1000L); timedOut = true }
+        }
+        val keysShown = st.editing || when {
+            !l.visible -> false
+            l.showMode == "off" -> false
+            l.showMode == "auto" -> !st.padConnected
+            l.showMode == "timed" -> !timedOut
+            else -> true
+        }
+        if (keysShown) {
             l.buttons.forEachIndexed { i, b ->
                 ButtonView(b, w, h, l.opacity, st, i, inj)
             }
         }
 
-        // Menu button, top right.
-        if (!st.menu) Box(
-            Modifier.align(Alignment.TopEnd).padding(10.dp).size(40.dp).clip(CircleShape)
-                .background(Color(0x66000000)).clickable { st.menu = !st.menu; st.editing = false },
-            contentAlignment = Alignment.Center,
-        ) { Text("☰", color = Color.White, fontSize = 20.sp) }
+        // Menu button, top right. Hidden with tap to reveal (the first tap in its corner shows it
+        // for a few seconds, the next opens the menu) and while a controller is attached, whose
+        // Back / Select button opens the menu instead. The corner always answers a tap, and a
+        // long press opens the menu straight away, so it can never lock anyone out.
+        if (!st.menu && !st.editing) {
+            var revealed by remember { mutableStateOf(false) }
+            androidx.compose.runtime.LaunchedEffect(revealed) { if (revealed) { kotlinx.coroutines.delay(PauseRevealMs); revealed = false } }
+            val shown = (!l.pauseTapToReveal && !st.padConnected) || revealed
+            val shownNow = androidx.compose.runtime.rememberUpdatedState(shown)
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(52.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { if (shownNow.value) { st.menu = true; st.editing = false } else revealed = true },
+                            onLongPress = { st.menu = true; st.editing = false },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (shown) Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
+                    contentAlignment = Alignment.Center,
+                ) { Text("☰", color = Color.White, fontSize = 20.sp) }
+            }
+        }
 
         if (st.menu) QuickMenu(st, host)
+        WelcomeBannerOverlay(this)
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
         if (st.picking) KeyPicker(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }
@@ -246,12 +293,15 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
                         awaitFirstDown().consume()
                         down = true
                         press(inj, b.code, true)
-                        do {
-                            val e = awaitPointerEvent()
-                            e.changes.forEach { it.consume() }
-                        } while (e.changes.any { it.pressed })
-                        press(inj, b.code, false)
-                        down = false
+                        try {
+                            do {
+                                val e = awaitPointerEvent()
+                                e.changes.forEach { it.consume() }
+                            } while (e.changes.any { it.pressed })
+                        } finally {
+                            press(inj, b.code, false)
+                            down = false
+                        }
                     }
                 }),
             ) {
@@ -369,15 +419,19 @@ private fun stickInput(codes: IntArray, sizePx: Float, inj: GameInput, thumb: (O
         val d = awaitFirstDown()
         d.consume()
         val center = Offset(sizePx / 2, sizePx / 2)
-        apply(d.position - center)
-        while (true) {
-            val e = awaitPointerEvent()
-            val c = e.changes.firstOrNull { it.id == d.id } ?: break
-            c.consume()
-            if (!c.pressed) break
-            apply(c.position - center)
+        // finally: a gesture cut short (the menu opening, the keys hiding) still lets go.
+        try {
+            apply(d.position - center)
+            while (true) {
+                val e = awaitPointerEvent()
+                val c = e.changes.firstOrNull { it.id == d.id } ?: break
+                c.consume()
+                if (!c.pressed) break
+                apply(c.position - center)
+            }
+        } finally {
+            apply(null)
         }
-        apply(null)
     }
 }
 
@@ -413,15 +467,18 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
         }
         val d = awaitFirstDown()
         d.consume()
-        apply(d.position)
-        while (true) {
-            val e = awaitPointerEvent(PointerEventPass.Main)
-            val c = e.changes.firstOrNull { it.id == d.id } ?: break
-            c.consume()
-            if (!c.pressed) break
-            apply(c.position)
+        try {
+            apply(d.position)
+            while (true) {
+                val e = awaitPointerEvent(PointerEventPass.Main)
+                val c = e.changes.firstOrNull { it.id == d.id } ?: break
+                c.consume()
+                if (!c.pressed) break
+                apply(c.position)
+            }
+        } finally {
+            apply(null)
         }
-        apply(null)
     }
 }
 

@@ -35,6 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -66,14 +69,19 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
     androidx.activity.compose.BackHandler(enabled = tab != Tab.HOME && vm.selected == null) { tab = Tab.HOME }
 
     Column(Modifier.fillMaxSize().background(Fp.Header)) {
+        // The pad enters the tab row on the tab that is open, not whichever is nearest.
+        val openTab = remember { androidx.compose.ui.focus.FocusRequester() }
         Row(
-            Modifier.fillMaxWidth().background(Fp.Header).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().background(Fp.Header)
+                .focusProperties { onEnter = { if (!openTab.requestFocus()) Unit } }
+                .focusGroup()
+                .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Tab.entries.forEach { t ->
                 val on = t == tab
                 Column(
-                    Modifier.clickable { go(t) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    Modifier.then(if (on) Modifier.focusRequester(openTab) else Modifier).padFocus().clickable { go(t) }.padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(t.label, color = if (on) Color.White else Fp.TextDim, fontWeight = if (on) FontWeight.Black else FontWeight.Bold, fontSize = 15.sp)
@@ -101,7 +109,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
     LaunchedEffect(Unit) { if (vm.randomPicks.isEmpty()) vm.rerollPicks() }
     BoxWithConstraints(Modifier.fillMaxSize().background(Fp.Browse)) {
         val wide = maxWidth >= 840.dp
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
+        Column(Modifier.fillMaxSize().padVerticalScroll().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(painterResource(R.drawable.fp_logo), null, Modifier.size(56.dp))
                 Spacer(Modifier.width(12.dp))
@@ -125,7 +133,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                         vm.platforms.take(24).forEach { p ->
                             Row(
-                                Modifier.clip(RoundedCornerShape(4.dp)).background(Fp.Field).clickable { vm.pickShelf(Shelf.ALL); vm.pickPlatform(p); go(Tab.GAMES) }.padding(6.dp),
+                                Modifier.padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(Fp.Field).clickable { vm.pickShelf(Shelf.ALL); vm.pickPlatform(p); go(Tab.GAMES) }.padding(6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 PlatformBadge(p, Modifier.size(18.dp))
@@ -168,6 +176,7 @@ private fun UpdatesBox(vm: BrowseVm) {
         when {
             s?.running == true -> {
                 Text("${s.phase}: ${s.done} / ${s.total}", color = Fp.Text)
+                if (vm.syncEta.isNotEmpty()) Text(vm.syncEta, color = Fp.TextDim, fontSize = 13.sp)
                 if (s.total > 0) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(6.dp).background(Fp.Field)) {
                         Box(Modifier.fillMaxWidth((s.done.toFloat() / s.total).coerceIn(0f, 1f)).height(6.dp).background(Fp.Play))
@@ -204,7 +213,7 @@ private fun GotdBox(vm: BrowseVm, g: Gotd, onPlay: (Game) -> Unit) {
 
 @Composable
 private fun MiniCard(vm: BrowseVm, g: Game, onClick: () -> Unit) {
-    Column(Modifier.width(120.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.width(120.dp).padFocus().clickable(onClick = onClick).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
             AsyncImage(vm.library.logoUrl(g.id), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(4.dp).size(20.dp))
@@ -231,7 +240,7 @@ fun HomeBox(title: String, action: Pair<String, () -> Unit>? = null, content: @C
 private fun QuickLink(prefix: String, link: String, onClick: () -> Unit) {
     Row(Modifier.padding(vertical = 3.dp)) {
         if (prefix.isNotEmpty()) Text(prefix, color = Fp.Text, fontSize = 14.sp)
-        Text(link, color = Fp.Accent, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onClick))
+        Text(link, color = Fp.Accent, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padFocus(RoundedCornerShape(3.dp)).clickable(onClick = onClick).padding(horizontal = 2.dp))
     }
 }
 
@@ -276,7 +285,7 @@ fun ConfigRow(title: String, desc: String, control: @Composable () -> Unit) {
             Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             if (desc.isNotEmpty()) Text(desc, color = Fp.TextDim, fontSize = 13.sp)
         }
-        Box(Modifier.widthIn(max = 260.dp)) { control() }
+        Box(Modifier.widthIn(max = 260.dp).padFocus()) { control() }
     }
 }
 
@@ -294,7 +303,7 @@ private fun NewsPage() {
         }
         loading = false
     }
-    Column(Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(rememberScrollState()).padding(14.dp)) {
+    Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("News", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
             Chip("Refresh", on = false) { force++ }

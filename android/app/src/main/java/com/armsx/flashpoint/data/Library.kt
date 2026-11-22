@@ -25,13 +25,42 @@ import java.time.format.DateTimeFormatter
  *   Flashpoint/Legacy/htdocs/<host>/<path>
  */
 class Library(private val ctx: Context) {
-    val root: File = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "Flashpoint")
-    val database = File(root, "Data/flashpoint.sqlite")
-    val games = File(root, "Data/Games")
-    val htdocs = File(root, "Legacy/htdocs")
-    val playlists = Playlists(File(root, "Data/Playlists"))
-
     private val prefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    /**
+     * The Flashpoint folder. It lives in one of the app's own storage folders (internal or an
+     * SD card), which need no storage permission, so this works the same in a Play build.
+     * Picked on first run; see [locations].
+     */
+    var root: File = prefs.getString("storageRoot", null)?.let(::File)?.takeIf { it.parentFile?.isDirectory == true }
+        ?: File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "Flashpoint")
+        private set
+    val database get() = File(root, "Data/flashpoint.sqlite")
+    val games get() = File(root, "Data/Games")
+    val htdocs get() = File(root, "Legacy/htdocs")
+    val playlists get() = Playlists(File(root, "Data/Playlists"))
+
+    /** A place the Flashpoint folder can go, with its free space. */
+    data class Location(val dir: File, val label: String, val freeBytes: Long, val removable: Boolean)
+
+    /** Internal storage and every mounted SD card or USB drive, as app folders (no permission needed). */
+    fun locations(): List<Location> {
+        val sm = ctx.getSystemService(android.os.storage.StorageManager::class.java)
+        return ctx.getExternalFilesDirs(null).filterNotNull().mapNotNull { base ->
+            val vol = runCatching { sm.getStorageVolume(base) }.getOrNull() ?: return@mapNotNull null
+            if (vol.state != android.os.Environment.MEDIA_MOUNTED) return@mapNotNull null
+            val free = runCatching { android.os.StatFs(base.path).availableBytes }.getOrDefault(0L)
+            Location(File(base, "Flashpoint"), vol.getDescription(ctx), free, vol.isRemovable)
+        }
+    }
+
+    /** Use [dir] for the Flashpoint folder from now on. Only for a library that has nothing in it yet. */
+    fun useLocation(dir: File) {
+        root = dir
+        prefs.edit().putString("storageRoot", dir.path).apply()
+        games.mkdirs()
+        htdocs.mkdirs()
+    }
 
     /** Base URL for game data packs (`<base><gameId>-<ms>.zip`). User-configurable, as in the launcher. */
     var gameDataSource: String

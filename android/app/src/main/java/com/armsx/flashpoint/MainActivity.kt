@@ -62,6 +62,22 @@ class MainActivity : ComponentActivity() {
         com.armsx.flashpoint.discord.DiscordPresence.setForeground(true)
     }
 
+    // Pad or touch: decides whether the launcher shows its controller selection ring.
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        com.armsx.flashpoint.ui.PadInput.onKey(event)
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK)) com.armsx.flashpoint.ui.PadInput.active.value = true
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) com.armsx.flashpoint.ui.PadInput.onTouch()
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onStop() {
         UiMusic.pause()
         com.armsx.flashpoint.discord.DiscordPresence.setForeground(false)
@@ -119,9 +135,10 @@ private fun App(vm: BrowseVm) {
     }
 }
 
-/** First run: build the database from Flashpoint's server, or import one from a desktop install. */
+/** First run: pick where the Flashpoint folder goes, then build the database or import one. */
 @Composable
 private fun Setup(vm: BrowseVm, onImport: () -> Unit) {
+    LaunchedEffect(Unit) { vm.loadLocations() }
     Column(
         Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -142,16 +159,37 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit) {
                         Box(Modifier.fillMaxWidth((s.done.toFloat() / s.total).coerceIn(0f, 1f)).height(8.dp).background(Fp.Play))
                     }
                 }
+                if (vm.syncEta.isNotEmpty()) {
+                    Text(vm.syncEta, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(10.dp))
+                }
                 Chip("Cancel", on = false) { vm.cancelSync() }
             }
             imp != null -> Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
             else -> {
                 Text(
                     "FlashARM needs Flashpoint's game database. Download it from Flashpoint Archive " +
-                        "(about 100 MB, a few minutes), or import flashpoint.sqlite from a desktop install. " +
+                        "(about 450 MB, usually 5 to 10 minutes), or import flashpoint.sqlite from a desktop install. " +
                         "Games download on demand the first time you play them.",
                     color = Fp.Text, modifier = Modifier.widthIn(max = 560.dp),
                 )
+                if (vm.locations.size > 1) {
+                    Spacer(Modifier.height(18.dp))
+                    Text("Where to keep the database and games", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(Modifier.height(8.dp))
+                    vm.locations.forEach { loc ->
+                        val on = loc.dir.path == vm.location.path
+                        Chip(
+                            "${if (on) "\u2713 " else ""}${loc.label}  (${"%.1f".format(loc.freeBytes / 1e9)} GB free)",
+                            on = on,
+                        ) { vm.pickLocation(loc.dir) }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Text(
+                        "Removing the SD card later hides your games until it is back.",
+                        color = Fp.TextDim, fontSize = 12.sp, modifier = Modifier.widthIn(max = 560.dp),
+                    )
+                }
                 Spacer(Modifier.height(20.dp))
                 Chip("Download the game database", on = true) { vm.syncDatabase(fresh = true) }
                 Spacer(Modifier.height(10.dp))

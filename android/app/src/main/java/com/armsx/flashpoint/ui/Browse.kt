@@ -48,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -159,7 +162,7 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
 @Composable
 private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: ByteArray? = null, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick)
+        Modifier.fillMaxWidth().padFocus(RoundedCornerShape(0.dp)).clickable(onClick = onClick)
             .background(if (on) Color(0x33FFFFFF) else Color.Transparent)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -179,9 +182,19 @@ private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: By
 private fun TopBar(vm: BrowseVm, onMenu: (() -> Unit)?, onConfig: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Fp.Header).padding(horizontal = 8.dp, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onMenu != null) IconButton(onClick = onMenu) { Icon(Icons.Filled.Menu, "Playlists", tint = Fp.Text) }
+            if (onMenu != null) IconButton(onClick = onMenu, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Icon(Icons.Filled.Menu, "Playlists", tint = Fp.Text) }
+            // With a pad the search bar is a stop like any button: A starts typing, and moving
+            // off it ends typing. Otherwise focus landing on the text field opens the keyboard
+            // and swallows the D-pad. Touch taps straight into the field as before.
+            var typing by remember { mutableStateOf(false) }
+            var fieldFocused by remember { mutableStateOf(false) }
+            val field = remember { androidx.compose.ui.focus.FocusRequester() }
+            val pad = PadInput.active.value
+            LaunchedEffect(typing) { if (typing) runCatching { field.requestFocus() } }
             Row(
-                Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(6.dp)).background(Fp.Field).padding(horizontal = 10.dp),
+                Modifier.weight(1f).height(40.dp).padFocus()
+                    .then(if (pad && !typing) Modifier.clickable { typing = true } else Modifier)
+                    .clip(RoundedCornerShape(6.dp)).background(Fp.Field).padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Filled.Search, null, tint = Fp.TextDim, modifier = Modifier.size(20.dp))
@@ -191,11 +204,19 @@ private fun TopBar(vm: BrowseVm, onMenu: (() -> Unit)?, onConfig: () -> Unit) {
                     BasicTextField(
                         value = vm.query, onValueChange = vm::updateQuery, singleLine = true,
                         textStyle = TextStyle(color = Fp.Text, fontSize = 15.sp), cursorBrush = SolidColor(Fp.Text),
-                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { typing = false }),
+                        modifier = Modifier.fillMaxWidth()
+                            .focusRequester(field)
+                            .focusProperties { canFocus = !pad || typing }
+                            .onFocusChanged {
+                                if (it.isFocused) fieldFocused = true
+                                else if (fieldFocused) { fieldFocused = false; typing = false }
+                            },
                     )
                 }
                 if (vm.query.isNotEmpty()) {
-                    Icon(Icons.Filled.Close, "Clear", tint = Fp.TextDim, modifier = Modifier.size(20.dp).clickable { vm.updateQuery("") })
+                    Icon(Icons.Filled.Close, "Clear", tint = Fp.TextDim, modifier = Modifier.size(20.dp).padFocus(RoundedCornerShape(10.dp)).clickable { vm.updateQuery("") })
                 }
             }
         }
@@ -230,7 +251,7 @@ private fun TopBar(vm: BrowseVm, onMenu: (() -> Unit)?, onConfig: () -> Unit) {
 @Composable
 fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(5.dp))
+        Modifier.padFocus(RoundedCornerShape(5.dp)).clip(RoundedCornerShape(5.dp))
             .background(if (on) Fp.Play else Color(0xFF3A3A3E))
             .border(1.dp, Color(0xFF555559), RoundedCornerShape(5.dp))
             .clickable(onClick = onClick)
@@ -276,7 +297,7 @@ private fun Grid(vm: BrowseVm, modifier: Modifier) {
 @Composable
 private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> Unit) {
     Column(
-        Modifier.clip(RoundedCornerShape(6.dp))
+        Modifier.padFocus().clip(RoundedCornerShape(6.dp))
             .background(if (selected) Fp.CardSelected.copy(alpha = 0.25f) else Color.Transparent)
             .clickable(enabled = g != null, onClick = onClick)
             .padding(6.dp),

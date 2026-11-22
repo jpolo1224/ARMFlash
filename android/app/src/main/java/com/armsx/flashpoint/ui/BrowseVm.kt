@@ -54,6 +54,9 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     var sync by mutableStateOf<com.armsx.flashpoint.core.SyncStatus?>(null)
         private set
     val lastSync: String get() = prefs.getString("lastSync", "")!!
+    /** Time left in a database download, as shown under its progress bar ("" while unknown). */
+    var syncEta by mutableStateOf("")
+        private set
 
     var query by mutableStateOf("")
         private set
@@ -129,10 +132,27 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 FpCore.open(library.database.path)
                 FpCore.startSync(library.metadataBase, lastSync)
             }
+            // The game list is nearly all of the work, so time left comes from its rate,
+            // measured from when that phase began (earlier phases would skew it).
+            var gamesStart = 0L
+            var gamesDone0 = 0L
+            syncEta = ""
             while (true) {
                 val st = withContext(Dispatchers.IO) { FpCore.sync() }
                 sync = st
                 if (!st.running) break
+                val now = android.os.SystemClock.elapsedRealtime()
+                syncEta = when (st.phase) {
+                    "Starting", "Counting updates", "Tags", "Platforms" -> "Working out the time left"
+                    "Games" -> {
+                        if (gamesStart == 0L) { gamesStart = now; gamesDone0 = st.done }
+                        val did = st.done - gamesDone0
+                        val secs = (now - gamesStart) / 1000.0
+                        if (did <= 0 || secs < 3 || st.total <= 0) "Working out the time left"
+                        else timeLeft(((st.total - st.done) * secs / did).toLong() + 20)
+                    }
+                    else -> "Almost done"
+                }
                 delay(500)
             }
             val st = sync
@@ -147,6 +167,29 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         } finally {
             sync = sync?.copy(running = false)
         }
+    }
+
+    private fun timeLeft(secs: Long): String = when {
+        secs < 60 -> "Less than a minute left"
+        secs < 90 -> "About 1 minute left"
+        secs < 3600 -> "About ${(secs + 30) / 60} minutes left"
+        else -> "About ${secs / 3600} h ${(secs % 3600) / 60} min left"
+    }
+
+    /** Where the Flashpoint folder (database, games, Legacy files) can go, for first-run setup. */
+    var locations by mutableStateOf<List<com.armsx.flashpoint.data.Library.Location>>(emptyList())
+        private set
+    var location by mutableStateOf(library.root)
+        private set
+
+    fun loadLocations() = viewModelScope.launch {
+        locations = withContext(Dispatchers.IO) { library.locations() }
+    }
+
+    fun pickLocation(dir: java.io.File) {
+        if (library.hasDatabase()) return
+        library.useLocation(dir)
+        location = library.root
     }
 
     fun cancelSync() = viewModelScope.launch(Dispatchers.IO) { runCatching { FpCore.cancelSync() } }

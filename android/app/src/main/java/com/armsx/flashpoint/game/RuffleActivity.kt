@@ -56,7 +56,10 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             finish()
         }
         override fun exit() = quit()
-        override fun menuOpen(open: Boolean) = nativeSetPlaying(!open)
+        override fun menuOpen(open: Boolean) {
+            screen?.onMenu(open)
+            nativeSetPlaying(!open)
+        }
         override fun display(scale: String, quality: String) = nativeDisplay(scaleCode(scale), qualityCode(quality))
         override var menuLeft: Boolean
             get() = layouts.menuLeft
@@ -103,7 +106,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         layouts = LayoutStore(this)
         overlay = OverlayState(layouts.load(gameId))
         input = RuffleInput(this)
-        pad = PadMapper(input, overlay) { mSurfaceView.width }
+        pad = PadMapper(input, overlay, { mSurfaceView.width }) { e -> super@RuffleActivity.dispatchKeyEvent(e) }
+        screen = GameScreen(this, overlay) { if (::pad.isInitialized) pad else null }.also { it.onCreate() }
         val st = overlay
         addContentView(
             ComposeView(this).apply {
@@ -131,6 +135,23 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean =
         (::pad.isInitialized && pad.motion(ev)) || super.dispatchGenericMotionEvent(ev)
 
+    private var screen: GameScreen? = null
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        screen?.onTouch(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        screen?.onResume()
+    }
+
+    override fun onPause() {
+        screen?.onPause()
+        super.onPause()
+    }
+
     private fun quit() {
         if (::input.isInitialized) input.releaseAll()
         val secs = (SystemClock.elapsedRealtime() - started) / 1000
@@ -139,6 +160,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     }
 
     override fun onDestroy() {
+        screen?.onDestroy()
         super.onDestroy()
         if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }

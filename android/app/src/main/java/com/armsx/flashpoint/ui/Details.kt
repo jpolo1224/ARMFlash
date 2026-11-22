@@ -45,15 +45,15 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
     val installed = full != null && (full.activeData == null || vm.isInstalled(full))
     val plan = full?.let { Launch.plan(it) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
+    Column(Modifier.fillMaxSize().padVerticalScroll().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onClose != null) IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, "Back", tint = Fp.Text) }
+            if (onClose != null) IconButton(onClick = onClose, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Icon(Icons.Filled.ArrowBack, "Back", tint = Fp.Text) }
             Column(Modifier.weight(1f)) {
                 Text(g.title, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                 if (g.developer.isNotBlank()) Text("by ${g.developer}", color = Fp.TextDim, fontSize = 13.sp)
             }
             val fav = g.id in vm.favorites
-            IconButton(onClick = { vm.toggleFavorite(g.id) }) {
+            IconButton(onClick = { vm.toggleFavorite(g.id) }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) {
                 Icon(if (fav) Icons.Filled.Star else Icons.Outlined.Star, "Favorite", tint = if (fav) Fp.Accent else Fp.TextDim)
             }
         }
@@ -81,7 +81,7 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             else -> "Download & Play" to Fp.Download
         }
         Box(
-            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(4.dp)).background(color)
+            Modifier.fillMaxWidth().height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(color)
                 .clickable(enabled = full != null && dl == null) { onPlay(full!!) },
             contentAlignment = Alignment.Center,
         ) {
