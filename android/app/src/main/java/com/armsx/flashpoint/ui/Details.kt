@@ -1,5 +1,7 @@
 package com.armsx.flashpoint.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,6 +129,23 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
                     ) { Text("Cancel") }
                 },
             )
+        }
+
+        // Add to home screen: a launcher shortcut with the game's own art.
+        if (full != null && com.armsx.flashpoint.HomeShortcuts.isSupported(LocalContext.current)) {
+            val ctx = LocalContext.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier.fillMaxWidth().height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable {
+                        scope.launch {
+                            val ok = com.armsx.flashpoint.HomeShortcuts.pin(ctx, full.id, full.title, vm.library.logoUrl(full.id))
+                            if (!ok) vm.status = "Your launcher did not accept the shortcut."
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) { Text("Add to home screen", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
         }
 
         Spacer(Modifier.height(10.dp))

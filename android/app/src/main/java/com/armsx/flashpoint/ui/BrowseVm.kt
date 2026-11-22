@@ -80,6 +80,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private var generation = 0
     private var searchJob: Job? = null
 
+    /** A game a frontend or shortcut asked to play (its Flashpoint ID). */
+    var pendingGame by mutableStateOf<String?>(null)
     var selected by mutableStateOf<Game?>(null)
         private set
     var details by mutableStateOf<Game?>(null)
@@ -360,6 +362,38 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun isInstalled(g: Game) = library.isInstalled(g)
+
+    /**
+     * Write a .armflash file for each game in [which] ("installed", "favorites" or "played") into
+     * the folder [tree], for frontends to list and launch.
+     */
+    fun exportForFrontends(tree: android.net.Uri, which: String) = viewModelScope.launch {
+        status = "Exporting…"
+        val ctx = getApplication<Application>()
+        val n = withContext(Dispatchers.IO) {
+            runCatching {
+                val games = when (which) {
+                    "favorites" -> favorites.mapNotNull { runCatching { FpCore.game(it) }.getOrNull() }
+                    "played" -> FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true), 5000)
+                    else -> FpCore.page("", SearchOpts(installed = true), 20000)
+                }
+                val dir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, tree) ?: return@runCatching 0
+                val existing = dir.listFiles().mapNotNull { it.name }.toSet()
+                var written = 0
+                games.forEach { g ->
+                    val name = com.armsx.flashpoint.Frontend.fileName(g.title, g.primaryPlatform)
+                    if (name in existing) return@forEach
+                    val f = dir.createFile("application/octet-stream", name) ?: return@forEach
+                    ctx.contentResolver.openOutputStream(f.uri)?.use {
+                        it.write(com.armsx.flashpoint.Frontend.fileText(g.id, g.title, g.primaryPlatform).toByteArray())
+                    }
+                    written++
+                }
+                written
+            }.getOrDefault(-1)
+        }
+        status = if (n < 0) "Export failed." else "Exported $n game${if (n == 1) "" else "s"} for frontends."
+    }
 
     /** Remove an installed game or animation's data pack; it can be downloaded again any time. */
     fun uninstall(game: Game) = viewModelScope.launch {

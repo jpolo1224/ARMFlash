@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
         com.armsx.flashpoint.discord.DiscordPresence.attachActivity(this)
         com.armsx.flashpoint.discord.DiscordPresence.start()
         setContent { FpTheme { App(vm) } }
+        vm.pendingGame = Frontend.gameId(this, intent)
     }
 
     override fun onStart() {
@@ -89,6 +90,12 @@ class MainActivity : ComponentActivity() {
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) com.armsx.flashpoint.ui.PadInput.onTouch()
         return super.dispatchTouchEvent(ev)
+    }
+
+    // A frontend launch while FlashARM is already open.
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        Frontend.gameId(this, intent)?.let { vm.pendingGame = it }
     }
 
     override fun onStop() {
@@ -132,14 +139,7 @@ private fun App(vm: BrowseVm) {
         } else folderPicker.launch(null)
     }
 
-    Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
-        if (!vm.dbReady) {
-            Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
-        } else {
-            BackHandler(enabled = vm.selected != null) { vm.clearSelection() }
-            Shell(
-                vm,
-                onPlay = { game ->
+    val play: (com.armsx.flashpoint.core.Game) -> Unit = { game ->
                     vm.prepare(game) { ready ->
                         vm.recordPlay(ready.game)
                         UiMusic.pause()
@@ -159,7 +159,24 @@ private fun App(vm: BrowseVm) {
                             },
                         )
                     }
-                },
+                }
+    // A frontend or home-screen shortcut asked for a game: play it once the library is ready.
+    LaunchedEffect(vm.pendingGame, vm.dbReady) {
+        val id = vm.pendingGame ?: return@LaunchedEffect
+        if (!vm.dbReady) return@LaunchedEffect
+        vm.pendingGame = null
+        val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.armsx.flashpoint.core.FpCore.game(id) }.getOrNull() }
+        if (game != null) play(game) else vm.status = "That game is not in the database."
+    }
+
+    Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
+        if (!vm.dbReady) {
+            Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
+        } else {
+            BackHandler(enabled = vm.selected != null) { vm.clearSelection() }
+            Shell(
+                vm,
+                onPlay = play,
                 configPage = { ConfigPage(vm, onImport = { pickDb.launch(arrayOf("*/*")) }) },
                 aboutPage = { AboutPage() },
             )

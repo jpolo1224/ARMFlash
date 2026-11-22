@@ -183,6 +183,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             DiscordSection()
         }
 
+        Section("Frontends") {
+            FrontendRow(vm)
+        }
+
         Section("Windows Players") {
             WindowsSupportRow()
         }
@@ -597,6 +601,30 @@ private fun WindowsSupportRow() {
     ) {
         Chip(busy ?: if (installed) "Reinstall from file" else "Install from file", on = !installed) {
             if (busy == null) pick.launch(arrayOf("*/*"))
+        }
+    }
+}
+
+
+/**
+ * Frontend support, as in ARMSX2: ES-DE, Daijisho, Beacon and other launchers list ARMFlash games
+ * from a folder of .armflash files (one per game) and open them with ARMFlash, which starts the
+ * game. Games can also go on the home screen from their details.
+ */
+@Composable
+private fun FrontendRow(vm: BrowseVm) {
+    var which by remember { mutableStateOf("installed") }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri -> if (uri != null) vm.exportForFrontends(uri, which) }
+    ConfigRow(
+        "Export games for frontends",
+        "Writes a small .armflash file per game into a folder. Add that folder to ES-DE, Daijisho or Beacon as a system's games, with ARMFlash as its app, and launching a game there starts it here.",
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("installed" to "Installed", "favorites" to "Favorites", "played" to "Played").forEach { (v, label) ->
+                Chip(label, which == v) { which = v; pick.launch(null) }
+            }
         }
     }
 }

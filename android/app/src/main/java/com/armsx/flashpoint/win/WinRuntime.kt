@@ -70,7 +70,8 @@ class WinRuntime(private val ctx: Context) {
             "BOX64_LOG" to "0",
             "BOX64_NOBANNER" to "1",
             "WINEPREFIX" to prefix.path,
-            "WINEDEBUG" to "-all,err+all",
+            // Debugging aid: r/tmp/.winedebug, when present, replaces the channels.
+            "WINEDEBUG" to (runCatching { File(root, "tmp/.winedebug").readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() } ?: "-all,err+all"),
             "DISPLAY" to ":$DISPLAY_NO",
             // No Wine Mono or Gecko: their first-run download prompt blocks every later process.
             "WINEDLLOVERRIDES" to "mscoree,mshtml=",

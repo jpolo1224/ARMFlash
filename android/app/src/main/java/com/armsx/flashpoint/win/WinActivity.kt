@@ -211,7 +211,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val r = if (inner != null && inner.w * inner.h * 2 > top.w * top.h)
                         XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
                     val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
-                    if (w.first != gameWin) { gameWin = w.first; content = Rect(); c.focus(w.first); say("") }
+                    if (w.first != gameWin) { gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("") }
                     crop = trim(win)
                 }
             }.get()
@@ -219,7 +219,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
     }
 
-    // What the game has drawn so far inside its window (grows, never shrinks, per window).
+    // What the game drew inside its window over the last few seconds (one rect per check), so a
+    // moment of startup paint or a mostly-background scene does not stick.
+    private val recent = ArrayDeque<Rect>()
     private var content = Rect()
     @Volatile private var pixels: IntBuffer? = null
     @Volatile private var stride = 0
@@ -249,9 +251,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             for (y in win.top until win.bottom step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
             if (busy(n, win.height())) { if (left < 0) left = x; right = x + step }
         }
-        if (top < 0 || left < 0) return if (content.isEmpty) win else content
+        if (top < 0 || left < 0) return if (content.isEmpty) win else Rect(content)
         val found = Rect(left, top, right.coerceAtMost(win.right), bottom.coerceAtMost(win.bottom))
-        if (content.isEmpty) content = found else content.union(found)
+        recent.addLast(found)
+        while (recent.size > 6) recent.removeFirst()
+        content = Rect(recent.first()).apply { recent.forEach { union(it) } }
         return Rect(content)
     }
 

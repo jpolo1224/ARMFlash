@@ -164,7 +164,10 @@ class BootActivity : Activity() {
         running = false
         // Config's Preview: just play it and go back.
         if (intent.getBooleanExtra(EXTRA_PREVIEW, false)) return finish()
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        // A frontend's launch (a game link, a .flasharm file) goes on to the launcher with it.
+        val main = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        Frontend.gameId(this, intent)?.let { main.putExtra("gameId", it) }
+        startActivity(main)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()
     }
