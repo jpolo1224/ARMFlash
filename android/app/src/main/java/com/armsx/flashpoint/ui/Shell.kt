@@ -1,5 +1,6 @@
 package com.armsx.flashpoint.ui
 
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.fillMaxHeight
 import android.content.Intent
 import android.net.Uri
@@ -76,20 +77,37 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
         }
     }
     androidx.activity.compose.BackHandler(enabled = tab != Tab.HOME && vm.selected == null) { tab = Tab.HOME }
+    // Bumped by LB / RB, so the highlight follows to the newly opened tab.
+    var padTabSwitch by remember { mutableStateOf(0) }
     // LB / RB: previous / next tab, wrapping round; Help (which opens the manual) is skipped.
     LaunchedEffect(ShellNav.tick.intValue) {
         if (ShellNav.tick.intValue == 0) return@LaunchedEffect
         val tabs = Tab.entries.filter { it != Tab.HELP }
         val i = tabs.indexOf(tab).coerceAtLeast(0)
         vm.clearSelection()
+        padTabSwitch++
         go(tabs[(i + ShellNav.dir + tabs.size) % tabs.size])
     }
 
     Column(Modifier.fillMaxSize().background(Fp.Header)) {
         // The pad enters the tab row on the tab that is open, not whichever is nearest.
         val openTab = remember { androidx.compose.ui.focus.FocusRequester() }
+        var rowFocused by remember { mutableStateOf(false) }
+        // The controller highlight moves with the open tab (LB / RB, or a tab picked while the
+        // highlight is in the tab row), instead of staying on the tab that was open before.
+        LaunchedEffect(padTabSwitch) {
+            if (padTabSwitch == 0) return@LaunchedEffect
+            kotlinx.coroutines.delay(16)
+            runCatching { openTab.requestFocus() }
+        }
+        LaunchedEffect(tab) {
+            if (!rowFocused) return@LaunchedEffect
+            kotlinx.coroutines.delay(16)
+            runCatching { openTab.requestFocus() }
+        }
         Row(
             Modifier.fillMaxWidth().background(Fp.Header)
+                .onFocusChanged { rowFocused = it.hasFocus }
                 .focusProperties { onEnter = { if (!openTab.requestFocus()) Unit } }
                 .focusGroup()
                 .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),

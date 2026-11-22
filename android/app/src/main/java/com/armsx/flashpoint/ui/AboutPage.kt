@@ -1,5 +1,6 @@
 package com.armsx.flashpoint.ui
 
+import androidx.compose.ui.graphics.asImageBitmap
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -101,6 +102,18 @@ fun AboutPage() {
                             Text("An unofficial native Android port. Not affiliated with or endorsed by the Flashpoint Archive team.", color = Fp.TextDim, fontSize = 13.sp)
                         }
                     }
+                    // The creator, with their GitHub profile.
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
+                        AsyncImage(
+                            "https://github.com/$CREATOR_GITHUB.png?size=96", CREATOR_GITHUB,
+                            Modifier.size(40.dp).clip(CircleShape).background(Fp.Card),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Created by $CREATOR_GITHUB", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            AboutLink("GitHub") { open("https://github.com/$CREATOR_GITHUB") }
+                        }
+                    }
                     APP_CREDITS.forEach { (what, who) ->
                         Text(what, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                         Text(who, color = Fp.TextDim, fontSize = 13.sp)
@@ -180,7 +193,11 @@ private fun CreditsPanel(credits: Credits.Data, picked: Credits.Profile?, onPick
                         Modifier.size(52.dp).padFocus(CircleShape).clip(CircleShape).background(Fp.Card).clickable { onPick(p) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (p.icon != null) AsyncImage(Credits.model(p.icon), p.title, Modifier.fillMaxSize().clip(CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        // Inline (data:) avatars are decoded once and drawn as they are, so picking
+                        // someone does not reload all of them; URL avatars go through the loader.
+                        val inline = p.icon?.let { Credits.inlineAvatar(it) }
+                        if (inline != null) androidx.compose.foundation.Image(inline, p.title, Modifier.fillMaxSize().clip(CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        else if (p.icon != null) AsyncImage(Credits.model(p.icon), p.title, Modifier.fillMaxSize().clip(CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
                         else Text(p.title.take(1), color = Fp.Text, fontWeight = FontWeight.Black)
                     }
                 }
@@ -196,6 +213,9 @@ private fun CreditsPanel(credits: Credits.Data, picked: Credits.Profile?, onPick
         }
     }
 }
+
+/** ARMFlash's creator (GitHub handle). */
+private const val CREATOR_GITHUB = "jpolo1224"
 
 private val APP_CREDITS = listOf(
     "App icon" to "Flashpoint logo by the Flashpoint Archive creators; this version by u/Alarming-Brick-3670.",
@@ -255,6 +275,20 @@ object Credits {
         }.orEmpty()
         Data(roles, profiles)
     }.getOrDefault(Data(emptyList(), emptyList()))
+
+    private val avatars = HashMap<String, androidx.compose.ui.graphics.ImageBitmap?>()
+
+    /** A data: avatar decoded once and kept (null for URL or path icons, or unreadable data). */
+    fun inlineAvatar(icon: String): androidx.compose.ui.graphics.ImageBitmap? {
+        if (!icon.startsWith("data:")) return null
+        if (icon in avatars) return avatars[icon]
+        val img: androidx.compose.ui.graphics.ImageBitmap? = runCatching {
+            val bytes = android.util.Base64.decode(icon.substringAfter(","), android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }.getOrNull()
+        avatars[icon] = img
+        return img
+    }
 
     /** credits.json icons are URLs, local paths, or data: URIs; the image loader takes bytes for the last. */
     fun model(icon: String): Any = if (icon.startsWith("data:")) {
