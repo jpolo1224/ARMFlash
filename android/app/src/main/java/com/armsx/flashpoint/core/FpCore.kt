@@ -33,6 +33,12 @@ object FpCore {
     @JvmStatic private external fun proxyStart(htdocs: String, legacy: String, port: Int, cache: Boolean): String
     @JvmStatic private external fun proxyMount(zip: String): String
     @JvmStatic private external fun proxyUnmountAll(): String
+    @JvmStatic private external fun syncStart(base: String, after: String): String
+    @JvmStatic private external fun syncStatus(): String
+    @JvmStatic private external fun syncCancel(): String
+    @JvmStatic private external fun randomGames(opts: String, count: Int): String
+    @JvmStatic private external fun optimize(): String
+    @JvmStatic private external fun clearPlaytime(): String
 
     private fun check(raw: String): JsonElement {
         val el = json.parseToJsonElement(raw)
@@ -78,6 +84,27 @@ object FpCore {
 
     fun unmountAll() {
         check(proxyUnmountAll())
+    }
+
+    fun startSync(base: String, after: String) {
+        check(syncStart(base, after))
+    }
+
+    fun sync(): SyncStatus = json.decodeFromJsonElement(SyncStatus.serializer(), check(syncStatus()))
+
+    fun random(opts: SearchOpts, count: Int): List<Game> =
+        json.decodeFromJsonElement(GameListSerializer, check(randomGames(json.encodeToString(SearchOpts.serializer(), opts), count)))
+
+    fun optimizeDatabase() {
+        check(optimize())
+    }
+
+    fun clearPlaytimeData() {
+        check(clearPlaytime())
+    }
+
+    fun cancelSync() {
+        check(syncCancel())
     }
 }
 

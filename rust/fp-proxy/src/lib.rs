@@ -15,6 +15,7 @@ mod mount;
 mod path;
 mod pfile;
 mod server;
+mod tls;
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -22,7 +23,7 @@ use std::sync::{Arc, RwLock};
 
 pub use mount::Mount;
 pub use path::Key;
-pub use server::{start, ProxyHandle};
+pub use server::{http_get, start, ProxyHandle};
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {

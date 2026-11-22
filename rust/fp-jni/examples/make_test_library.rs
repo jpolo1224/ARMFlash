@@ -168,6 +168,17 @@ fn sha256_hex(data: &[u8]) -> String {
     h.iter().map(|x| format!("{x:08x}")).collect()
 }
 
+const INPUT_TEST: &str = r#"<!doctype html><html><head><meta name="viewport" content="width=device-width">
+<style>body{margin:0;background:#222;color:#fff;font:22px sans-serif;height:100vh}#k,#m{padding:16px}</style></head>
+<body><div id="k">keys: </div><div id="m">mouse: </div><script>
+const k=document.getElementById('k'),m=document.getElementById('m');let ks=[],ms=[];
+addEventListener('keydown',e=>{ks.push('down '+e.key);ks=ks.slice(-6);k.textContent='keys: '+ks.join(' | ')});
+addEventListener('keyup',e=>{ks.push('up '+e.key);ks=ks.slice(-6);k.textContent='keys: '+ks.join(' | ')});
+let lastMove='';
+addEventListener('mousemove',e=>{lastMove='move '+e.clientX+','+e.clientY+' ('+e.pointerType+')';m.textContent='mouse: '+ms.join(' | ')+' | '+lastMove});
+['mousedown','mouseup','click','contextmenu'].forEach(t=>addEventListener(t,e=>{ms.push(t+' b'+e.button);ms=ms.slice(-5);m.textContent='mouse: '+ms.join(' | ');if(t=='contextmenu')e.preventDefault()}));
+</script></body></html>"#;
+
 const HTML5: &str = r#"<!doctype html><html><head><meta name="viewport" content="width=device-width">
 <title>Bouncer</title><style>body{margin:0;background:#123}canvas{display:block;margin:auto}</style></head>
 <body><canvas id="c" width="800" height="450"></canvas><script src="game.js"></script></body></html>"#;
@@ -204,6 +215,11 @@ fn main() {
             "22222222-aaaa-4bbb-8ccc-000000000002", "Red Box (Flash test)", "Flash", r"FPSoftware\Flash\flashplayer_32_sa.exe",
             "http://www.fp-test.example/flash/RedBox.swf",
             vec![("content/www.fp-test.example/flash/redbox.swf".into(), tiny_swf())],
+        ),
+        (
+            "55555555-aaaa-4bbb-8ccc-000000000005", "Input Tester", "HTML5", ":browser-mode:",
+            "https://secure.fp-test.example/input/index.html",
+            vec![("content/secure.fp-test.example/input/index.html".into(), INPUT_TEST.as_bytes().to_vec())],
         ),
         (
             "33333333-aaaa-4bbb-8ccc-000000000003", "Not Downloaded Yet", "Flash", r"FPSoftware\Flash\flashplayer_32_sa.exe",

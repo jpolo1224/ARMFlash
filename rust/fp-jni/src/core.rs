@@ -16,7 +16,7 @@ use serde_json::json;
 
 pub type Res = Result<String, String>;
 
-fn rt() -> &'static tokio::runtime::Runtime {
+pub(crate) fn rt() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     RT.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -33,7 +33,7 @@ fn db() -> &'static RwLock<Option<FlashpointArchive>> {
     DB.get_or_init(|| RwLock::new(None))
 }
 
-fn with_db<T>(f: impl FnOnce(&FlashpointArchive) -> Result<T, String>) -> Result<T, String> {
+pub(crate) fn with_db<T>(f: impl FnOnce(&FlashpointArchive) -> Result<T, String>) -> Result<T, String> {
     let guard = db().read().map_err(|_| "database lock poisoned".to_string())?;
     let fp = guard.as_ref().ok_or_else(|| "no database loaded".to_string())?;
     f(fp)
@@ -65,6 +65,10 @@ pub struct SearchOpts {
     /// Playlist order (CUSTOM sort) or restriction to a playlist's games.
     pub ids: Option<Vec<String>>,
     pub tag_blacklist: Option<Vec<String>>,
+    /// Library: "arcade" (Games tab) or "theatre" (Animations tab).
+    pub library: Option<String>,
+    /// Only games that have been played (the Home page's Play History).
+    pub played: bool,
     /// Keyset offset: the last game of the previous page (`{"value", "title", "id"}`).
     pub after: Option<PageMark>,
 }
@@ -119,6 +123,12 @@ fn build_search(fp: &FlashpointArchive, input: &str, opts: &SearchOpts, limit: i
             s.with_tag_filter = Some(tb.clone());
         }
     }
+    if let Some(lib) = opts.library.as_ref().filter(|l| !l.is_empty()) {
+        s.filter.exact_whitelist.library = Some(vec![lib.clone()]);
+    }
+    if opts.played {
+        s.filter.higher_than.playcount = Some(0);
+    }
     if let Some(a) = &opts.after {
         s.offset = Some(GameSearchOffset { value: a.value.clone(), title: a.title.clone(), game_id: a.id.clone() });
     }
@@ -142,6 +152,16 @@ pub fn search_page(input: &str, opts_json: &str, page_size: i64) -> Res {
     with_db(|fp| {
         let s = build_search(fp, input, &opts, page_size);
         let games = rt().block_on(fp.search_games(&s)).map_err(e)?;
+        serde_json::to_string(&games).map_err(e)
+    })
+}
+
+/// Random picks (the Home page), honouring the same filters as a search.
+pub fn random_games(opts_json: &str, count: i64) -> Res {
+    let opts: SearchOpts = serde_json::from_str(opts_json).unwrap_or_default();
+    with_db(|fp| {
+        let s = build_search(fp, "", &opts, count);
+        let games = rt().block_on(fp.search_games_random(&s, count)).map_err(e)?;
         serde_json::to_string(&games).map_err(e)
     })
 }
@@ -179,6 +199,14 @@ pub fn mark_data_on_disk(game_data_id: i64, path: &str) -> Res {
         let saved = rt().block_on(fp.save_game_data(&p)).map_err(e)?;
         serde_json::to_string(&saved).map_err(e)
     })
+}
+
+pub fn optimize() -> Res {
+    with_db(|fp| rt().block_on(fp.optimize_database()).map(|_| "{}".to_string()).map_err(e))
+}
+
+pub fn clear_playtime() -> Res {
+    with_db(|fp| rt().block_on(fp.clear_playtime_tracking()).map(|_| "{}".to_string()).map_err(e))
 }
 
 pub fn add_playtime(game_id: &str, seconds: i64) -> Res {
@@ -285,6 +313,11 @@ mod tests {
         assert_eq!(r.as_array().unwrap().len(), 1);
         let r: serde_json::Value = serde_json::from_str(&search_page("", r#"{"platforms":["HTML5"]}"#, 50).unwrap()).unwrap();
         assert_eq!(r[0]["title"], "Super Mario 63");
+
+        let r: serde_json::Value = serde_json::from_str(&random_games(r#"{"library":"arcade"}"#, 3).unwrap()).unwrap();
+        assert_eq!(r.as_array().unwrap().len(), 3);
+        let r: serde_json::Value = serde_json::from_str(&search_page("", r#"{"library":"theatre"}"#, 50).unwrap()).unwrap();
+        assert_eq!(r.as_array().unwrap().len(), 0);
 
         let g: serde_json::Value = serde_json::from_str(&find_game("id-0").unwrap()).unwrap();
         assert_eq!(g["title"], "Poptropica");

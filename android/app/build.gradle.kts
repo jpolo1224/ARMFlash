@@ -9,7 +9,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.armsx.flashpoint"
+        applicationId = "com.armsx.flasharm"
         minSdk = 28
         targetSdk = 37
         versionCode = 1
@@ -24,7 +24,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     androidResources {
         // Ruffle's wasm must stay uncompressed-readable; and big zips should not be re-deflated.
         noCompress += listOf("wasm")

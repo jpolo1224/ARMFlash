@@ -127,26 +127,50 @@ fun BrowseScreen(vm: BrowseVm, onPlay: (Game) -> Unit, onConfig: () -> Unit) {
 
 @Composable
 private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {}) {
+    val importer = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris -> if (uris.isNotEmpty()) vm.importPlaylists(uris) }
+    val pls = vm.playlists.filter { it.library == vm.lib && (!it.extreme || vm.prefs2.extremeGames.value) }
     LazyColumn(modifier.background(Fp.Sidebar).padding(vertical = 8.dp)) {
         items(Shelf.entries) { s ->
-            val on = vm.shelf == s
-            Row(
-                Modifier.fillMaxWidth().clickable { vm.pickShelf(s); onPicked() }
-                    .background(if (on) Color(0x33FFFFFF) else Color.Transparent)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    s.label, color = if (on) Color.White else Fp.Text,
-                    fontWeight = FontWeight.Bold, fontSize = 16.sp,
-                )
+            SidebarRow(
+                label = if (s == Shelf.ALL) (if (vm.lib == "theatre") "All Animations" else "All Games") else s.label,
+                on = vm.playlist == null && vm.shelf == s,
+            ) { vm.pickShelf(s); onPicked() }
+        }
+        if (pls.isNotEmpty()) item {
+            Text("Playlists", color = Fp.TextDim, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 4.dp))
+        }
+        items(pls, key = { it.id }) { p ->
+            SidebarRow(p.title, on = vm.playlist?.id == p.id, sub = p.author.takeIf { it.isNotBlank() }?.let { "by $it" }, icon = p.iconBytes) {
+                vm.pickPlaylist(p); onPicked()
             }
         }
         item {
+            SidebarRow("Import Playlist", on = false) { importer.launch(arrayOf("application/json", "*/*")) }
             Text(
                 "${vm.dbGames} games in database", color = Fp.TextDim, fontSize = 12.sp,
                 modifier = Modifier.padding(14.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: ByteArray? = null, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .background(if (on) Color(0x33FFFFFF) else Color.Transparent)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            AsyncImage(icon, null, Modifier.size(22.dp).clip(RoundedCornerShape(3.dp)))
+            Spacer(Modifier.width(8.dp))
+        }
+        Column {
+            Text(label, color = if (on) Color.White else Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 2)
+            if (sub != null) Text(sub, color = Fp.TextDim, fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
         }
     }
 }
@@ -174,8 +198,6 @@ private fun TopBar(vm: BrowseVm, onMenu: (() -> Unit)?, onConfig: () -> Unit) {
                     Icon(Icons.Filled.Close, "Clear", tint = Fp.TextDim, modifier = Modifier.size(20.dp).clickable { vm.updateQuery("") })
                 }
             }
-            Spacer(Modifier.width(6.dp))
-            Chip("Config", on = false) { onConfig() }
         }
         Spacer(Modifier.height(6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

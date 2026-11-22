@@ -71,6 +71,8 @@ data class SearchOpts(
     val platforms: List<String>? = null,
     val ids: List<String>? = null,
     val tagBlacklist: List<String>? = null,
+    val library: String? = null,
+    val played: Boolean = false,
     val after: PageMark? = null,
 )
 
@@ -82,3 +84,13 @@ data class SearchIndex(val total: Long, val pageSize: Int, val marks: List<PageM
 
 internal val GameListSerializer: KSerializer<List<Game>> = ListSerializer(Game.serializer())
 internal val StringListSerializer: KSerializer<List<String>> = ListSerializer(String.serializer())
+
+@Serializable
+data class SyncStatus(
+    val running: Boolean = false,
+    val phase: String = "",
+    val done: Long = 0,
+    val total: Long = 0,
+    val failure: String? = null,
+    val lastUpdate: String? = null,
+)

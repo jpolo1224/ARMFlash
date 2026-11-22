@@ -1,4 +1,4 @@
-# Flashpoint for Android (native ARM64)
+# FlashARM: Flashpoint Archive for Android (native ARM64)
 
 A standalone Android port of Flashpoint Archive. No containers, no Wine-in-an-app,
 no Termux: everything is compiled into the APK for arm64-v8a.
@@ -55,7 +55,7 @@ cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/
 
 Host tests: `cd rust && cargo test`.
 Test library for a device: `cargo run -p fp-jni --example make_test_library -- <dir>/Flashpoint`,
-then copy the folder to `Android/data/com.armsx.flashpoint/files/`.
+then copy the folder to `Android/data/com.armsx.flasharm/files/`.
 
 ## Open items
 
@@ -63,4 +63,3 @@ then copy the folder to `Android/data/com.armsx.flashpoint/files/`.
 - HTTPS requests from games are refused (CONNECT -> 403) until TLS interception lands.
 - PHP-backed Legacy games need a PHP runtime (Flashpoint-Router); not yet.
 - Playlists from `Data/Playlists/*.json` are not imported yet; Favorites are local.
-- App name and package are placeholders.

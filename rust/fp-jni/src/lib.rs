@@ -4,6 +4,7 @@
 //! deal with a Java exception thrown from native code, and panics never cross the boundary.
 
 pub mod core;
+pub mod sync;
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -69,3 +70,9 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyStart(htdocs: JString, legacy: J
     => core::proxy_start(port as u16, &htdocs, &legacy, cache != 0).map(|p| serde_json::json!({ "port": p }).to_string()));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyMount(zip: JString) => core::proxy_mount(&zip));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyUnmountAll() => { core::proxy_unmount_all(); Ok("{}".into()) });
+jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStart(base: JString, after: JString) => sync::start(&base, &after));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStatus() => sync::status());
+jfn!(Java_com_armsx_flashpoint_core_FpCore_syncCancel() => { sync::cancel(); Ok("{}".into()) });
+jfn!(Java_com_armsx_flashpoint_core_FpCore_randomGames(opts: JString), count: jint => core::random_games(&opts, count as i64));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_optimize() => core::optimize());
+jfn!(Java_com_armsx_flashpoint_core_FpCore_clearPlaytime() => core::clear_playtime());

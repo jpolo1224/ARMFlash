@@ -29,6 +29,7 @@ class Library(private val ctx: Context) {
     val database = File(root, "Data/flashpoint.sqlite")
     val games = File(root, "Data/Games")
     val htdocs = File(root, "Legacy/htdocs")
+    val playlists = Playlists(File(root, "Data/Playlists"))
 
     private val prefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -40,6 +41,10 @@ class Library(private val ctx: Context) {
     var imagesBase: String
         get() = prefs.getString("imagesBase", DEFAULT_IMAGES)!!
         set(v) = prefs.edit().putString("imagesBase", v).apply()
+
+    var metadataBase: String
+        get() = prefs.getString("metadataBase", METADATA_BASE)!!
+        set(v) = prefs.edit().putString("metadataBase", v).apply()
 
     /** Fetch Legacy (non-zip) game files from Flashpoint's server on demand. */
     var legacyOnline: Boolean
@@ -83,8 +88,11 @@ class Library(private val ctx: Context) {
     fun screenshotUrl(id: String) = imageUrl("Screenshots", id)
 
     private fun imageUrl(folder: String, id: String): String {
-        if (id.length < 4) return ""
-        return "$imagesBase$folder/${id.substring(0, 2)}/${id.substring(2, 4)}/$id.png"
+        if (id.length < 4 || !prefs.getBoolean("onDemandImages", true)) return ""
+        val base = imagesBase.let { if (it.endsWith("/")) it else "$it/" }
+        val url = "$base$folder/${id.substring(0, 2)}/${id.substring(2, 4)}/$id.png"
+        // The launcher's "Compressed Images": same path, ?type=jpg.
+        return if (prefs.getBoolean("onDemandImagesCompressed", true)) "$url?type=jpg" else url
     }
 
     /** Local zip for a data pack, whether or not it exists yet. */
@@ -106,15 +114,27 @@ class Library(private val ctx: Context) {
      * move into Data/Games, then record it in the database.
      */
     fun download(gd: GameData, progress: (done: Long, total: Long) -> Unit): File {
+        var last: IOException? = null
+        for (base in listOf(gameDataSource, MIRROR_GAME_DATA_SOURCE).distinct()) {
+            try {
+                return downloadFrom(base, gd, progress)
+            } catch (e: IOException) {
+                last = e
+            }
+        }
+        throw last ?: IOException("no game data source")
+    }
+
+    private fun downloadFrom(base: String, gd: GameData, progress: (done: Long, total: Long) -> Unit): File {
         val dest = File(games, fileName(gd))
         if (dest.isFile) return dest
         val tmp = File(games, dest.name + ".temp")
-        val url = URL(gameDataSource.trimEnd('/') + "/" + dest.name)
+        val url = URL(base.trimEnd('/') + "/" + dest.name)
         val conn = (url.openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 15_000
             readTimeout = 30_000
-            setRequestProperty("User-Agent", "Flashpoint-Android/0.1")
+            setRequestProperty("User-Agent", "FlashARM/0.1")
         }
         try {
             if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode} for $url")
@@ -153,8 +173,11 @@ class Library(private val ctx: Context) {
     }
 
     companion object {
-        /** Unverified default; the launcher ships with no built-in source. Change in Config. */
-        const val DEFAULT_GAME_DATA_SOURCE = "https://download.unstable.life/gib-roms/Games/"
+        /** Checked 2026-11-22: serves <gameId>-<ms>.zip (download.unstable.life mirrors it). */
+        const val DEFAULT_GAME_DATA_SOURCE = "https://download.flashpointarchive.org/gib-roms/Games/"
+        const val MIRROR_GAME_DATA_SOURCE = "https://download.unstable.life/gib-roms/Games/"
+        /** Flashpoint's metadata server (FPFSS), what the launcher syncs from. */
+        const val METADATA_BASE = "https://fpfss.flashpointarchive.org"
         const val DEFAULT_IMAGES = "https://infinity.unstable.life/images/"
         const val DEFAULT_LEGACY = "https://infinity.flashpointarchive.org/Flashpoint/Legacy/htdocs/"
 

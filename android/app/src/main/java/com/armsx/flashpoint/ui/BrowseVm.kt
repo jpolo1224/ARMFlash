@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Sidebar entries. Real Flashpoint playlists come later; these are the built-in ones. */
-enum class Shelf(val label: String) { ALL("All Games"), INSTALLED("Installed"), FAVORITES("Favorites") }
+enum class Shelf(val label: String) { ALL("All"), INSTALLED("Installed"), FAVORITES("Favorites"), HISTORY("Play History") }
 
 data class Download(val done: Long, val total: Long)
 
@@ -32,12 +32,28 @@ data class Ready(val game: Game, val plan: LaunchPlan, val zips: List<String>)
 
 class BrowseVm(app: Application) : AndroidViewModel(app) {
     val library = (app as FpApp).library
+    val prefs2 = AppPrefs(app)
+
+    /** Which browse tab: "arcade" (Games) or "theatre" (Animations). */
+    var lib by mutableStateOf("arcade")
+        private set
+    var playlists by mutableStateOf<List<com.armsx.flashpoint.data.Playlist>>(emptyList())
+        private set
+    var playlist by mutableStateOf<com.armsx.flashpoint.data.Playlist?>(null)
+        private set
+    var randomPicks by mutableStateOf<List<Game>>(emptyList())
+        private set
+    var gotd by mutableStateOf<Gotd?>(null)
+        private set
     private val prefs = app.getSharedPreferences("browse", Context.MODE_PRIVATE)
 
     var status by mutableStateOf("")
     var dbReady by mutableStateOf(false)
     var dbGames by mutableStateOf(0)
     var importing by mutableStateOf<Long?>(null)
+    var sync by mutableStateOf<com.armsx.flashpoint.core.SyncStatus?>(null)
+        private set
+    val lastSync: String get() = prefs.getString("lastSync", "")!!
 
     var query by mutableStateOf("")
         private set
@@ -77,6 +93,9 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             dbReady = true
             status = ""
             refresh(immediate = true)
+            rerollPicks()
+            loadGotd()
+            loadPlaylists()
         } catch (e: Exception) {
             status = "Could not open the database: ${e.message}"
         }
@@ -94,16 +113,113 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Download (or update) the game database from Flashpoint's metadata server, the same way
+     * the desktop launcher syncs. A first run builds the whole database on the phone.
+     */
+    fun syncDatabase(fresh: Boolean = false) = viewModelScope.launch {
+        if (sync?.running == true) return@launch
+        try {
+            withContext(Dispatchers.IO) {
+                if (fresh || !library.hasDatabase()) {
+                    library.database.parentFile!!.mkdirs()
+                    listOf("", "-wal", "-shm").forEach { java.io.File(library.database.path + it).delete() }
+                    prefs.edit().remove("lastSync").apply()
+                }
+                FpCore.open(library.database.path)
+                FpCore.startSync(library.metadataBase, lastSync)
+            }
+            while (true) {
+                val st = withContext(Dispatchers.IO) { FpCore.sync() }
+                sync = st
+                if (!st.running) break
+                delay(500)
+            }
+            val st = sync
+            if (st?.failure != null) {
+                status = "Database download failed: ${st.failure}"
+            } else {
+                st?.lastUpdate?.let { prefs.edit().putString("lastSync", it).apply() }
+                openDatabase()
+            }
+        } catch (e: Exception) {
+            status = "Database download failed: ${e.message}"
+        } finally {
+            sync = sync?.copy(running = false)
+        }
+    }
+
+    fun cancelSync() = viewModelScope.launch(Dispatchers.IO) { runCatching { FpCore.cancelSync() } }
+
     fun updateQuery(q: String) { query = q; refresh() }
-    fun pickShelf(s: Shelf) { shelf = s; refresh(immediate = true) }
+    fun pickShelf(s: Shelf) { shelf = s; playlist = null; refresh(immediate = true) }
     fun pickPlatform(p: String?) { platform = p; refresh(immediate = true) }
     fun pickOrder(o: String) { order = o; prefs.edit().putString("order", o).apply(); refresh(immediate = true) }
     fun toggleDirection() { descending = !descending; prefs.edit().putBoolean("desc", descending).apply(); refresh(immediate = true) }
 
-    private fun opts() = SearchOpts(
+    fun loadPlaylists() = viewModelScope.launch {
+        playlists = withContext(Dispatchers.IO) {
+            library.playlists.seed(getApplication())
+            library.playlists.all()
+        }
+    }
+
+    fun importPlaylists(uris: List<android.net.Uri>) = viewModelScope.launch {
+        val n = withContext(Dispatchers.IO) { library.playlists.import(getApplication(), uris) }
+        status = "Imported $n playlist${if (n == 1) "" else "s"}"
+        loadPlaylists()
+    }
+
+    fun pickPlaylist(p: com.armsx.flashpoint.data.Playlist?) {
+        playlist = p
+        if (p != null) shelf = Shelf.ALL
+        clearSelection()
+        refresh(immediate = true)
+    }
+
+    fun refreshAll() {
+        refresh(immediate = true)
+        rerollPicks()
+    }
+
+    fun showLibrary(l: String) {
+        if (lib == l) return
+        lib = l
+        clearSelection()
+        refresh(immediate = true)
+    }
+
+    /** Tags hidden while "Show Extreme Filters" is off (the launcher's Extreme tag filter group). */
+    private fun tagBlacklist(): List<String>? = if (prefs2.extremeGames.value) null else ExtremeTags.list.ifEmpty { null }
+
+    fun rerollPicks() = viewModelScope.launch {
+        val libs = prefs2.randomLibraries.value.ifEmpty { setOf("arcade") }
+        randomPicks = withContext(Dispatchers.IO) {
+            runCatching {
+                libs.flatMap { FpCore.random(SearchOpts(library = it, tagBlacklist = tagBlacklist()), 6 / libs.size + 1) }.shuffled().take(6)
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    fun loadGotd() = viewModelScope.launch {
+        gotd = withContext(Dispatchers.IO) { Gotd.today()?.let { (entry, _) -> runCatching { FpCore.game(entry.id) }.getOrNull()?.let { entry.copy(game = it) } } }
+    }
+
+    private fun opts(): SearchOpts {
+        val pl = playlist
+        if (pl != null) {
+            return SearchOpts(ids = pl.gameIds.ifEmpty { listOf("-") }, order = "CUSTOM", tagBlacklist = tagBlacklist(), platforms = platform?.let { listOf(it) })
+        }
+        return baseOpts()
+    }
+
+    private fun baseOpts() = SearchOpts(
+        library = if (shelf == Shelf.ALL) lib else null,
+        tagBlacklist = tagBlacklist(),
         installed = if (shelf == Shelf.INSTALLED) true else null,
-        order = order,
-        descending = descending,
+        order = if (shelf == Shelf.HISTORY) "LASTPLAYED" else order,
+        descending = if (shelf == Shelf.HISTORY) true else descending,
+        played = shelf == Shelf.HISTORY,
         platforms = platform?.let { listOf(it) },
         // An empty id list would mean "no filter"; an impossible id means "nothing".
         ids = if (shelf == Shelf.FAVORITES) favorites.toList().ifEmpty { listOf("-") } else null,
@@ -200,7 +316,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun addPlaytime(id: String, seconds: Long) = viewModelScope.launch(Dispatchers.IO) {
-        runCatching { FpCore.playtime(id, seconds) }
+        if (prefs2.enablePlaytimeTracking.value) runCatching { FpCore.playtime(id, seconds) }
     }
 
     companion object {

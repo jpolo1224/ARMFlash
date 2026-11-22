@@ -84,6 +84,7 @@ pub fn start(server: Arc<GameServer>, port: u16) -> io::Result<ProxyHandle> {
                             let _ = hyper::server::conn::http1::Builder::new()
                                 .keep_alive(true)
                                 .serve_connection(TokioIo::new(stream), svc)
+                                .with_upgrades()
                                 .await;
                         });
                     }
@@ -103,10 +104,31 @@ fn is_self(host: &str, port: u16) -> bool {
     matches!(h, "127.0.0.1" | "localhost" | "[::1]") && p.is_none_or(|p| p == port)
 }
 
+/// `handle` behind a box: the HTTPS path serves requests with `handle` from inside `handle`.
+fn handle_boxed(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Pin<Box<dyn std::future::Future<Output = Response<Body>> + Send>> {
+    Box::pin(handle(srv, port, req))
+}
+
 async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Response<Body> {
     if req.method() == Method::CONNECT {
-        // HTTPS through the proxy needs TLS interception; not served yet.
-        return text(StatusCode::FORBIDDEN, "fp-proxy: HTTPS tunnels are not served");
+        // HTTPS: accept the tunnel, end TLS here, serve what's inside like http://.
+        let host = req.uri().authority().map(|a| a.host().to_string()).unwrap_or_default();
+        let cfg = match crate::tls::config_for(&host) {
+            Ok(c) => c,
+            Err(_) => return text(StatusCode::BAD_GATEWAY, "fp-proxy: no certificate"),
+        };
+        let srv = srv.clone();
+        tokio::spawn(async move {
+            let Ok(upgraded) = hyper::upgrade::on(req).await else { return };
+            let acceptor = tokio_rustls::TlsAcceptor::from(cfg);
+            let Ok(tls) = acceptor.accept(TokioIo::new(upgraded)).await else { return };
+            let svc = hyper::service::service_fn(move |req| {
+                let srv = srv.clone();
+                async move { Ok::<_, Infallible>(handle_boxed(srv, port, req).await) }
+            });
+            let _ = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(TokioIo::new(tls), svc).await;
+        });
+        return Response::new(empty());
     }
     let uri = req.uri().clone();
     let host_header = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("").to_string();
@@ -331,3 +353,27 @@ fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
     with(status, "text/plain", full(Bytes::from_static(msg.as_bytes())))
 }
 
+
+/// GET a URL with the game server's HTTPS client (gzip understood). For metadata sync and
+/// other app-side fetches, so the app has one TLS stack.
+pub async fn http_get(url: &str) -> io::Result<Bytes> {
+    let uri: hyper::Uri = url.parse().map_err(io::Error::other)?;
+    let req = Request::get(uri)
+        .header(header::ACCEPT_ENCODING, "gzip")
+        .header(header::USER_AGENT, "FlashARM")
+        .body(Empty::<Bytes>::new())
+        .map_err(io::Error::other)?;
+    let resp = client().request(req).await.map_err(io::Error::other)?;
+    let status = resp.status();
+    let gz = resp.headers().get(header::CONTENT_ENCODING).is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"gzip"));
+    let body = resp.into_body().collect().await.map_err(io::Error::other)?.to_bytes();
+    if !status.is_success() {
+        return Err(io::Error::other(format!("HTTP {status} for {url}")));
+    }
+    if gz {
+        let mut out = Vec::with_capacity(body.len() * 4);
+        flate2::read::GzDecoder::new(&body[..]).read_to_end(&mut out)?;
+        return Ok(out.into());
+    }
+    Ok(body)
+}
