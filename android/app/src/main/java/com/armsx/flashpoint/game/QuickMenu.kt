@@ -443,6 +443,13 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
     }
     // The GPU driver first, as in Config.
     if (host.usesDriver) DriverCard(host)
+    else SectionCard("GPU driver") {
+        Text(
+            "Browser games draw through Android's built-in browser, which always uses the device's own driver. " +
+                "Flash games and the other players can use a custom driver from here.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     HorizontalOptions(
         "Scale",
         listOf("default" to "Game default", "fit" to "Fit", "stretch" to "Stretch", "fill" to "Fill", "original" to "Original size"),
@@ -700,9 +707,6 @@ private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> U
             onValueChangeFinished = { GamePrefs.setVolume(v) },
             modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
         )
-    }
-    SectionCard("Screen") {
-        MenuSwitchRow("Keep the screen on while playing", GamePrefs.keepScreenOn.value) { on -> act?.let { GamePrefs.setKeepScreenOn(it, on) } }
     }
     HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, onSelect = onLeft)
     SectionCard("Sound") {
