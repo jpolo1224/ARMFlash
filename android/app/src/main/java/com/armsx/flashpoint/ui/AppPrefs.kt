@@ -40,6 +40,8 @@ class AppPrefs(ctx: Context) {
     // Graphics for native Flash: "auto", "vulkan", "gl".
     val flashBackend = str("flashBackend", "auto")
 
+    val bootAnimation = bool("bootAnimation", true)
+
     // Visuals: 0 = Off, 1 = On (long press), 2 = Always
     val screenshotPreviewMode = str("screenshotPreviewMode", "0")
 

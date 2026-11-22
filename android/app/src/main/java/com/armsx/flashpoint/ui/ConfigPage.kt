@@ -134,6 +134,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                     }
                 }
             }
+            Toggle("Boot Animation", "Play the FlashARM intro with its sound when the app starts. Tap it to skip.", p.bootAnimation)
             var music by remember { mutableStateOf(UiMusic.enabled.value) }
             var vol by remember { mutableStateOf(UiMusic.volume.floatValue) }
             ConfigRow("Launcher Music", "Background music while browsing.") {
