@@ -73,7 +73,7 @@ import kotlinx.coroutines.launch
 /*
  * The in-game quick menu: ARMSX2's pause menu (EmulationMenuScreen, ARMSX2 team), ported.
  *
- * Same look and behaviour as ARMSX2's: its Night colour scheme and type scale, the content
+ * Same layout and behaviour as ARMSX2's, in Flashpoint's colours: its type scale, the content
  * sheet and the separate tab rail as two floating 28 dp panels sliding in from the docked
  * edge over a 62% scrim, the compact single-sheet layout under 700 dp, and its header, action
  * grid, section cards, option chips, switch rows and cycle rows. What changed is what is in
@@ -87,32 +87,29 @@ enum class MenuTab(val label: String, val glyph: String) {
     OPTIONS("Options", "⚙"),
 }
 
-// ---- ARMSX2's theme ------------------------------------------------------------------------
+// ---- colours: Flashpoint's (FlashARM's launcher theme) in ARMSX2's menu ------------------
 
-private val ArmsBlueBright = Color(0xFF73A8FF)
-private val ArmsCyan = Color(0xFF48D7F0)
-private val ArmsViolet = Color(0xFF8B7CFF)
-private val Success = Color(0xFF51D79A)
-private val Danger = Color(0xFFFF6B7A)
+private val Success = Color(0xFF5CB531) // Flashpoint's Play green
+private val Danger = Color(0xFFE0262B) // Flashpoint's red
 
 private val NightScheme = darkColorScheme(
-    primary = ArmsBlueBright,
-    onPrimary = Color(0xFF07101F),
-    primaryContainer = Color(0xFF183B73),
-    onPrimaryContainer = Color(0xFFD9E7FF),
-    secondary = ArmsCyan,
-    onSecondary = Color(0xFF001F25),
-    secondaryContainer = Color(0xFF123944),
-    onSecondaryContainer = Color(0xFFB9F3FF),
-    tertiary = ArmsViolet,
-    background = Color(0xFF0A1C36),
-    onBackground = Color(0xFFF2F6FF),
-    surface = Color(0xFF13284A),
-    onSurface = Color(0xFFF2F6FF),
-    surfaceVariant = Color(0xFF1A3357),
-    onSurfaceVariant = Color(0xFF9BAAC0),
-    outline = Color(0xFF2F4E76),
-    outlineVariant = Color(0xFF2F4E76),
+    primary = Color(0xFF6CC63F),
+    onPrimary = Color(0xFF0E1A08),
+    primaryContainer = Color(0xFF2F4A22),
+    onPrimaryContainer = Color(0xFFE2F5D6),
+    secondary = Color(0xFFF0A030),
+    onSecondary = Color(0xFF1C1206),
+    secondaryContainer = Color(0xFF48484D), // slider track, switch off-track
+    onSecondaryContainer = Color(0xFFE6E6E8),
+    tertiary = Color(0xFF7FCB4E),
+    background = Color(0xFF1C1C1E),
+    onBackground = Color(0xFFE6E6E8),
+    surface = Color(0xFF2A2A2D),
+    onSurface = Color(0xFFE6E6E8),
+    surfaceVariant = Color(0xFF3A3A3C),
+    onSurfaceVariant = Color(0xFFA0A0A6),
+    outline = Color(0xFF55555B),
+    outlineVariant = Color(0xFF55555B),
     error = Danger,
     scrim = Color.Black,
     surfaceTint = Color.Transparent,
