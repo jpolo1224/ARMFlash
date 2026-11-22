@@ -21,6 +21,10 @@ serde_json = "1"
 log = "0.4"
 # Unpacking the Windows runtime (.tar.zst) and support packs (.zip), pure Rust.
 ruzstd = "0.8"
+# Reading RetroArch shader presets' parameters (MPL-2.0).
+librashader-presets = "0.12.1"
+librashader-preprocess = "0.12.1"
+librashader-common = "0.12.1"
 tar = "0.4"
 zip = { version = "9.8", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
 

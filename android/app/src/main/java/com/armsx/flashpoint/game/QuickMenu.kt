@@ -426,6 +426,7 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
     // The GPU driver first, as in Config.
     if (host.usesDriver) DriverCard(host)
     if (host.isFlash) RendererCard(host)
+    if (host.hasShaders) ShaderCard(host)
     if (!host.usesDriver) SectionCard("GPU driver") {
         Text(
             "Browser games draw through Android's built-in browser, which always uses the device's own driver. " +
@@ -964,6 +965,138 @@ fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
                         OptionChip("Left click", current == Keys.MOUSE_LEFT) { pick(Keys.MOUSE_LEFT) }
                         OptionChip("Right click", current == Keys.MOUSE_RIGHT) { pick(Keys.MOUSE_RIGHT) }
                         Keys.ALL.forEach { k -> OptionChip(k.label, current == k.code) { pick(k.code) } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * RetroArch shaders for native Flash (librashader): get RetroArch's shader pack, pick a preset
+ * for this game by folder, and change its parameters while the game runs. The pack, index and
+ * parameter reading are ARMSX2's (ShaderRepo, ShaderIndex, ShaderParams).
+ */
+@Composable
+private fun ShaderCard(host: OverlayHost) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sp = com.armsx.flashpoint.shaders.ShaderPrefs
+    val repo = com.armsx.flashpoint.shaders.ShaderRepo
+    val root = remember { repo.shadersRoot(ctx) }
+    var installed by remember { mutableStateOf<Boolean?>(null) }
+    var presets by remember { mutableStateOf<List<String>>(emptyList()) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    var choice by remember { mutableStateOf(sp.gamePreset(ctx, host.gameId)) }
+    var browsing by remember { mutableStateOf<String?>(null) } // folder being browsed, "" = top
+    var params by remember { mutableStateOf<List<com.armsx.flashpoint.shaders.ShaderParam>>(emptyList()) }
+    var values by remember { mutableStateOf<Map<String, Float>>(emptyMap()) }
+    val current = sp.presetFile(ctx, host.gameId)
+
+    LaunchedEffect(Unit) {
+        val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.armsx.flashpoint.shaders.ShaderIndex.load(root).map { it.relPath }.sorted()
+        }
+        presets = list; installed = list.isNotEmpty()
+    }
+    LaunchedEffect(current?.path) {
+        val f = current
+        params = if (f == null) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.armsx.flashpoint.shaders.ShaderParams.read(f.path)
+        }
+        values = if (f == null) emptyMap() else sp.overrides(ctx, f.path)
+    }
+    fun pick(rel: String) {
+        choice = rel; sp.setGamePreset(ctx, host.gameId, rel); browsing = null
+        host.shaderChanged(true)
+    }
+
+    SectionCard("Shader") {
+        Text(
+            "RetroArch shaders (CRT, scanlines, smoothing and more) on top of the game, for this game.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        when {
+            installed == null -> Text("Looking for shaders…", style = MaterialTheme.typography.bodySmall)
+            installed == false -> {
+                val src = repo.baseSources().first()
+                MenuCycleRow("Get RetroArch shaders", busy ?: src.name) {
+                    if (busy != null) return@MenuCycleRow
+                    busy = "Starting…"
+                    scope.launch {
+                        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            repo.download(ctx, src,
+                                onDownload = { d, t -> busy = if (t > 0) "Downloading ${d * 100 / t}%" else "Downloading ${d shr 20} MB" },
+                                onExtract = { d, t -> busy = "Unpacking ${if (t > 0) d * 100 / t else 0}%" },
+                                onIndex = { busy = "Indexing…" },
+                            )
+                        } != null
+                        busy = if (ok) null else "Download failed, try again"
+                        if (ok) {
+                            presets = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.armsx.flashpoint.shaders.ShaderIndex.load(root).map { it.relPath }.sorted()
+                            }
+                            installed = presets.isNotEmpty()
+                        }
+                    }
+                }
+            }
+            else -> {
+                val label = when (choice) {
+                    "" -> "Same as Config" + (current?.let { " (${it.nameWithoutExtension})" } ?: " (off)")
+                    sp.OFF -> "Off"
+                    else -> java.io.File(choice).nameWithoutExtension
+                }
+                MenuCycleRow("Preset", label) { browsing = if (browsing == null) "" else null }
+                browsing?.let { dir ->
+                    Spacer(Modifier.height(6.dp))
+                    if (dir.isEmpty()) {
+                        MenuCycleRow("Same as Config", "") { pick("") }
+                        MenuCycleRow("Off", "") { pick(sp.OFF) }
+                    } else {
+                        MenuCycleRow("Back", dir.substringBeforeLast('/', "").ifEmpty { "Top" }) { browsing = dir.substringBeforeLast('/', "") }
+                    }
+                    val prefix = if (dir.isEmpty()) "" else "$dir/"
+                    val here = presets.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }
+                    here.mapNotNull { it.substringBefore('/', "").takeIf { f -> f.isNotEmpty() } }.distinct().forEach { folder ->
+                        MenuCycleRow("$folder/", "") { browsing = prefix + folder }
+                    }
+                    here.filter { '/' !in it }.forEach { file ->
+                        MenuCycleRow(file.removeSuffix(".slangp"), "") { pick(prefix + file) }
+                    }
+                }
+                if (params.isNotEmpty() && current != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Parameters", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                    params.forEach { p ->
+                        if (!p.isAdjustable) {
+                            Text(p.description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 6.dp))
+                            return@forEach
+                        }
+                        val v = values[p.name] ?: p.initial
+                        Text("${p.description}: ${"%.2f".format(v)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                        Slider(
+                            v, { nv ->
+                                val stepped = if (p.step > 0f) (Math.round((nv - p.minimum) / p.step) * p.step + p.minimum) else nv
+                                values = values + (p.name to stepped)
+                            },
+                            valueRange = p.minimum..p.maximum,
+                            onValueChangeFinished = {
+                                sp.setOverrides(ctx, current.path, values)
+                                host.shaderChanged(false)
+                            },
+                            modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
+                        )
+                    }
+                    MenuCycleRow("Reset parameters", "") {
+                        // Push the author's values explicitly: a live chain keeps what it has.
+                        values = params.associate { it.name to it.initial }
+                        sp.setOverrides(ctx, current.path, values)
+                        host.shaderChanged(false)
+                        values = emptyMap(); sp.setOverrides(ctx, current.path, emptyMap())
                     }
                 }
             }

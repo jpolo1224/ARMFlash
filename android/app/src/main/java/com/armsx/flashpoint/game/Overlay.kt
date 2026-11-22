@@ -74,6 +74,9 @@ interface OverlayHost {
     val usesDriver: Boolean
     /** A Flash game: the pause menu offers the player and graphics choice. */
     val isFlash: Boolean get() = false
+    /** Whether this player runs RetroArch shaders (native Flash), and how to tell it they changed. */
+    val hasShaders: Boolean get() = false
+    fun shaderChanged(full: Boolean) {}
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()

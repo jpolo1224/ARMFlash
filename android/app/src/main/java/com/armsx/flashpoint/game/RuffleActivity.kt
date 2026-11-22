@@ -67,6 +67,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             nativeSetPlaying(!open)
         }
         override fun display(scale: String, quality: String) = nativeDisplay(scaleCode(scale), qualityCode(quality))
+        override val hasShaders get() = true
+        override fun shaderChanged(full: Boolean) = nativeShaderChanged(full)
         override var menuLeft: Boolean
             get() = layouts.menuLeft
             set(v) { layouts.menuLeft = v }
@@ -199,6 +201,11 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "sdk" -> android.os.Build.VERSION.SDK_INT.toString()
         "backend" -> FlashPrefs.backend(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
         // Flash cookies (SharedObjects), kept per install like the desktop's.
+        // A RetroArch shader preset for this game (absolute path, "" for none) and its changed
+        // parameters, one "name value" per line.
+        "shaderPreset" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())?.path.orEmpty()
+        "shaderParams" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
+            ?.let { com.armsx.flashpoint.shaders.ShaderPrefs.paramLines(this, it.path) }.orEmpty()
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
         "scale" -> scaleCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).scale).toString()
         "quality" -> qualityCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).quality).toString()
@@ -213,6 +220,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeFrames(): Long
     external fun nativeVolume(volume: Float)
     external fun nativeDisplay(scale: Int, quality: Int)
+    /** The shader settings changed: reload the preset ([full]) or only its parameters. */
+    external fun nativeShaderChanged(full: Boolean)
 
     companion object {
         init {

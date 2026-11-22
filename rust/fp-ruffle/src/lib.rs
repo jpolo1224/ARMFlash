@@ -13,6 +13,7 @@
 mod audio;
 mod custom_event;
 mod driver;
+mod shader;
 mod java;
 mod keycodes;
 mod navigator;
@@ -38,7 +39,8 @@ use ruffle_core::{Player, PlayerBuilder, ViewportDimensions};
 use ruffle_frontend_utils::backends::navigator::FutureSpawner;
 use ruffle_frontend_utils::backends::storage::DiskStorageBackend;
 use ruffle_frontend_utils::content::{ContentDescriptor, PlayingContent};
-use ruffle_render_wgpu::{backend::WgpuRenderBackend, target::SwapChainTarget};
+use ruffle_render_wgpu::backend::WgpuRenderBackend;
+use shader::ShaderTarget;
 use url::Url;
 use wgpu::rwh::{AndroidDisplayHandle, HasWindowHandle, RawDisplayHandle};
 
@@ -140,6 +142,8 @@ async fn run(app: AndroidApp) {
         quality: i32,
         vk_gipa: usize,
         sdk: u32,
+        shader_preset: String,
+        shader_params: String,
     }
     let settings = vm
         .attach_current_thread(|env| -> jni::errors::Result<_> {
@@ -154,6 +158,8 @@ async fn run(app: AndroidApp) {
                 quality: JavaInterface::get_string(env, &activity, "quality").parse().unwrap_or(2),
                 vk_gipa: JavaInterface::get_string(env, &activity, "vkGipa").parse().unwrap_or(0),
                 sdk: JavaInterface::get_string(env, &activity, "sdk").parse().unwrap_or(30),
+                shader_preset: JavaInterface::get_string(env, &activity, "shaderPreset"),
+                shader_params: JavaInterface::get_string(env, &activity, "shaderParams"),
             };
             let _ = unsafe { env.set_rust_field(&*activity, jni_str!("eventLoopHandle"), sender.clone()) };
             Ok(s)
@@ -197,11 +203,9 @@ async fn run(app: AndroidApp) {
                         if let (Some(player), Some(window)) = (playerbox.as_ref(), native_window.as_ref()) {
                             if window.width() > 0 && window.height() > 0 {
                                 let mut player = player.player.lock().unwrap();
-                                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<SwapChainTarget>>(player.renderer_mut()).unwrap();
-                                unsafe {
-                                    renderer
-                                        .recreate_surface_unsafe(surface_target(window), (window.width() as u32, window.height() as u32))
-                                        .unwrap();
+                                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player.renderer_mut()).unwrap();
+                                if let Err(e) = renderer.target().recreate(renderer.descriptors(), unsafe { surface_target(window) }, (window.width() as u32, window.height() as u32)) {
+                                    log::warn!("surface: {e}");
                                 }
                             }
                         }
@@ -215,11 +219,9 @@ async fn run(app: AndroidApp) {
 
                         if let Some(active) = &playerbox {
                             let mut player_lock = active.player.lock().unwrap();
-                            let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<SwapChainTarget>>(player_lock.renderer_mut()).unwrap();
-                            unsafe {
-                                renderer
-                                    .recreate_surface_unsafe(surface_target(window), (window.width() as u32, window.height() as u32))
-                                    .unwrap();
+                            let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player_lock.renderer_mut()).unwrap();
+                            if let Err(e) = renderer.target().recreate(renderer.descriptors(), unsafe { surface_target(window) }, (window.width() as u32, window.height() as u32)) {
+                                log::warn!("surface: {e}");
                             }
                             player_lock.set_is_playing(true);
                         } else {
@@ -239,13 +241,7 @@ async fn run(app: AndroidApp) {
                                 None
                             };
                             let renderer = if let Some(r) = custom { Ok(r) } else { unsafe {
-                                WgpuRenderBackend::for_window_unsafe(
-                                    surface_target(window),
-                                    (dimensions.width, dimensions.height),
-                                    wanted,
-                                    wgpu::PowerPreference::HighPerformance,
-                                    None,
-                                )
+                                shader::renderer_for_window(surface_target(window), (dimensions.width, dimensions.height), wanted)
                             } };
                             // Vulkan refused (no driver, broken driver): fall back to OpenGL ES.
                             let renderer = match renderer {
@@ -253,19 +249,23 @@ async fn run(app: AndroidApp) {
                                 Err(e) if wanted != wgpu::Backends::GL => {
                                     log::warn!("renderer {:?} failed ({e}); using OpenGL ES", wanted);
                                     unsafe {
-                                        WgpuRenderBackend::for_window_unsafe(
-                                            surface_target(window),
-                                            (dimensions.width, dimensions.height),
-                                            wgpu::Backends::GL,
-                                            wgpu::PowerPreference::HighPerformance,
-                                            None,
-                                        )
-                                        .unwrap()
+                                        shader::renderer_for_window(surface_target(window), (dimensions.width, dimensions.height), wgpu::Backends::GL)
+                                            .expect("OpenGL ES renderer")
                                     }
                                 }
                                 Err(e) => panic!("no renderer: {e}"),
                             };
                             { let i = renderer.descriptors().adapter.get_info(); log::info!("renderer: {:?} on {} ({})", i.backend, i.name, i.driver_info); }
+                            // A RetroArch shader preset, when one is chosen.
+                            if !settings.shader_preset.is_empty() {
+                                match renderer.target().set_preset(renderer.descriptors(), Some(&settings.shader_preset)) {
+                                    Ok(()) => {
+                                        log::info!("shader preset {}", settings.shader_preset);
+                                        apply_shader_params(renderer.target(), &settings.shader_params);
+                                    }
+                                    Err(e) => log::warn!("{e}"),
+                                }
+                            }
 
                             let movie_url = Url::parse(&settings.swf_url).unwrap_or_else(|_| Url::parse("file:///movie.swf").unwrap());
                             let player_id = PlayerId::new();
@@ -387,6 +387,22 @@ async fn run(app: AndroidApp) {
                 RuffleEvent::Volume(v) => player.player.lock().unwrap().set_volume(v),
                 RuffleEvent::Display { scale, quality } => {
                     apply_display(&mut player.player.lock().unwrap(), scale, quality);
+                    needs_redraw = true;
+                }
+                RuffleEvent::ShaderChanged { full } => {
+                    let (preset, params) = with_activity(&app, |env, act| {
+                        (java::JavaInterface::get_string(env, act, "shaderPreset"), java::JavaInterface::get_string(env, act, "shaderParams"))
+                    })
+                    .unwrap_or_default();
+                    let mut p = player.player.lock().unwrap();
+                    if let Some(r) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(p.renderer_mut()) {
+                        if full {
+                            if let Err(e) = r.target().set_preset(r.descriptors(), Some(preset.as_str()).filter(|s| !s.is_empty())) {
+                                log::warn!("{e}");
+                            }
+                        }
+                        apply_shader_params(r.target(), &params);
+                    }
                     needs_redraw = true;
                 }
             }
@@ -533,6 +549,27 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFra
     _this: JObject<'local>,
 ) -> jni::sys::jlong {
     FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
+}
+
+/// Shader parameters from Kotlin: one "name value" pair per line.
+fn apply_shader_params(target: &ShaderTarget, params: &str) {
+    for line in params.lines() {
+        let mut it = line.split_whitespace();
+        if let (Some(name), Some(v)) = (it.next(), it.next().and_then(|v| v.parse::<f32>().ok())) {
+            target.set_parameter(name, v);
+        }
+    }
+}
+
+/// The pause menu or Config changed the shader: reload the preset (`full`) or its parameters.
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeShaderChanged<'local>(
+    mut env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    full: jboolean,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::ShaderChanged { full: full })) })
+        .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// The game's volume, 0.0 to 1.0 (the pause menu's Game volume).

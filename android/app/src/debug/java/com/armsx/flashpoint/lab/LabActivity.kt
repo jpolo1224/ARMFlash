@@ -29,6 +29,30 @@ class LabActivity : androidx.activity.ComponentActivity() {
 
     private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
+        // RetroArch shaders: download the pack, index it, read one preset's parameters.
+        if (step == "shaders") {
+            Thread {
+                runCatching {
+                    val repo = com.armsx.flashpoint.shaders.ShaderRepo
+                    val root = repo.shadersRoot(this)
+                    if (com.armsx.flashpoint.shaders.ShaderIndex.load(root).isEmpty()) {
+                        var last = -1L
+                        val got = repo.download(this, repo.baseSources().first(), onDownload = { d, t ->
+                            if (d shr 23 != last) { last = d shr 23; Log.i(TAG, "shaders: ${d shr 20} of ${t shr 20} MB") }
+                        })
+                        Log.i(TAG, "shaders: installed ${got?.name}")
+                    }
+                    val all = com.armsx.flashpoint.shaders.ShaderIndex.load(root)
+                    Log.i(TAG, "shaders: ${all.size} presets")
+                    val crt = all.firstOrNull { it.relPath == "shaders_slang/crt/crt-geom.slangp" } ?: all.first()
+                    Log.i(TAG, "shaders: raw " + runCatching { com.armsx.flashpoint.core.FpCore.shaderParamsJson(java.io.File(root, crt.relPath).path) }.getOrElse { it.toString() }?.take(300))
+                    val params = com.armsx.flashpoint.shaders.ShaderParams.read(java.io.File(root, crt.relPath).path)
+                    Log.i(TAG, "shaders: ${crt.relPath} has ${params.size} parameters: " + params.take(6).joinToString { "${it.name}=${it.initial} [${it.minimum}..${it.maximum}]" })
+                }.onFailure { Log.e(TAG, "shaders", it) }
+            }.start()
+            setContentView(android.widget.TextView(this).apply { text = "FlashARM lab: shaders" })
+            return
+        }
         // Every cursor style at every size, for checking the drawings.
         if (step == "cursors") {
             com.armsx.flashpoint.game.Cursors.load(this)

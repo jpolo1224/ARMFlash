@@ -20,4 +20,6 @@ pub enum RuffleEvent {
     /// Display: scale 0 game default, 1 fit, 2 stretch, 3 fill (crop), 4 original size;
     /// quality 0 low, 1 medium, 2 high, 3 best.
     Display { scale: i32, quality: i32 },
+    /** The shader settings changed: reload the preset (`full`) or only its parameters. */
+    ShaderChanged { full: bool },
 }

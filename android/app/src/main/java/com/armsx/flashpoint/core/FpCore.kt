@@ -33,6 +33,7 @@ object FpCore {
     @JvmStatic private external fun unpackTarZst(src: String, dest: String): String
     @JvmStatic private external fun unpackZip(src: String, dest: String): String
     @JvmStatic private external fun unpackProgress(): String
+    @JvmStatic private external fun shaderPresetParams(path: String): String
     @JvmStatic private external fun addPlaytime(id: String, seconds: Long): String
 
     @JvmStatic private external fun addSeconds(id: String, seconds: Long): String
@@ -87,6 +88,10 @@ object FpCore {
         val o = check(unpackProgress()) as JsonObject
         return o["done"]!!.jsonPrimitive.content.toLong() to o["total"]!!.jsonPrimitive.content.toLong()
     }
+
+    /** A shader preset's parameters as a JSON array, or null when it can't be read. */
+    fun shaderParamsJson(path: String): String? =
+        shaderPresetParams(path).takeIf { it.trimStart().startsWith("[") }
 
     fun markOffDisk(gameDataId: Long) {
         check(markDataOffDisk(gameDataId))

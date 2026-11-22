@@ -6,6 +6,7 @@
 pub mod core;
 pub mod sync;
 pub mod unpack;
+pub mod shaders;
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -70,6 +71,7 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOffDisk(), game_data_id: jlon
 jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackTarZst(src: JString, dest: JString) => unpack::tar_zst(&src, &dest));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackZip(src: JString, dest: JString) => unpack::zip(&src, &dest));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackProgress() => unpack::progress());
+jfn!(Java_com_armsx_flashpoint_core_FpCore_shaderPresetParams(path: JString) => shaders::preset_params(&path));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addPlaytime(id: JString), seconds: jlong
     => core::add_playtime(&id, seconds));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addSeconds(id: JString), seconds: jlong

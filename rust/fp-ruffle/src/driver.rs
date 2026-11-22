@@ -11,7 +11,7 @@ use std::sync::Arc;
 use ash::vk;
 use ruffle_render_wgpu::backend::{request_adapter_and_device, WgpuRenderBackend};
 use ruffle_render_wgpu::descriptors::Descriptors;
-use ruffle_render_wgpu::target::SwapChainTarget;
+use crate::shader::ShaderTarget;
 
 /// # Safety
 /// `gipa` must be the address of a live vkGetInstanceProcAddr, and `target` must stay valid
@@ -21,7 +21,7 @@ pub unsafe fn renderer_with_driver(
     target: wgpu::SurfaceTargetUnsafe,
     size: (u32, u32),
     android_sdk: u32,
-) -> Result<WgpuRenderBackend<SwapChainTarget>, String> {
+) -> Result<WgpuRenderBackend<ShaderTarget>, String> {
     let gipa: vk::PFN_vkGetInstanceProcAddr = unsafe { std::mem::transmute(gipa) };
     let entry = unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr: gipa }) };
 
@@ -53,6 +53,7 @@ pub unsafe fn renderer_with_driver(
     ))
     .map_err(|e| format!("device: {e}"))?;
     let descriptors = Descriptors::new(instance, adapter, device, queue);
-    let target = SwapChainTarget::new(surface, &descriptors.adapter, size, &descriptors.device);
+    let target = ShaderTarget::new(surface, &descriptors.adapter, size, &descriptors.device);
+    *crate::shader::OFFSCREEN_DEVICE.lock().unwrap() = Some(descriptors.device.clone());
     WgpuRenderBackend::new(Arc::new(descriptors), target).map_err(|e| format!("renderer: {e}"))
 }
