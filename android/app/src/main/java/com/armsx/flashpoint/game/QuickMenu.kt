@@ -174,8 +174,8 @@ private fun SessionPane(st: OverlayState, host: OverlayHost) {
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Tile("⌨", "Keyboard", Modifier.weight(1f)) { st.menu = false; host.keyboard() }
-            Tile("⏻", "Exit game", Modifier.weight(1f)) { host.exit() }
+            Tile("Aa", "Keyboard", Modifier.weight(1f)) { st.menu = false; host.keyboard() }
+            Tile("✕", "Exit game", Modifier.weight(1f)) { host.exit() }
         }
     }
 }
