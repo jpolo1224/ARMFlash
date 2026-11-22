@@ -89,7 +89,7 @@ object GamePrefs {
     // "device" follows the phone's own rotation setting, like ARMSX2; it comes first and is the default.
     val orientations = listOf(
         "device" to "Device", "sensorLandscape" to "Landscape", "landscape" to "Landscape (fixed)", "reverseLandscape" to "Upside down",
-        "sensorPortrait" to "Portrait", "sensor" to "Rotate freely",
+        "sensorPortrait" to "Portrait",
     )
     val orientation = androidx.compose.runtime.mutableStateOf("device")
     val volume = androidx.compose.runtime.mutableFloatStateOf(1f)
@@ -99,7 +99,8 @@ object GamePrefs {
         if (prefs != null) return
         val p = ctx.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
         prefs = p
-        orientation.value = p.getString("game.orientation", "device")!!
+        // "Rotate freely" was folded into Device.
+        orientation.value = p.getString("game.orientation", "device")!!.let { if (it == "sensor") "device" else it }
         volume.floatValue = p.getFloat("game.volume", 1f)
     }
 
@@ -109,7 +110,6 @@ object GamePrefs {
             "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             "reverseLandscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
             "sensorPortrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            "sensor" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             "sensorLandscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
