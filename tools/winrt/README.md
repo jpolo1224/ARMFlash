@@ -32,3 +32,18 @@ the small plugins) inside FlashARM, Play-compliant (target SDK stays current).
 
 Debug probe: `adb shell am start -n com.armsx.flasharm/com.armsx.flashpoint.lab.LabActivity --es step <loader|box64|wine|boot|xvfb|notepad>`
 (debug builds only; adb only; fixed steps).
+
+## Findings 2026-11-22 (emulator, lab steps)
+
+- Wine Mono and Gecko must be skipped (`WINEDLLOVERRIDES=mscoree,mshtml=`): their first-run
+  download prompt (control.exe appwiz.cpl install_mono) blocks every later Wine process.
+- The rootfs glibc's System V shared memory talks to a helper socket named by
+  `ANDROID_SYSVSHM_SERVER`. Unset, `shmget` crashes (strncpy of NULL) inside Wine's
+  XShmCreateImage path. Pointing it at a path with no listener makes shmget fail cleanly and
+  Wine falls back to plain XPutImage. A real helper (ashmem fds over the socket) is a later
+  speed-up. Xvfb also runs with `-extension MIT-SHM`.
+- The app must stay in the foreground while Wine runs: Android's cached-app freezer stops the
+  child processes otherwise.
+- Notepad draws on Xvfb. Flashpoint's `FPSoftware\Shockwave\PJ101\SPR.exe` runs (WoW64, 32-bit)
+  and plays a Shockwave game (Lava Lamp) loaded through FlashARM's fp-proxy on port 22500 (the
+  port in the projector's port.txt), with the game's data pack mounted.

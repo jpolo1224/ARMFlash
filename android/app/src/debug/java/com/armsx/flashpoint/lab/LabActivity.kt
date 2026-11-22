@@ -68,6 +68,10 @@ class LabActivity : Activity() {
             "cmd" -> listOf(bx, wine, "cmd", "/c", "ver")
             "xvfb" -> listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac", "-extension", "MIT-SHM")
             "notepad" -> listOf(bx, wine, "notepad")
+            // Flashpoint's Shockwave projector on a test game, through FlashARM's game server on
+            // the port the projector expects (its port.txt). Expects the support pack's PJ101 in
+            // drive_c/FPSoftware/Shockwave and the game's data pack at home/games/test.zip.
+            "spr" -> listOf(bx, wine, "C:\\FPSoftware\\Shockwave\\PJ101\\SPR.exe", intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr")
             else -> return finish()
         }
         runCatching {
@@ -93,7 +97,12 @@ class LabActivity : Activity() {
                 File("$root/tmp").mkdirs(); File("$root/home").mkdirs()
                 // Wine steps need the X server: start it first unless it is already up.
                 // Track the server this process started: a socket file left by a killed one says nothing.
-                if (step in setOf("boot", "notepad", "cmd") && xServer?.isAlive != true) {
+                if (step == "spr") {
+                    val port = com.armsx.flashpoint.core.FpCore.startServer("", "", false, emptyList(), 22500)
+                    com.armsx.flashpoint.core.FpCore.mount("$root/home/games/test.zip")
+                    Log.i(TAG, "game server on $port")
+                }
+                if (step in setOf("boot", "notepad", "cmd", "spr") && xServer?.isAlive != true) {
                     File("$x/tmp/.X1-lock").delete(); File("$x/tmp/.X11-unix/X1").delete()
                     val xp = ProcessBuilder(listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac", "-extension", "MIT-SHM"))
                         .redirectErrorStream(true)
@@ -104,6 +113,7 @@ class LabActivity : Activity() {
                     Log.i(TAG, "X server up: ${File("$x/tmp/.X11-unix/X1").exists()}")
                 }
                 val pb = ProcessBuilder(argv).redirectErrorStream(true)
+                if (step == "spr") pb.directory(File("$root/home/.wine/drive_c/FPSoftware/Shockwave/PJ101"))
                 pb.environment().putAll(if (step == "xvfb") xenv else env)
                 val p = pb.start()
                 p.inputStream.bufferedReader().forEachLine { Log.i(TAG, it) }
