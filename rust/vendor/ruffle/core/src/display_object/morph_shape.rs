@@ -183,6 +183,9 @@ impl<'gc> TDisplayObject<'gc> for MorphShape<'gc> {
     }
 }
 
+/// ARMFlash patch: most frames a morph shape keeps tessellated at once.
+const MAX_MORPH_FRAMES: usize = 64;
+
 /// A precalculated intermediate frame for a morph shape.
 struct Frame {
     shape_handle: Option<ShapeHandle>,
@@ -221,7 +224,14 @@ impl<'gc> MorphShapeShared<'gc> {
     /// Retrieves the `Frame` for the given ratio.
     /// Lazily initializes the frame if it does not yet exist.
     fn get_frame(&self, ratio: u16) -> RefMut<'_, Frame> {
-        let frames = self.frames.borrow_mut();
+        let mut frames = self.frames.borrow_mut();
+        // ARMFlash patch: upstream keeps a tessellated mesh for every ratio a morph shape was ever
+        // drawn at (up to 65,536 per shape), forever. Tweens drawn at ever-new ratios (Ninja
+        // Painter) then pile up GPU buffers until Android's memory-mapping limit kills the game.
+        // A full cache starts over; frames are rebuilt on demand.
+        if frames.len() >= MAX_MORPH_FRAMES && !frames.contains_key(&ratio) {
+            frames.clear();
+        }
         RefMut::map(frames, |frames| {
             frames
                 .entry(ratio)

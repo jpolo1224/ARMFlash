@@ -12,3 +12,4 @@ android/app/src/main/assets/ruffle/
 rust/fp-ruffle/target/
 android/app/.cxx/
 symbols/
+rust/tools/leakprobe/target/

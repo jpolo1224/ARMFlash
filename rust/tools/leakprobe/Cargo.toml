@@ -1,0 +1,13 @@
+[package]
+name = "leakprobe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Plays a SWF headless through ARMFlash's vendored Ruffle and reports live GPU objects, to find renderer leaks."
+
+[workspace]
+
+[dependencies]
+ruffle_core = { path = "../../vendor/ruffle/core", features = ["default_compatibility_rules"] }
+ruffle_render_wgpu = { path = "../../vendor/ruffle/render/wgpu" }
+futures = "0.3"
