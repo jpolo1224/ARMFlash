@@ -39,5 +39,8 @@ if [[ "${SKIP_RUFFLE:-0}" != 1 ]]; then
   cd "$ROOT/rust/fp-ruffle"
   cargo build --target aarch64-linux-android "${FLAGS[@]}"
   cp "target/aarch64-linux-android/$PROFILE/libfpruffle.so" "$OUT/"
+  # Unstripped copy for symbolizing crashes from devices (llvm-symbolizer --obj=...).
+  SYM="$ROOT/symbols/$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo -dirty)"
+  mkdir -p "$SYM" && cp "target/aarch64-linux-android/$PROFILE/libfpruffle.so" "$SYM/"
 fi
 ls -l "$OUT"

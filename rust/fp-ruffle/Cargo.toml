@@ -13,7 +13,10 @@ crate-type = ["cdylib"]
 opt-level = 3
 lto = "thin"
 codegen-units = 4
-strip = "symbols"
+# Keep symbols here: the APK packaging strips its copy, and the build script saves this one
+# under symbols/<commit>/ so a crash from a tester's device can be symbolized.
+strip = "none"
+debug = "line-tables-only"
 
 [dependencies]
 android-activity = { version = "0.6.1", features = ["game-activity"] }

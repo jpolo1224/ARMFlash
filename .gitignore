@@ -11,3 +11,4 @@ android/app/src/main/assets/ruffle/
 .idea/
 rust/fp-ruffle/target/
 android/app/.cxx/
+symbols/
