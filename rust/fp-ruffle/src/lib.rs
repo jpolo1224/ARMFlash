@@ -438,6 +438,10 @@ async fn run(app: AndroidApp) {
                 if let Ok(mut player) = player.player.lock() {
                     player.render();
                     FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    // Let wgpu free what finished GPU work no longer needs, every frame.
+                    if let Some(r) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player.renderer_mut()) {
+                        let _ = r.descriptors().device.poll(wgpu::PollType::Poll);
+                    }
                 }
             }
         }
@@ -461,9 +465,21 @@ async fn run(app: AndroidApp) {
             } else if maps + 3000 < gc_maps {
                 gc_maps = maps; // memory went back down: measure from here
             }
-            if last_mem_log.elapsed() >= Duration::from_secs(30) {
+            if last_mem_log.elapsed() >= Duration::from_secs(15) {
                 last_mem_log = Instant::now();
-                log::info!("memory: {maps} maps, {live} live bitmaps");
+                // wgpu's live objects, to tell a Ruffle-level leak from one below it.
+                let gpu = playerbox.as_ref().and_then(|pl| {
+                    let mut p = pl.player.lock().ok()?;
+                    let r = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(p.renderer_mut())?;
+                    let rep = r.descriptors().wgpu_instance.generate_report()?;
+                    let h = rep.hub_report();
+                    Some(format!(
+                        "buffers {} textures {} views {} bind_groups {} samplers {}",
+                        h.buffers.num_allocated, h.textures.num_allocated, h.texture_views.num_allocated,
+                        h.bind_groups.num_allocated, h.samplers.num_allocated,
+                    ))
+                }).unwrap_or_default();
+                log::info!("memory: {maps} maps, {live} live bitmaps, {gpu}");
             }
         }
     }

@@ -11,3 +11,4 @@ description = "Plays a SWF headless through ARMFlash's vendored Ruffle and repor
 ruffle_core = { path = "../../vendor/ruffle/core", features = ["default_compatibility_rules"] }
 ruffle_render_wgpu = { path = "../../vendor/ruffle/render/wgpu" }
 futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
