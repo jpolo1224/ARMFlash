@@ -40,6 +40,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -166,12 +171,15 @@ private fun mouseInput(mode: String, inj: Injector, show: (Offset) -> Unit): Mod
 @Composable
 private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: OverlayState, index: Int, inj: Injector) {
     val density = LocalDensity.current
-    val sizePx = with(density) { b.size.dp.toPx() }
-    val x = (b.x * w - sizePx / 2).roundToInt()
-    val y = (b.y * h - sizePx / 2).roundToInt()
+    val wide = b.kind == "key" && isWideKey(b.code)
+    val heightPx = with(density) { b.size.dp.toPx() }
+    val widthPx = if (wide) heightPx * 1.9f else heightPx
+    val x = (b.x * w - widthPx / 2).roundToInt()
+    val y = (b.y * h - heightPx / 2).roundToInt()
     val sel = st.editing && st.selected == index
-    val base = Modifier.offset { IntOffset(x, y) }.size(b.size.dp).alpha(if (st.editing) 0.9f else opacity)
-    val edit = if (st.editing) Modifier.border(2.dp, if (sel) Accent else Color.White, RoundedCornerShape(10.dp)).pointerInput(index) {
+    val sizeMod = if (wide) Modifier.size(width = (b.size * 1.9f).dp, height = b.size.dp) else Modifier.size(b.size.dp)
+    val base = Modifier.offset { IntOffset(x, y) }.then(sizeMod).alpha(if (st.editing) 0.95f else opacity)
+    val edit = if (st.editing) Modifier.border(2.dp, if (sel) Accent else Color(0x88FFFFFF), RoundedCornerShape(12.dp)).pointerInput(index) {
         detectDragGestures(onDragStart = { st.selected = index }) { change, drag ->
             change.consume()
             val cur = st.layout.buttons[index]
@@ -183,56 +191,170 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
 
     when (b.kind) {
         "arrows", "wasd" -> {
-            val codes = if (b.kind == "wasd") intArrayOf(KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_D)
-            else intArrayOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
+            val codes = dirCodes(b.kind)
             var lit by remember { mutableStateOf(0) }
-            Box(base.then(edit).then(if (st.editing) Modifier else dpadInput(codes, sizePx, inj) { lit = it })) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val s = size.width
-                    val arm = s / 3
-                    fun part(mask: Int, l: Float, t: Float) = drawRoundRect(
-                        if (lit and mask != 0) Color(0xEEFFFFFF) else Color(0x99202020),
-                        topLeft = Offset(l, t), size = androidx.compose.ui.geometry.Size(arm, arm),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
-                    )
-                    part(1, arm, 0f); part(2, arm, 2 * arm); part(4, 0f, arm); part(8, 2 * arm, arm)
-                    val outline = Path().apply {
-                        moveTo(arm, 0f); lineTo(2 * arm, 0f); lineTo(2 * arm, arm); lineTo(s, arm); lineTo(s, 2 * arm)
-                        lineTo(2 * arm, 2 * arm); lineTo(2 * arm, s); lineTo(arm, s); lineTo(arm, 2 * arm); lineTo(0f, 2 * arm)
-                        lineTo(0f, arm); lineTo(arm, arm); close()
-                    }
-                    drawPath(outline, Color(0x99FFFFFF), style = Stroke(width = 3f))
-                    drawRoundRect(Color(0x99202020), topLeft = Offset(arm, arm), size = androidx.compose.ui.geometry.Size(arm, arm))
-                }
-                if (b.kind == "wasd") Text("WASD", color = Color.White, fontSize = 10.sp, modifier = Modifier.align(Alignment.Center))
+            Box(base.then(edit).then(if (st.editing) Modifier else dpadInput(codes, widthPx, inj) { lit = it })) {
+                SpriteDpad(lit)
+                if (b.kind == "wasd") Text("WASD", color = KeyLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+            }
+        }
+        "stick", "stick_wasd" -> {
+            val codes = dirCodes(if (b.kind == "stick_wasd") "wasd" else "arrows")
+            var thumb by remember { mutableStateOf(Offset.Zero) }
+            Box(base.then(edit).then(if (st.editing) Modifier else stickInput(codes, widthPx, inj) { thumb = it })) {
+                androidx.compose.foundation.Image(
+                    androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_stick_base), null, Modifier.fillMaxSize(),
+                )
+                val t = b.size * 0.56f
+                androidx.compose.foundation.Image(
+                    androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_thumb), null,
+                    Modifier.align(Alignment.Center).offset { IntOffset(thumb.x.roundToInt(), thumb.y.roundToInt()) }.size(t.dp),
+                )
             }
         }
         else -> {
             var down by remember { mutableStateOf(false) }
-            val label = when (b.code) { Keys.MOUSE_LEFT -> "L click"; Keys.MOUSE_RIGHT -> "R click"; else -> Keys.label(b.code) }
+            val label = when (b.code) { Keys.MOUSE_LEFT -> "L-Click"; Keys.MOUSE_RIGHT -> "R-Click"; else -> Keys.label(b.code) }
             Box(
-                base.clip(RoundedCornerShape(if (b.kind == "mouse") 10.dp else 50.dp))
-                    .background(if (down) Color(0xEEFFFFFF) else Color(0x99202020))
-                    .border(1.5.dp, Color(0x99FFFFFF), RoundedCornerShape(if (b.kind == "mouse") 10.dp else 50.dp))
-                    .then(edit)
-                    .then(if (st.editing) Modifier else Modifier.pointerInput(b.code) {
-                        awaitEachGesture {
-                            awaitFirstDown().consume()
-                            down = true
-                            press(inj, b.code, true)
-                            do {
-                                val e = awaitPointerEvent()
-                                e.changes.forEach { it.consume() }
-                            } while (e.changes.any { it.pressed })
-                            press(inj, b.code, false)
-                            down = false
-                        }
-                    }),
-                contentAlignment = Alignment.Center,
+                base.then(edit).then(if (st.editing) Modifier else Modifier.pointerInput(b.code) {
+                    awaitEachGesture {
+                        awaitFirstDown().consume()
+                        down = true
+                        press(inj, b.code, true)
+                        do {
+                            val e = awaitPointerEvent()
+                            e.changes.forEach { it.consume() }
+                        } while (e.changes.any { it.pressed })
+                        press(inj, b.code, false)
+                        down = false
+                    }
+                }),
             ) {
-                Text(label, color = if (down) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = (b.size / 4.2f).coerceIn(11f, 22f).sp)
+                Keycap(label, down, round = !wide && b.kind != "mouse", sizeDp = b.size)
             }
         }
+    }
+}
+
+private val KeyLabel = Color(0xFFC4C4C8)
+
+private fun isWideKey(code: Int) = code in setOf(
+    KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_CTRL_LEFT,
+    KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_DEL,
+)
+
+private fun dirCodes(kind: String) = if (kind == "wasd") intArrayOf(KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_D)
+else intArrayOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
+
+/**
+ * The D-pad from ARMSX2's touch controls (sprites by the ARMSX2 team): four arms, each pointing
+ * at the centre, down being the up arm turned round. Bits: 1 up, 2 down, 4 left, 8 right.
+ */
+@Composable
+private fun SpriteDpad(lit: Int) {
+    val armFill = 0.46f
+    Box(Modifier.fillMaxSize()) {
+        @Composable
+        fun arm(res: Int, pressedRes: Int, on: Boolean, m: Modifier) = androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(if (on) pressedRes else res), null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit, modifier = m,
+        )
+        arm(com.armsx.flashpoint.R.drawable.pad_dpad_up, com.armsx.flashpoint.R.drawable.pad_dpad_up_pressed, lit and 1 != 0, Modifier.align(Alignment.TopCenter).androidx_fillH(armFill).aspectRatio(45f / 52f))
+        arm(com.armsx.flashpoint.R.drawable.pad_dpad_up, com.armsx.flashpoint.R.drawable.pad_dpad_up_pressed, lit and 2 != 0, Modifier.align(Alignment.BottomCenter).androidx_fillH(armFill).aspectRatio(45f / 52f).rotate(180f))
+        arm(com.armsx.flashpoint.R.drawable.pad_dpad_left, com.armsx.flashpoint.R.drawable.pad_dpad_left_pressed, lit and 4 != 0, Modifier.align(Alignment.CenterStart).androidx_fillW(armFill).aspectRatio(53f / 44f))
+        arm(com.armsx.flashpoint.R.drawable.pad_dpad_right, com.armsx.flashpoint.R.drawable.pad_dpad_right_pressed, lit and 8 != 0, Modifier.align(Alignment.CenterEnd).androidx_fillW(armFill).aspectRatio(53f / 44f))
+    }
+}
+
+private fun Modifier.androidx_fillH(f: Float) = this.then(Modifier.fillMaxHeight(f))
+private fun Modifier.androidx_fillW(f: Float) = this.then(Modifier.fillMaxWidth(f))
+
+/**
+ * A key in the same material as the D-pad and stick sprites: their dark grain as the face,
+ * a dark rim under it that the face sinks into when pressed, a faint top light, and a plain
+ * label. Round for action keys, a wide rounded key for Space, Enter and the modifiers.
+ */
+@Composable
+private fun Keycap(label: String, pressed: Boolean, round: Boolean, sizeDp: Float) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val grain = remember {
+        val src = android.graphics.BitmapFactory.decodeResource(ctx.resources, com.armsx.flashpoint.R.drawable.pad_stick_base)
+        // The opaque middle of the stick base: its grain, without the round edge.
+        val c = android.graphics.Bitmap.createBitmap(src, src.width / 4, src.height / 4, src.width / 2, src.height / 2)
+        androidx.compose.ui.graphics.ShaderBrush(
+            androidx.compose.ui.graphics.ImageShader(c.asImageBitmap(), androidx.compose.ui.graphics.TileMode.Mirror, androidx.compose.ui.graphics.TileMode.Mirror),
+        )
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val depth = size.height * 0.07f
+            val sink = if (pressed) depth * 0.75f else 0f
+            val r = if (round) size.minDimension / 2 else size.height * 0.26f
+            val faceH = size.height - depth
+            val cr = androidx.compose.ui.geometry.CornerRadius(r, r)
+            // Rim / side of the key.
+            drawRoundRect(Color(0xFF070708), topLeft = Offset(0f, depth), size = androidx.compose.ui.geometry.Size(size.width, faceH), cornerRadius = cr)
+            // Face.
+            val face = androidx.compose.ui.geometry.RoundRect(0f, sink, size.width, sink + faceH, cr)
+            val path = Path().apply { addRoundRect(face) }
+            drawPath(path, grain)
+            drawPath(path, androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(Color(0x24FFFFFF), Color(0x00FFFFFF), Color(0x40000000)), startY = sink, endY = sink + faceH,
+            ))
+            if (pressed) drawPath(path, Color(0x55000000))
+            drawPath(path, Color(0xFF000000), style = Stroke(width = 2.2f))
+            // Thin light on the upper edge.
+            drawRoundRect(
+                Color(if (pressed) 0x14FFFFFF else 0x33FFFFFF), topLeft = Offset(2f, sink + 2f),
+                size = androidx.compose.ui.geometry.Size(size.width - 4f, faceH - 4f), cornerRadius = cr, style = Stroke(width = 1.2f),
+            )
+        }
+        val shift = if (pressed) (sizeDp * 0.05f).dp else 0.dp
+        Text(
+            label, color = if (pressed) Color(0xFF9A9AA0) else KeyLabel, fontWeight = FontWeight.Bold,
+            fontSize = (sizeDp / if (label.length > 2) 4.6f else 3.1f).coerceIn(11f, 26f).sp, letterSpacing = 0.5.sp,
+            modifier = Modifier.offset(y = shift - (sizeDp * 0.035f).dp),
+        )
+    }
+}
+
+/** The left stick as a direction pad: 8 directions, same keys as the D-pad. */
+private fun stickInput(codes: IntArray, sizePx: Float, inj: Injector, thumb: (Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
+    val radius = sizePx * 0.30f
+    awaitEachGesture {
+        var mask = 0
+        fun apply(v: Offset?) {
+            var m = 0
+            if (v != null) {
+                val len = hypot(v.x, v.y)
+                val clamped = if (len > radius) v * (radius / len) else v
+                thumb(clamped)
+                if (len > radius * 0.35f) {
+                    val a = Math.toDegrees(atan2(v.y.toDouble(), v.x.toDouble()))
+                    if (a in -157.5..-22.5) m = m or 1
+                    if (a in 22.5..157.5) m = m or 2
+                    if (abs(a) >= 112.5) m = m or 4
+                    if (abs(a) <= 67.5) m = m or 8
+                }
+            } else thumb(Offset.Zero)
+            for (i in 0..3) {
+                val bit = 1 shl i
+                if ((m and bit) != (mask and bit)) inj.key(codes[i], m and bit != 0)
+            }
+            mask = m
+        }
+        val d = awaitFirstDown()
+        d.consume()
+        val center = Offset(sizePx / 2, sizePx / 2)
+        apply(d.position - center)
+        while (true) {
+            val e = awaitPointerEvent()
+            val c = e.changes.firstOrNull { it.id == d.id } ?: break
+            c.consume()
+            if (!c.pressed) break
+            apply(c.position - center)
+        }
+        apply(null)
     }
 }
 
@@ -363,6 +485,8 @@ private fun KeyPicker(st: OverlayState) {
                 FlowRow {
                     Pill("Arrow keys") { add(st, TouchButton("arrows", x = 0.15f, y = 0.7f, size = 150f)) }
                     Pill("WASD") { add(st, TouchButton("wasd", x = 0.15f, y = 0.7f, size = 150f)) }
+                    Pill("Stick (arrows)") { add(st, TouchButton("stick", x = 0.15f, y = 0.7f, size = 140f)) }
+                    Pill("Stick (WASD)") { add(st, TouchButton("stick_wasd", x = 0.15f, y = 0.7f, size = 140f)) }
                     Pill("Left click") { add(st, TouchButton("mouse", Keys.MOUSE_LEFT, 0.5f, 0.5f, 64f)) }
                     Pill("Right click") { add(st, TouchButton("mouse", Keys.MOUSE_RIGHT, 0.5f, 0.5f, 64f)) }
                     Keys.ALL.forEach { k -> Pill(k.label) { add(st, TouchButton("key", k.code, 0.5f, 0.5f, 60f)) } }

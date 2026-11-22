@@ -154,7 +154,7 @@ data class TouchButton(
 data class TouchLayout(
     val mode: String = "direct", // "direct" | "touchpad" | "point"
     val visible: Boolean = true,
-    val opacity: Float = 0.55f,
+    val opacity: Float = 0.7f,
     val buttons: List<TouchButton> = DEFAULT_BUTTONS,
     /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*). */
     val pad: Map<Int, Int> = DEFAULT_PAD,
@@ -162,11 +162,11 @@ data class TouchLayout(
 ) {
     companion object {
         val DEFAULT_BUTTONS = listOf(
-            TouchButton("arrows", x = 0.13f, y = 0.72f, size = 150f),
-            TouchButton("key", KeyEvent.KEYCODE_SPACE, x = 0.88f, y = 0.80f, size = 76f),
-            TouchButton("key", KeyEvent.KEYCODE_Z, x = 0.78f, y = 0.86f, size = 58f),
-            TouchButton("key", KeyEvent.KEYCODE_X, x = 0.80f, y = 0.66f, size = 58f),
-            TouchButton("key", KeyEvent.KEYCODE_ENTER, x = 0.92f, y = 0.58f, size = 52f),
+            TouchButton("arrows", x = 0.12f, y = 0.70f, size = 150f),
+            TouchButton("key", KeyEvent.KEYCODE_SPACE, x = 0.83f, y = 0.88f, size = 56f),
+            TouchButton("key", KeyEvent.KEYCODE_Z, x = 0.74f, y = 0.66f, size = 62f),
+            TouchButton("key", KeyEvent.KEYCODE_X, x = 0.87f, y = 0.62f, size = 62f),
+            TouchButton("key", KeyEvent.KEYCODE_ENTER, x = 0.92f, y = 0.40f, size = 46f),
         )
         val DEFAULT_PAD = mapOf(
             KeyEvent.KEYCODE_BUTTON_A to KeyEvent.KEYCODE_SPACE,

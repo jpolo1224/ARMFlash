@@ -107,12 +107,12 @@ class GameActivity : ComponentActivity() {
         val ui = androidx.compose.ui.platform.ComposeView(this).apply {
             setContent {
                 val st = this@GameActivity.overlay
-                GameOverlay(
+                com.armsx.flashpoint.ui.FpTheme { GameOverlay(
                     st, inj,
                     onSave = { asDefault -> layouts.save(gameId, st.layout, asDefault) },
                     onKeyboard = ::showKeyboard,
                     onExit = ::quit,
-                )
+                ) }
             }
         }
         setContentView(FrameLayout(this).apply {
