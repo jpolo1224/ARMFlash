@@ -51,16 +51,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         UiMusic.load(this)
+        com.armsx.flashpoint.discord.DiscordPresence.attachActivity(this)
+        com.armsx.flashpoint.discord.DiscordPresence.start()
         setContent { FpTheme { App(vm) } }
     }
 
     override fun onStart() {
         super.onStart()
         UiMusic.start(this)
+        com.armsx.flashpoint.discord.DiscordPresence.setForeground(true)
     }
 
     override fun onStop() {
         UiMusic.pause()
+        com.armsx.flashpoint.discord.DiscordPresence.setForeground(false)
         super.onStop()
     }
 }
@@ -72,6 +76,8 @@ private fun App(vm: BrowseVm) {
         if (uri != null) vm.importDatabase(uri)
     }
     val playLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        // Back from a game: Discord shows the library again.
+        com.armsx.flashpoint.discord.DiscordPresence.setPlaying(null)
         if (r.resultCode == Activity.RESULT_OK) {
             val id = r.data?.getStringExtra(GameActivity.EXTRA_GAME_ID)
             val secs = r.data?.getLongExtra(GameActivity.EXTRA_SECONDS, 0) ?: 0
@@ -89,6 +95,9 @@ private fun App(vm: BrowseVm) {
                 onPlay = { game ->
                     vm.prepare(game) { ready ->
                         UiMusic.pause()
+                        com.armsx.flashpoint.discord.DiscordPresence.setPlaying(
+                            com.armsx.flashpoint.discord.PlayingGame(ready.game.id, ready.game.title, ready.game.primaryPlatform, vm.library.logoUrl(ready.game.id)),
+                        )
                         val web = GameActivity.intent(
                             ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
                             vm.library.htdocs.path, vm.library.legacyBase, ready.game.title, vm.library.logoUrl(ready.game.id),

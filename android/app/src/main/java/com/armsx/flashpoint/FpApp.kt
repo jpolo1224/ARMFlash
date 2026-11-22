@@ -14,5 +14,7 @@ class FpApp : Application() {
         super.onCreate()
         library = Library(this)
         com.armsx.flashpoint.data.CustomDriver.prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        // Discord presence lives in the launcher process (the SDK itself in :discord).
+        com.armsx.flashpoint.discord.DiscordPresence.appContext = this
     }
 }

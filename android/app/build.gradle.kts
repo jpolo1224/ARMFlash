@@ -4,6 +4,14 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Discord Rich Presence (as in ARMSX2): the Social SDK is a private, optional build input, and the
+// feature needs FlashARM's own Discord application id. Without both it compiles out.
+val discordSdkDir: String? = (System.getenv("DISCORD_SDK_DIR") ?: providers.gradleProperty("DISCORD_SDK_DIR").orNull)
+    ?.takeIf { File(it, "include/discordpp.h").isFile }
+val discordAppId: String? = (System.getenv("FLASHARM_DISCORD_APP_ID") ?: providers.gradleProperty("flasharm.discordAppId").orNull)
+    ?.takeIf { it.matches(Regex("\\d{15,20}")) }
+val haveDiscord = discordSdkDir != null && discordAppId != null
+
 android {
     namespace = "com.armsx.flashpoint"
     compileSdk = 37
@@ -16,7 +24,14 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         ndk { abiFilters.add("arm64-v8a") }
-        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_static")
+                if (haveDiscord) arguments += listOf("-DDISCORD_SDK_DIR=$discordSdkDir", "-DFLASHARM_DISCORD_APP_ID=$discordAppId")
+            }
+        }
+        // The sign-in return link: discord-<application id>, as registered in the developer portal.
+        manifestPlaceholders["discordScheme"] = "discord-" + (discordAppId ?: "0")
     }
 
     buildTypes {
@@ -33,7 +48,14 @@ android {
     }
     // libadrenotools' hook libraries are loaded by path from nativeLibraryDir, so native
     // libraries are installed as files (as in ARMSX3).
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            // The .aar ships the SDK .so and the private dir supplies the same file for CMake.
+            pickFirsts += "**/libdiscord_partner_sdk.so"
+        }
+    }
+    sourceSets { getByName("main") { if (haveDiscord) jniLibs.srcDir(discordSdkDir!!) } }
     // libfpdriver.so: custom Vulkan driver loading (libadrenotools).
     externalNativeBuild {
         cmake {
@@ -70,4 +92,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.games.activity)
     implementation(libs.androidx.appcompat)
+    // Discord Social SDK, only when supplied (see haveDiscord), and Custom Tabs, which its sign-in needs.
+    if (haveDiscord) implementation(group = "", name = "discord_partner_sdk", ext = "aar")
+    implementation(libs.androidx.browser)
 }

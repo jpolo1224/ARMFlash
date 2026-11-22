@@ -149,6 +149,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             )
         }
 
+        Section("Discord") {
+            DiscordSection()
+        }
+
         Section("Advanced") {
             Action("Optimize Database", "Run maintenance tasks to increase database performance and reduce size.", "Optimize") {
                 scope.launch {
@@ -344,4 +348,33 @@ private fun TurnipOptions() {
         minLines = 2,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/** Discord Rich Presence, as in ARMSX2: connect once, then friends see what you are playing. */
+@Composable
+private fun DiscordSection() {
+    val dp = com.armsx.flashpoint.discord.DiscordPresence
+    val status by dp.status
+    val err by dp.error
+    if (!dp.available()) {
+        Text("Discord isn't part of this build.", color = Fp.TextDim, fontSize = 13.sp)
+        return
+    }
+    val statusText = when (status) {
+        dp.CONNECTED -> "Connected" + (dp.self.value?.name?.let { " as $it" } ?: "")
+        dp.AUTHORIZING -> "Waiting for Discord sign-in"
+        dp.CONNECTING -> "Connecting"
+        dp.FAILED -> "Couldn't connect"
+        else -> "Not connected"
+    }
+    Text("Show friends on Discord what you are playing in FlashARM. Nothing is kept anywhere but a sign-in on this device.", color = Fp.TextDim, fontSize = 13.sp)
+    Spacer(Modifier.height(8.dp))
+    ConfigRow("Status", statusText + (err?.let { ". $it" } ?: "")) {
+        if (status == dp.CONNECTED || status == dp.CONNECTING) Chip("Disconnect", false) { dp.signOut() }
+        else Chip("Connect Discord", true) { dp.authorize() }
+    }
+    var showGame by remember { mutableStateOf(dp.showGameName) }
+    ConfigRow("Show the game in my status", "Your status reads \u201cPlaying <game>\u201d instead of \u201cPlaying FlashARM\u201d.") {
+        Switch(showGame, { showGame = it; dp.showGameName = it })
+    }
 }

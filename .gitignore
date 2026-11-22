@@ -10,3 +10,4 @@ android/app/src/main/assets/ruffle/
 *.iml
 .idea/
 rust/fp-ruffle/target/
+android/app/.cxx/

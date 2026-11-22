@@ -1,7 +1,0 @@
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/include/adrenotools/bcenabler.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/include/adrenotools/driver.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/include/adrenotools/priv.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/src/hook/hook_impl.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/src/hook/hook_impl_params.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/lib/linkernsbypass/android_linker_ns.h
-/Users/jpolo1226/Downloads/browser-util-macos-release/agents/flashpoint-android/android/app/src/main/cpp/libadrenotools/lib/linkernsbypass/elf_soname_patcher.h
