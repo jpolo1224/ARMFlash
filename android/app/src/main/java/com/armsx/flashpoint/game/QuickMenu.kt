@@ -357,6 +357,41 @@ private fun MenuHeader(host: OverlayHost, compact: Boolean) {
             Spacer(Modifier.height(2.dp))
             Text(host.runner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        StatusClock()
+    }
+}
+
+/** The time and battery, top right of the menu, as ARMSX2's pause menu shows them. */
+@Composable
+private fun StatusClock() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var time by remember { mutableStateOf("") }
+    var battery by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date())
+            battery = ctx.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))?.let { b ->
+                val l = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+                val s = b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
+                val st = b.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, 0)
+                if (l < 0) null else (l * 100 / s) to (st == android.os.BatteryManager.BATTERY_STATUS_CHARGING || st == android.os.BatteryManager.BATTERY_STATUS_FULL)
+            }
+            delay(15_000)
+        }
+    }
+    Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 10.dp)) {
+        Text(time, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        battery?.let { (pct, charging) ->
+            Text(
+                (if (charging) "\u26A1 " else "") + "$pct%",
+                style = MaterialTheme.typography.bodySmall,
+                color = when {
+                    charging -> Success
+                    pct <= 15 -> Danger
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
     }
 }
 

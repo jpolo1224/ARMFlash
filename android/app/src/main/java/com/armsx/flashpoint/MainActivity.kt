@@ -44,6 +44,9 @@ import com.armsx.flashpoint.ui.FpTheme
 import com.armsx.flashpoint.ui.Shell
 import kotlinx.coroutines.delay
 
+/** The full database's size after a first download (221,660 games on 2026-11-22: 462 MB). */
+private const val DB_MB = 470
+
 class MainActivity : ComponentActivity() {
     private val vm: BrowseVm by viewModels()
 
@@ -111,9 +114,27 @@ private fun App(vm: BrowseVm) {
         }
     }
 
+    // Setup's Custom folder (GitHub build, as in ARMSX2): all-files access first, then the folder.
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val dir = vm.library.customLocation(uri)
+        if (dir == null) vm.status = "FlashARM cannot write to that folder. Pick another."
+        else vm.pickLocation(dir)
+    }
+    val allFiles = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (android.os.Build.VERSION.SDK_INT < 30 || android.os.Environment.isExternalStorageManager()) folderPicker.launch(null)
+    }
+    val onCustomFolder: () -> Unit = {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
+            runCatching {
+                allFiles.launch(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:${ctx.packageName}")))
+            }.onFailure { runCatching { allFiles.launch(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } }
+        } else folderPicker.launch(null)
+    }
+
     Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
         if (!vm.dbReady) {
-            Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) })
+            Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
         } else {
             BackHandler(enabled = vm.selected != null) { vm.clearSelection() }
             Shell(
@@ -148,7 +169,7 @@ private fun App(vm: BrowseVm) {
 
 /** First run: pick where the Flashpoint folder goes, then build the database or import one. */
 @Composable
-private fun Setup(vm: BrowseVm, onImport: () -> Unit) {
+private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit) {
     LaunchedEffect(Unit) { vm.loadLocations() }
     Column(
         Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp),
@@ -170,6 +191,9 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit) {
                         Box(Modifier.fillMaxWidth((s.done.toFloat() / s.total).coerceIn(0f, 1f)).height(8.dp).background(Fp.Play))
                     }
                 }
+                if (vm.syncBytes > 0) Text(
+                    "${vm.syncBytes / (1 shl 20)} MB of about $DB_MB MB", color = Fp.TextDim, fontSize = 13.sp,
+                )
                 if (vm.syncEta.isNotEmpty()) {
                     Text(vm.syncEta, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.height(10.dp))
@@ -179,28 +203,36 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit) {
             imp != null -> Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
             else -> {
                 Text(
-                    "FlashARM needs Flashpoint's game database. Download it from Flashpoint Archive " +
-                        "(about 450 MB, usually 5 to 10 minutes), or import flashpoint.sqlite from a desktop install. " +
+                    "FlashARM needs Flashpoint's game database: the details of over 220,000 games and animations. " +
+                        "Download it from Flashpoint Archive, or import flashpoint.sqlite from a desktop install. " +
                         "Games download on demand the first time you play them.",
                     color = Fp.Text, modifier = Modifier.widthIn(max = 560.dp),
                 )
-                if (vm.locations.size > 1) {
-                    Spacer(Modifier.height(18.dp))
-                    Text("Where to keep the database and games", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(Modifier.height(8.dp))
-                    vm.locations.forEach { loc ->
-                        val on = loc.dir.path == vm.location.path
-                        Chip(
-                            "${if (on) "\u2713 " else ""}${loc.label}  (${"%.1f".format(loc.freeBytes / 1e9)} GB free)",
-                            on = on,
-                        ) { vm.pickLocation(loc.dir) }
-                        Spacer(Modifier.height(6.dp))
-                    }
-                    Text(
-                        "Removing the SD card later hides your games until it is back.",
-                        color = Fp.TextDim, fontSize = 12.sp, modifier = Modifier.widthIn(max = 560.dp),
-                    )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Download: about $DB_MB MB, usually 5 to 10 minutes. It needs about $DB_MB MB of space, plus room for the games you play.",
+                    color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.widthIn(max = 560.dp),
+                )
+                Spacer(Modifier.height(18.dp))
+                Text("Where to keep the database and games", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Spacer(Modifier.height(8.dp))
+                vm.locations.forEach { loc ->
+                    val on = loc.dir.path == vm.location.path
+                    Chip(
+                        "${if (on) "\u2713 " else ""}${if (loc.removable) "SD card: " else ""}${loc.label}  (${"%.1f".format(loc.freeBytes / 1e9)} GB free)",
+                        on = on,
+                    ) { vm.pickLocation(loc.dir) }
+                    Spacer(Modifier.height(6.dp))
                 }
+                if (BuildConfig.STORAGE_ALL_FILES && android.os.Build.VERSION.SDK_INT >= 30) {
+                    val custom = vm.locations.none { it.dir.path == vm.location.path }
+                    Chip(if (custom) "\u2713 Custom folder: ${vm.location.path}" else "Custom folder\u2026", on = custom, onClick = onCustomFolder)
+                    Spacer(Modifier.height(6.dp))
+                }
+                if (vm.locations.size > 1) Text(
+                    "Removing the SD card later hides your games until it is back.",
+                    color = Fp.TextDim, fontSize = 12.sp, modifier = Modifier.widthIn(max = 560.dp),
+                )
                 Spacer(Modifier.height(20.dp))
                 Chip("Download the game database", on = true) { vm.syncDatabase(fresh = true) }
                 Spacer(Modifier.height(10.dp))

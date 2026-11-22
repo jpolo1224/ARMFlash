@@ -143,6 +143,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 sync = st
                 if (!st.running) break
                 val now = android.os.SystemClock.elapsedRealtime()
+                syncBytes = library.database.length() + java.io.File(library.database.path + "-wal").length()
                 syncEta = when (st.phase) {
                     "Starting", "Counting updates", "Tags", "Platforms" -> "Working out the time left"
                     "Games" -> {
@@ -186,6 +187,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun loadLocations() = viewModelScope.launch {
         locations = withContext(Dispatchers.IO) { library.locations() }
     }
+
+    /** Database bytes written so far during a first download (it grows as the sync writes). */
+    var syncBytes by mutableStateOf(0L)
+        private set
 
     fun pickLocation(dir: java.io.File) {
         if (library.hasDatabase()) return

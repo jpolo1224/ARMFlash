@@ -54,6 +54,21 @@ class Library(private val ctx: Context) {
         }
     }
 
+    /**
+     * A folder picked with the system's folder picker, as a path (ARMSX2's resolveTreeUriToPosix),
+     * if it is writable. GitHub build only: needs all-files access.
+     */
+    fun customLocation(tree: Uri): File? {
+        val docId = runCatching { android.provider.DocumentsContract.getTreeDocumentId(tree) }.getOrNull() ?: return null
+        val parts = docId.split(":", limit = 2)
+        if (parts.size != 2) return null
+        val dir = File(if (parts[0] == "primary") "/storage/emulated/0/${parts[1]}" else "/storage/${parts[0]}/${parts[1]}")
+        // Write-probe it now, while the user can still pick another (as ARMSX2 does).
+        return dir.takeIf {
+            runCatching { (it.isDirectory || it.mkdirs()) && File.createTempFile(".flasharm-probe-", ".tmp", it).delete() }.getOrDefault(false)
+        }
+    }
+
     /** Use [dir] for the Flashpoint folder from now on. Only for a library that has nothing in it yet. */
     fun useLocation(dir: File) {
         root = dir

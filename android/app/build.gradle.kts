@@ -42,6 +42,21 @@ android {
         }
     }
     buildFeatures { compose = true; buildConfig = true }
+
+    // As in ARMSX2: the GitHub build may keep its Flashpoint folder anywhere (all-files access,
+    // src/github's manifest); the Play build stays scoped storage (internal or SD card).
+    flavorDimensions += "store"
+    productFlavors {
+        create("github") {
+            dimension = "store"
+            isDefault = true
+            buildConfigField("boolean", "STORAGE_ALL_FILES", "true")
+        }
+        create("play") {
+            dimension = "store"
+            buildConfigField("boolean", "STORAGE_ALL_FILES", "false")
+        }
+    }
     androidResources {
         // Ruffle's wasm must stay uncompressed-readable; and big zips should not be re-deflated.
         noCompress += listOf("wasm")
