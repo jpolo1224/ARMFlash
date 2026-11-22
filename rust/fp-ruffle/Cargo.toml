@@ -50,3 +50,22 @@ async-channel = "2.5.0"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
 
 [workspace]
+
+# Ruffle from the vendored copy (rust/vendor/ruffle), which carries ARMFlash's patches.
+[patch."https://github.com/ruffle-rs/ruffle.git"]
+asc = { path = "../vendor/ruffle/tools/asc" }
+build_playerglobal = { path = "../vendor/ruffle/core/build_playerglobal" }
+flv-rs = { path = "../vendor/ruffle/flv" }
+naga-agal = { path = "../vendor/ruffle/render/naga-agal" }
+naga-pixelbender = { path = "../vendor/ruffle/render/naga-pixelbender" }
+pixel_bender = { path = "../vendor/ruffle/render/pixel_bender" }
+ruffle_common = { path = "../vendor/ruffle/core/common" }
+ruffle_core = { path = "../vendor/ruffle/core" }
+ruffle_frontend_utils = { path = "../vendor/ruffle/frontend-utils" }
+ruffle_macros = { path = "../vendor/ruffle/core/macros" }
+ruffle_render = { path = "../vendor/ruffle/render" }
+ruffle_render_wgpu = { path = "../vendor/ruffle/render/wgpu" }
+ruffle_video = { path = "../vendor/ruffle/video" }
+ruffle_video_software = { path = "../vendor/ruffle/video/software" }
+ruffle_wstr = { path = "../vendor/ruffle/wstr" }
+swf = { path = "../vendor/ruffle/swf" }
