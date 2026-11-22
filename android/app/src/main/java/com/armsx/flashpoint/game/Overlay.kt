@@ -147,15 +147,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
 
         // The cursor, whenever something other than a direct touch is driving the mouse.
         st.cursor?.let { c ->
-            Canvas(Modifier.fillMaxSize()) {
-                val p = Path().apply {
-                    moveTo(c.x, c.y); lineTo(c.x, c.y + 26f); lineTo(c.x + 7f, c.y + 20f)
-                    lineTo(c.x + 12f, c.y + 31f); lineTo(c.x + 17f, c.y + 29f); lineTo(c.x + 12f, c.y + 18f)
-                    lineTo(c.x + 20f, c.y + 18f); close()
-                }
-                drawPath(p, Color.White)
-                drawPath(p, Color.Black, style = Stroke(width = 2.5f))
-            }
+            Canvas(Modifier.fillMaxSize()) { with(Cursors) { drawCursor(c) } }
         }
 
         // ARMSX2's on-screen controls modes. Auto-hide: hidden once the screen has gone untouched

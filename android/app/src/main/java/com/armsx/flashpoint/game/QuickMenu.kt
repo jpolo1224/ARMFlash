@@ -642,6 +642,11 @@ private fun ApplyRestart(changed: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ControlsPane(st: OverlayState, host: OverlayHost) {
+    val cctx = androidx.compose.ui.platform.LocalContext.current
+    HorizontalOptions("Cursor", Cursors.styles, Cursors.style.value, description = "The pointer shown when a controller, the touchpad or point & click moves the mouse.") {
+        Cursors.setStyle(cctx, it)
+    }
+    HorizontalOptions("Cursor size", Cursors.sizes, Cursors.scale.floatValue) { Cursors.setSize(cctx, it) }
     HorizontalOptions("Pointer", listOf("direct" to "Direct touch", "touchpad" to "Touchpad", "point" to "Point & click"), st.layout.mode, first = true) {
         st.layout = st.layout.copy(mode = it)
         if (it == "direct") st.cursor = null

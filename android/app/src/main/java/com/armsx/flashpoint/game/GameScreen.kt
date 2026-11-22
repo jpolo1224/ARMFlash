@@ -29,6 +29,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         PauseMusic.load(act)
         OsdPrefs.load(act)
         GamePrefs.load(act)
+        Cursors.load(act)
         GamePrefs.apply(act)
         overlay.padConnected = gamepadAttached()
         im.registerInputDeviceListener(this, null)
