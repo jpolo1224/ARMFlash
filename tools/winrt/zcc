@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+# zig cc for aarch64 glibc; Zig spells CPU names with underscores (cortex_a76) and has no -mtune.
+import sys, os
+args = []
+for a in sys.argv[1:]:
+    if a.startswith('-mtune='):
+        continue
+    if a.startswith('-mcpu='):
+        a = '-mcpu=' + a[6:].replace('-', '_')
+    args.append(a)
+os.execvp(sys.executable, [sys.executable, '-m', 'ziglang', 'cc', '-target', 'aarch64-linux-gnu.2.36', '-Wno-date-time'] + args)

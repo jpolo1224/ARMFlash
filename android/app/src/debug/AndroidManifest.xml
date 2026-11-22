@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only: probes for the Windows plugin work. Only adb's shell can start it (DUMP is
+  a permission ordinary apps cannot hold), and it runs a fixed list of named steps, no commands.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.armsx.flashpoint.lab.LabActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+</manifest>
