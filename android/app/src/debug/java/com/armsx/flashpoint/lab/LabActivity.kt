@@ -3,6 +3,7 @@ package com.armsx.flashpoint.lab
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import java.io.File
 
@@ -14,7 +15,7 @@ import java.io.File
  *
  * The base system is expected in <data>/r (glibc, Box64 at usr/local/bin/box64, Wine at opt/wine).
  */
-class LabActivity : Activity() {
+class LabActivity : androidx.activity.ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         run(intent)
@@ -28,6 +29,25 @@ class LabActivity : Activity() {
 
     private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
+        // Every cursor style at every size, for checking the drawings.
+        if (step == "cursors") {
+            com.armsx.flashpoint.game.Cursors.load(this)
+            setContentView(androidx.compose.ui.platform.ComposeView(this).apply {
+                setContent {
+                    androidx.compose.foundation.Canvas(androidx.compose.ui.Modifier.fillMaxSize()) {
+                        drawRect(androidx.compose.ui.graphics.Color(0xFF3A6EA5))
+                        val c = com.armsx.flashpoint.game.Cursors
+                        c.styles.forEachIndexed { i, (id, _) ->
+                            c.sizes.forEachIndexed { j, (k, _) ->
+                                c.style.value = id; c.scale.floatValue = k
+                                with(c) { drawCursor(androidx.compose.ui.geometry.Offset(60f + j * 250f, 80f + i * 330f)) }
+                            }
+                        }
+                    }
+                }
+            })
+            return
+        }
         // A browser game from a data pack pushed to home/games/web.zip.
         if (step == "web") {
             val r = File(dataDir, "r").path

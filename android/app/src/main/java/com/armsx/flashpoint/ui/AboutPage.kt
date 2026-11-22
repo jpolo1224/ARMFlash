@@ -204,8 +204,10 @@ private val APP_CREDITS = listOf(
     "UI music" to "“Awestruck”.",
     "Pause menu music" to "“Underwater Ambient Pad” by isaiah658.",
     "Menu sounds" to "Interface SFX Pack 1 by obsydianx (CC0), trimmed by the ARMSX2 team.",
-    "From ARMSX2" to "Touch control sprites, the in-game menu, custom driver manager, Discord presence and controller focus ring, by the ARMSX2 team.",
+    "From ARMSX2" to "Touch control sprites, the in-game menu, battery indicator, custom driver manager, Discord presence and controller focus ring, by the ARMSX2 team.",
     "Custom drivers" to "libadrenotools by Billy Laws (BSD 2-Clause).",
+    "Cursors" to "Modern Mac: Capitaine Cursors by Keefer Rourke and others (LGPL-3.0). Linux: DMZ-White by Novell (CC BY-SA 3.0).",
+    "Windows players" to "Box64 by ptitSeb and contributors (MIT); Wine (LGPL-2.1); Winlator's base system by brunodev85 (LGPL-2.1); Xvfb from X.Org (MIT) as built by Termux; players from Flashpoint's support packs.",
     "Native libraries" to "tokio, hyper, rustls, ring, zip, rusqlite with SQLite (public domain) and other crates under MIT or Apache-2.0.",
 )
 
