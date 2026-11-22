@@ -201,7 +201,7 @@ private val APP_CREDITS = listOf(
     "App icon" to "Flashpoint logo by the Flashpoint Archive creators; this version by u/Alarming-Brick-3670.",
     "flashpoint-archive (FPA-Rust)" to "Flashpoint's database library. MIT License, FlashpointProject.",
     "Flash" to "Ruffle, the Flash Player emulator. MIT or Apache-2.0, ruffle.rs.",
-    "UI music" to "“Awestruck”.",
+    "UI music" to "“Awestruck” by isaiah658.",
     "Pause menu music" to "“Underwater Ambient Pad” by isaiah658.",
     "Menu sounds" to "Interface SFX Pack 1 by obsydianx (CC0), trimmed by the ARMSX2 team.",
     "From ARMSX2" to "Touch control sprites, the in-game menu, battery indicator, custom driver manager, Discord presence and controller focus ring, by the ARMSX2 team.",

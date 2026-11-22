@@ -19,7 +19,7 @@ import androidx.compose.runtime.mutableStateOf
  * launcher (a game starting, the app going to the background) fades out and pauses in
  * place; coming back fades in from the same spot.
  *
- * Track: "Awestruck".
+ * Track: "Awestruck" by isaiah658.
  */
 object UiMusic {
     private const val FADE_IN_MS = 2000L
