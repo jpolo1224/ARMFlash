@@ -409,7 +409,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
         if (winApp != null) {
             if (!com.armsx.flashpoint.win.WinRuntime(ctx).installed) {
-                status = "Windows support is not installed yet."
+                status = "This game needs Windows support: install it in Config, under Windows Players."
                 return@launch
             }
             val id = com.armsx.flashpoint.win.SupportPacks.idFor(winApp)

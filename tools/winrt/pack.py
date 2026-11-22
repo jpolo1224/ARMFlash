@@ -4,13 +4,15 @@
   r/  the relocated Linux base (glibc, Wine), from relocate.py's output tar
   x/  the X server: Xvfb, the libraries it loads (found by following DT_NEEDED) and xkb data
 
-usage: pack.py <relocated.tar> <x tree> <out.tar.zst> <llvm-readelf>
+usage: pack.py <rootfs.tar> <relocated.tar> <x tree> <out.tar.zst> <llvm-readelf>
+  rootfs.tar is the base system as published; relocated.tar holds relocate.py's rewritten
+  files, which replace their originals.
 Needs the `zstandard` module. Prints the SHA-256 and size for the download manifest.
 """
 import hashlib, io, os, subprocess, sys, tarfile
 import zstandard
 
-rel_tar, xdir, out, readelf = sys.argv[1:5]
+base_tar, rel_tar, xdir, out, readelf = sys.argv[1:6]
 
 def needed(path):
     o = subprocess.run([readelf, "-d", path], capture_output=True, text=True).stdout
@@ -37,13 +39,20 @@ keep.add("share")
 
 cctx = zstandard.ZstdCompressor(level=19, threads=-1)
 with open(out, "wb") as fh, cctx.stream_writer(fh) as zw, tarfile.open(fileobj=zw, mode="w|") as tw:
-    with tarfile.open(rel_tar) as src:
-        for m in src:
-            name = m.name.lstrip("./")
-            if not name or name.split("/")[0] in ("home", "tmp", "ld"):
-                continue
-            m.name = "r/" + name
-            tw.addfile(m, src.extractfile(m) if m.isfile() else None)
+    def norm(n):
+        return n[2:] if n.startswith("./") else n.lstrip("/")
+    with tarfile.open(rel_tar) as rel:
+        replaced = {norm(m.name) for m in rel.getmembers()}
+    for path, skip in ((base_tar, replaced), (rel_tar, set())):
+        with tarfile.open(path) as src:
+            for m in src:
+                name = norm(m.name)
+                if not name or name in skip or name.split("/")[0] in ("home", "tmp", "ld"):
+                    continue
+                m.name = "r/" + name
+                if m.islnk():
+                    m.linkname = "r/" + norm(m.linkname)
+                tw.addfile(m, src.extractfile(m) if m.isfile() else None)
     for rel in sorted(keep):
         p = os.path.join(xdir, rel)
         ti = tw.gettarinfo(p, "x/" + rel)

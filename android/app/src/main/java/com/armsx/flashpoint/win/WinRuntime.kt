@@ -23,7 +23,38 @@ class WinRuntime(private val ctx: Context) {
     val screenFile = File(xdir, "tmp/Xvfb_screen0")
     val socket = File(xdir, "tmp/.X11-unix/X$DISPLAY_NO")
     private var xServer: Process? = null
+    /** The audio server's socket name (abstract namespace), one per game process. */
+    val audioName = "flasharm.audio.${android.os.Process.myPid()}"
     private var wine: Process? = null
+
+    /**
+     * Install the runtime archive (tools/winrt/pack.py's winrt-N.tar.zst) from [src], checking
+     * its SHA-256 when [sha256] is given. The Wine prefix (r/home) is kept.
+     */
+    fun install(src: java.io.InputStream, sha256: String?, progress: (String) -> Unit): Boolean {
+        val tmp = File(ctx.cacheDir, "winrt.tar.zst")
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        progress("Copying…")
+        src.use { ins ->
+            tmp.outputStream().use { out ->
+                val buf = ByteArray(1 shl 16)
+                var total = 0L
+                while (true) {
+                    val n = ins.read(buf); if (n < 0) break
+                    out.write(buf, 0, n); md.update(buf, 0, n); total += n
+                    if (total % (8 shl 20) < n) progress("Copying… ${total shr 20} MB")
+                }
+            }
+        }
+        val got = md.digest().joinToString("") { "%02x".format(it) }
+        if (sha256 != null && !got.equals(sha256, ignoreCase = true)) { tmp.delete(); progress("The file is damaged (checksum)."); return false }
+        progress("Unpacking…")
+        val ok = runCatching { com.armsx.flashpoint.core.FpCore.untarZst(tmp.path, ctx.dataDir.path) }
+            .onFailure { progress("Unpacking failed: ${it.message}") }.isSuccess
+        tmp.delete()
+        if (ok) File(root, ".flasharm-runtime").writeText(got)
+        return ok && installed
+    }
 
     /** The base system and X server are in place. */
     val installed: Boolean
@@ -46,6 +77,10 @@ class WinRuntime(private val ctx: Context) {
             // This glibc's System V shared memory asks a helper socket named here; with nothing
             // listening, shmget fails cleanly and Wine uses plain X images (unset, it crashes).
             "ANDROID_SYSVSHM_SERVER" to "${root.path}/tmp/.sysvshm",
+            // Sound: libasound loads FlashARM's plugin (shipped in the APK) for the base
+            // system's "android_aserver" device, which streams to [AudioServer].
+            "ALSA_PLUGIN_DIR" to lib,
+            "FLASHARM_AUDIO" to audioName,
         )
 
     private fun link(target: String, at: File) {
@@ -147,6 +182,9 @@ class WinRuntime(private val ctx: Context) {
 
     companion object {
         const val TAG = "FlashARMWin"
+        /** Where the runtime downloads from (FlashARM's GitHub releases), once it is published. */
+        const val RUNTIME_URL = ""
+        const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"
         const val DISPLAY_NO = 1
         private const val SIGSTOP = 19
         private const val SIGCONT = 18

@@ -183,6 +183,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             DiscordSection()
         }
 
+        Section("Windows Players") {
+            WindowsSupportRow()
+        }
+
         Section("Advanced") {
             Action("Optimize Database", "Run maintenance tasks to increase database performance and reduce size.", "Optimize") {
                 scope.launch {
@@ -555,6 +559,44 @@ private fun ShaderPackRow() {
                 busy = if (ok) null else "Failed, try again"
                 packs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.listInstalled(ctx).map { it.name } }
             }
+        }
+    }
+}
+
+
+/**
+ * The Windows player runtime (Wine, Box64's libraries, the virtual screen) that Shockwave, Unity,
+ * Java, Flash Player and the other support-pack players need: its state, and installing it from
+ * a downloaded winrt .tar.zst file.
+ */
+@Composable
+private fun WindowsSupportRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val rt = remember { com.armsx.flashpoint.win.WinRuntime(ctx) }
+    var installed by remember { mutableStateOf(rt.installed) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = "Starting…"
+        scope.launch {
+            val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val ins = ctx.contentResolver.openInputStream(uri) ?: return@withContext false
+                rt.install(ins, com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256) { busy = it }
+            }
+            installed = rt.installed
+            busy = if (ok) null else (busy ?: "Install failed")
+        }
+    }
+    ConfigRow(
+        "Windows support",
+        if (installed) "Installed. Shockwave, Unity, Java, Flash Player and the other Windows players can run."
+        else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players.",
+    ) {
+        Chip(busy ?: if (installed) "Reinstall from file" else "Install from file", on = !installed) {
+            if (busy == null) pick.launch(arrayOf("*/*"))
         }
     }
 }

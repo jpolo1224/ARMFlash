@@ -88,8 +88,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         override fun exit() = quit()
         override fun frames(): Long = frames
+        override val hasVolume get() = true
+        override fun setVolume(v: Float) { audio?.volume = v }
         override fun menuOpen(open: Boolean) {
             screen?.onMenu(open)
+            audio?.pause(open)
             Thread { rt.setPaused(open) }.start()
         }
         override fun display(scale: String, quality: String) { scaleMode = scale }
@@ -171,6 +174,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             )
             intent.getStringArrayExtra(GameActivity.EXTRA_ZIPS).orEmpty().forEach { FpCore.mount(it) }
         } catch (e: Exception) { say("Game server failed: ${e.message}"); return }
+        audio = runCatching { AudioServer(rt.audioName).also { it.volume = com.armsx.flashpoint.game.GamePrefs.volume.floatValue } }
+            .onFailure { android.util.Log.w(WinRuntime.TAG, "audio: ${it.message}") }.getOrNull()
         say("Starting the virtual screen…")
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
@@ -315,6 +320,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun program() = (intent.getStringExtra(EXTRA_APP) ?: com.armsx.flashpoint.ui.DEFAULT_FLASH_PLAYER).replace('/', '\\')
 
     private var restarting = false
+    @Volatile private var audio: AudioServer? = null
 
     override fun surfaceCreated(h: SurfaceHolder) { holder = h }
     override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) { holder = h }
@@ -355,6 +361,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         screen?.onDestroy()
         x?.close()
         rt.stopAll()
+        audio?.close()
         super.onDestroy()
         if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }
