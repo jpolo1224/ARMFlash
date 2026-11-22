@@ -686,9 +686,14 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
     }
     SectionCard("Controller") {
-        MenuCycleRow("Left stick", if (st.layout.leftStickCursor) "Mouse cursor" else "Arrow keys") {
-            st.layout = st.layout.copy(leftStickCursor = !st.layout.leftStickCursor); host.save(false)
+        MenuCycleRow("Mouse cursor", if (st.layout.mouseStick == "left") "Left stick" else "Right stick") {
+            st.layout = st.layout.copy(mouseStick = if (st.layout.mouseStick == "left") "right" else "left"); host.save(false)
         }
+        Text(
+            "The other stick works like the D-pad (arrow keys).",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+        )
         Spacer(Modifier.height(6.dp))
         PAD_BUTTONS.forEach { (code, name) ->
             MenuCycleRow(name, keyName(st.layout.pad[code])) { st.padPick = code }

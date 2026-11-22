@@ -92,8 +92,11 @@ class XClient private constructor(private val sock: LocalSocket) {
     fun keycode(keysym: Int): Int? = keysymToCode[keysym]
 
     /** Mapped top-level windows, largest first. */
-    fun windows(): List<Pair<Int, Rect>> {
-        send(le(8).put(15).put(0).putShort(2).putInt(root))
+    fun windows(): List<Pair<Int, Rect>> = children(root)
+
+    /** Mapped child windows of [parent] (geometry relative to it), largest first. */
+    fun children(parent: Int): List<Pair<Int, Rect>> {
+        send(le(8).put(15).put(0).putShort(2).putInt(parent))
         val r = reply() ?: return emptyList()
         val n = r.getShort(16).toInt() and 0xffff
         val kids = (0 until n).map { r.getInt(32 + it * 4) }

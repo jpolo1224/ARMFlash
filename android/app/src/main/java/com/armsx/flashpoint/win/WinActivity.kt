@@ -108,6 +108,15 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
         surface = SurfaceView(this).apply { isFocusable = true; isFocusableInTouchMode = true }
         surface.holder.addCallback(this)
+        // Direct touch: the finger is the mouse (the overlay handles touchpad and point & click).
+        surface.setOnTouchListener { _, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { input.moveCursor(ev.x, ev.y); input.mouseDown() }
+                MotionEvent.ACTION_MOVE -> input.moveCursor(ev.x, ev.y)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { input.moveCursor(ev.x, ev.y); input.mouseUp() }
+            }
+            true
+        }
         status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 16f; gravity = Gravity.CENTER
             text = "Starting…"
@@ -173,13 +182,55 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                 val c = x ?: return@submit
                 val w = runCatching { c.windows().firstOrNull() }.getOrNull()
                 if (w != null) {
-                    val r = w.second
-                    crop = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
-                    if (w.first != gameWin) { gameWin = w.first; c.focus(w.first); say("") }
+                    // The game's client area: Wine draws it as the largest child window, without
+                    // the title bar and menu (Flash Player's File / View / Control / Help).
+                    val top = w.second
+                    val inner = runCatching { c.children(w.first).firstOrNull()?.second }.getOrNull()
+                    val r = if (inner != null && inner.w * inner.h * 2 > top.w * top.h)
+                        XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
+                    val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
+                    if (w.first != gameWin) { gameWin = w.first; content = Rect(); c.focus(w.first); say("") }
+                    crop = trim(win)
                 }
             }.get()
             Thread.sleep(500)
         }
+    }
+
+    // What the game has drawn so far inside its window (grows, never shrinks, per window).
+    private var content = Rect()
+    @Volatile private var pixels: IntBuffer? = null
+    @Volatile private var stride = 0
+
+    /**
+     * The part of [win] the game draws in. Without a window manager, Wine opens windows at a
+     * default size and players like Flash's projector draw their stage in one corner of it, under
+     * a menu bar: keep the rows and columns that are mostly not the window's background colour.
+     */
+    private fun trim(win: Rect): Rect {
+        val px = pixels ?: return win
+        if (win.width() < 32 || win.height() < 32) return win
+        // The background: the commonest colour just inside the bottom-right corner (inside the
+        // window's frame, which Wine draws in a different colour).
+        val bg = (6..14 step 2).flatMap { dy -> (6..14 step 2).map { dx -> px.get((win.bottom - dy) * stride + win.right - dx) and 0xffffff } }
+            .groupingBy { it }.eachCount().maxBy { it.value }.key
+        val step = 2
+        fun busy(n: Int, of: Int) = n * step * 4 > of // over a quarter not background
+        var top = -1; var bottom = -1; var left = -1; var right = -1
+        for (y in win.top until win.bottom step step) {
+            var n = 0
+            for (x in win.left until win.right step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
+            if (busy(n, win.width())) { if (top < 0) top = y; bottom = y + step }
+        }
+        for (x in win.left until win.right step step) {
+            var n = 0
+            for (y in win.top until win.bottom step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
+            if (busy(n, win.height())) { if (left < 0) left = x; right = x + step }
+        }
+        if (top < 0 || left < 0) return if (content.isEmpty) win else content
+        val found = Rect(left, top, right.coerceAtMost(win.right), bottom.coerceAtMost(win.bottom))
+        if (content.isEmpty) content = found else content.union(found)
+        return Rect(content)
     }
 
     /** Copy the game's window from the X server's framebuffer file to the screen. */
@@ -195,6 +246,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         map.position(header + colours * 12)
         val pixels: IntBuffer = map.slice().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
         val stride = bpl / 4
+        this.stride = stride
+        this.pixels = pixels.duplicate()
         var bmp: Bitmap? = null
         var row = IntArray(0)
         var out = IntArray(0)
@@ -318,6 +371,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             if (buttons and button != 0) return
             buttons = buttons or button
             val (gx, gy) = toX(cursorX, cursorY)
+            android.util.Log.i(WinRuntime.TAG, "press at $gx,$gy (view $cursorX,$cursorY)")
             xq.execute { this@WinActivity.x?.let { it.motion(gx, gy); it.button(which(button), true) } }
         }
 

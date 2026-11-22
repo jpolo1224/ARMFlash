@@ -182,14 +182,11 @@ class PadMapper(
         val ly = ev.getAxisValue(MotionEvent.AXIS_Y)
         val rx = ev.getAxisValue(MotionEvent.AXIS_Z)
         val ry = ev.getAxisValue(MotionEvent.AXIS_RZ)
-        if (overlay.layout.leftStickCursor) {
-            aimX = rx + lx; aimY = ry + ly
-            applyMask("stick", stickMask, 0); stickMask = 0
-        } else {
-            val m = stickDirections(lx, ly, stickMask)
-            applyMask("stick", stickMask, m); stickMask = m
-            aimX = rx; aimY = ry
-        }
+        // One stick moves the mouse, the other is a second D-pad (the arrow keys).
+        val leftMouse = overlay.layout.mouseStick == "left"
+        val m = if (leftMouse) stickDirections(rx, ry, stickMask) else stickDirections(lx, ly, stickMask)
+        applyMask("stick", stickMask, m); stickMask = m
+        if (leftMouse) { aimX = lx; aimY = ly } else { aimX = rx; aimY = ry }
         // Analog triggers on pads that report them as axes instead of L2/R2 keys.
         val t = (if (ev.getAxisValue(MotionEvent.AXIS_RTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_GAS) > 0.5f) 1 else 0) or
             (if (ev.getAxisValue(MotionEvent.AXIS_LTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_BRAKE) > 0.5f) 2 else 0)

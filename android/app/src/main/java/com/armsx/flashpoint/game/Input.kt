@@ -169,9 +169,10 @@ data class TouchLayout(
     val buttons: List<TouchButton> = DEFAULT_BUTTONS,
     /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*). */
     val pad: Map<Int, Int> = DEFAULT_PAD,
-    /** Left stick drives the mouse cursor (the default: most Flash games are point and click,
-     *  and the D-pad still sends the arrow keys); off, it sends the arrow keys too. */
+    /** Old setting (both sticks moved the cursor); kept so saved layouts still read. */
     val leftStickCursor: Boolean = true,
+    /** Which stick moves the mouse cursor, "right" or "left"; the other sends the arrow keys. */
+    val mouseStick: String = "right",
     /**
      * When the touch keys show (ARMSX2's on-screen controls setting): "auto" hides them while a
      * controller is attached, "always", "off", or "timed", which hides them [hideAfter] seconds
