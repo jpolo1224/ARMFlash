@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -230,7 +231,7 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
                     }
                 }),
             ) {
-                Keycap(label, down, round = !wide && b.kind != "mouse", sizeDp = b.size)
+                Keycap(label, down, round = false, sizeDp = b.size)
             }
         }
     }
@@ -270,50 +271,48 @@ private fun Modifier.androidx_fillH(f: Float) = this.then(Modifier.fillMaxHeight
 private fun Modifier.androidx_fillW(f: Float) = this.then(Modifier.fillMaxWidth(f))
 
 /**
- * A key in the same material as the D-pad and stick sprites: their dark grain as the face,
- * a dark rim under it that the face sinks into when pressed, a faint top light, and a plain
- * label. Round for action keys, a wide rounded key for Space, Enter and the modifiers.
+ * A key built the way the D-pad sprites are drawn, at the same pixel scale (one sprite pixel
+ * = 1.3 dp): a black outline, a grained face (the arm sprite's own grain), one lighter row
+ * along the top and a two-pixel dark lip along the bottom. Pressed, the face drops into the
+ * lip and darkens, as the pressed sprites do. Letters get a square key, words a wide one.
  */
 @Composable
-private fun Keycap(label: String, pressed: Boolean, round: Boolean, sizeDp: Float) {
+private fun Keycap(label: String, pressed: Boolean, @Suppress("UNUSED_PARAMETER") round: Boolean, sizeDp: Float) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val grain = remember {
-        val src = android.graphics.BitmapFactory.decodeResource(ctx.resources, com.armsx.flashpoint.R.drawable.pad_stick_base)
-        // The opaque middle of the stick base: its grain, without the round edge.
-        val c = android.graphics.Bitmap.createBitmap(src, src.width / 4, src.height / 4, src.width / 2, src.height / 2)
+    val density = LocalDensity.current
+    val u = with(density) { 1.3.dp.toPx() }
+    val grain = remember(u) {
+        val src = android.graphics.BitmapFactory.decodeResource(ctx.resources, com.armsx.flashpoint.R.drawable.pad_dpad_left)
+        val face = android.graphics.Bitmap.createBitmap(src, 10, 8, 25, 22)
+        val scaled = android.graphics.Bitmap.createScaledBitmap(face, (25 * u).roundToInt(), (22 * u).roundToInt(), true)
         androidx.compose.ui.graphics.ShaderBrush(
-            androidx.compose.ui.graphics.ImageShader(c.asImageBitmap(), androidx.compose.ui.graphics.TileMode.Mirror, androidx.compose.ui.graphics.TileMode.Mirror),
+            androidx.compose.ui.graphics.ImageShader(scaled.asImageBitmap(), androidx.compose.ui.graphics.TileMode.Mirror, androidx.compose.ui.graphics.TileMode.Mirror),
         )
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val depth = size.height * 0.07f
-            val sink = if (pressed) depth * 0.75f else 0f
-            val r = if (round) size.minDimension / 2 else size.height * 0.26f
-            val faceH = size.height - depth
-            val cr = androidx.compose.ui.geometry.CornerRadius(r, r)
-            // Rim / side of the key.
-            drawRoundRect(Color(0xFF070708), topLeft = Offset(0f, depth), size = androidx.compose.ui.geometry.Size(size.width, faceH), cornerRadius = cr)
-            // Face.
-            val face = androidx.compose.ui.geometry.RoundRect(0f, sink, size.width, sink + faceH, cr)
-            val path = Path().apply { addRoundRect(face) }
-            drawPath(path, grain)
-            drawPath(path, androidx.compose.ui.graphics.Brush.verticalGradient(
-                listOf(Color(0x24FFFFFF), Color(0x00FFFFFF), Color(0x40000000)), startY = sink, endY = sink + faceH,
-            ))
-            if (pressed) drawPath(path, Color(0x55000000))
-            drawPath(path, Color(0xFF000000), style = Stroke(width = 2.2f))
-            // Thin light on the upper edge.
-            drawRoundRect(
-                Color(if (pressed) 0x14FFFFFF else 0x33FFFFFF), topLeft = Offset(2f, sink + 2f),
-                size = androidx.compose.ui.geometry.Size(size.width - 4f, faceH - 4f), cornerRadius = cr, style = Stroke(width = 1.2f),
-            )
+            val r = minOf(6.5f * u, size.height / 2)
+            fun rr(l: Float, t: Float, rgt: Float, b: Float, rad: Float) =
+                Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(l, t, rgt, b, androidx.compose.ui.geometry.CornerRadius(rad, rad))) }
+            // Outline.
+            drawPath(rr(0f, 0f, size.width, size.height, r), Color.Black)
+            val drop = if (pressed) 2f * u else 0f
+            val faceBottom = size.height - u - (if (pressed) 0f else 2f * u)
+            // Lip: the key's lower edge, seen below the face.
+            if (!pressed) drawPath(rr(u, u + 2f * u, size.width - u, size.height - u, r - u), Color(0xFF141414))
+            val face = rr(u, u + drop, size.width - u, faceBottom + drop.coerceAtMost(0f), r - u)
+            drawPath(face, grain)
+            if (pressed) drawPath(face, Color(0x38000000))
+            else clipPath(face) {
+                drawRect(Color(0xFF444444), topLeft = Offset(0f, u), size = androidx.compose.ui.geometry.Size(size.width, u))
+            }
         }
-        val shift = if (pressed) (sizeDp * 0.05f).dp else 0.dp
         Text(
-            label, color = if (pressed) Color(0xFF9A9AA0) else KeyLabel, fontWeight = FontWeight.Bold,
-            fontSize = (sizeDp / if (label.length > 2) 4.6f else 3.1f).coerceIn(11f, 26f).sp, letterSpacing = 0.5.sp,
-            modifier = Modifier.offset(y = shift - (sizeDp * 0.035f).dp),
+            label,
+            color = if (pressed) Color(0xFF8C8C90) else Color(0xFFB4B4B8),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (sizeDp * if (label.length > 2) 0.24f else 0.36f).coerceIn(11f, 24f).sp,
+            modifier = Modifier.offset(y = if (pressed) 1.3.dp else (-1.3).dp),
         )
     }
 }
