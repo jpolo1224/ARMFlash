@@ -5,6 +5,7 @@
 
 pub mod core;
 pub mod sync;
+pub mod unpack;
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -66,6 +67,9 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOnDisk(path: JString), game_d
     => core::mark_data_on_disk(game_data_id, &path));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOffDisk(), game_data_id: jlong
     => core::mark_data_off_disk(game_data_id));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackTarZst(src: JString, dest: JString) => unpack::tar_zst(&src, &dest));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackZip(src: JString, dest: JString) => unpack::zip(&src, &dest));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_unpackProgress() => unpack::progress());
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addPlaytime(id: JString), seconds: jlong
     => core::add_playtime(&id, seconds));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addSeconds(id: JString), seconds: jlong

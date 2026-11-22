@@ -143,7 +143,12 @@ class GameActivity : ComponentActivity() {
                 userAgentString = userAgentString.replace("; wv", "").replace(Regex("""Version/\d+(\.\d+)* """), "")
             }
             webViewClient = Client(this@GameActivity).apply { site = Launch.siteOf(url) }
+            // Links a game opens in a new tab or window (sponsor and "more games" links,
+            // window.open) are dropped, like a blocked pop-up: without this the WebView loads
+            // them in place of the game.
+            settings.setSupportMultipleWindows(true)
             webChromeClient = object : WebChromeClient() {
+                override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean = false
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                     android.util.Log.i("fpgame", "${m.messageLevel()} ${m.message()} @${m.sourceId()}:${m.lineNumber()}")
                     return true

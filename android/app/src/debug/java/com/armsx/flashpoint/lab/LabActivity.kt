@@ -28,6 +28,13 @@ class LabActivity : Activity() {
 
     private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
+        // A browser game from a data pack pushed to home/games/web.zip.
+        if (step == "web") {
+            val r = File(dataDir, "r").path
+            startActivity(com.armsx.flashpoint.game.GameActivity.intent(this, "lab", com.armsx.flashpoint.game.Runner.WEB,
+                intent.getStringExtra("url") ?: return finish(), listOf("$r/home/games/web.zip"), "", "", "Lab"))
+            return finish()
+        }
         // The real game screen on the test game (Lava Lamp, the support pack in drive_c).
         if (step == "game") {
             val r = File(dataDir, "r").path
