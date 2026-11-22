@@ -30,7 +30,7 @@ object FpCore {
     @JvmStatic private external fun platforms(): String
     @JvmStatic private external fun markDataOnDisk(path: String, gameDataId: Long): String
     @JvmStatic private external fun addPlaytime(id: String, seconds: Long): String
-    @JvmStatic private external fun proxyStart(htdocs: String, legacy: String, port: Int, cache: Boolean): String
+    @JvmStatic private external fun proxyStart(htdocs: String, legacy: String, port: Int, cache: Boolean, live: Boolean): String
     @JvmStatic private external fun proxyMount(zip: String): String
     @JvmStatic private external fun proxyUnmountAll(): String
     @JvmStatic private external fun syncStart(base: String, after: String): String
@@ -75,8 +75,8 @@ object FpCore {
     }
 
     /** Starts the game server (once per process). Returns its port. */
-    fun startServer(htdocs: String, legacyBase: String, cacheRemote: Boolean, port: Int = 0): Int =
-        (check(proxyStart(htdocs, legacyBase, port, cacheRemote)) as JsonObject)["port"]!!.jsonPrimitive.int
+    fun startServer(htdocs: String, legacyBase: String, cacheRemote: Boolean, liveWeb: Boolean, port: Int = 0): Int =
+        (check(proxyStart(htdocs, legacyBase, port, cacheRemote, liveWeb)) as JsonObject)["port"]!!.jsonPrimitive.int
 
     fun mount(zip: String) {
         check(proxyMount(zip))

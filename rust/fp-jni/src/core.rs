@@ -229,11 +229,12 @@ fn proxy() -> &'static Mutex<Option<Proxy>> {
 }
 
 /// Start (or reconfigure) the game server. Returns the port.
-pub fn proxy_start(port: u16, htdocs: &str, legacy_base: &str, cache_remote: bool) -> Result<u16, String> {
+pub fn proxy_start(port: u16, htdocs: &str, legacy_base: &str, cache_remote: bool, live_web: bool) -> Result<u16, String> {
     let cfg = Config {
         htdocs: (!htdocs.is_empty()).then(|| htdocs.into()),
         legacy_base: (!legacy_base.is_empty()).then(|| legacy_base.to_string()),
         cache_remote,
+        live_web,
     };
     let mut p = proxy().lock().map_err(|_| "proxy lock poisoned")?;
     if let Some(running) = p.as_ref() {

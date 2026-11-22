@@ -98,6 +98,7 @@ class GameActivity : ComponentActivity() {
                 htdocs = intent.getStringExtra(EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
+                liveWeb = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true),
             )
             zips.forEach { FpCore.mount(it) }
             p
@@ -122,6 +123,10 @@ class GameActivity : ComponentActivity() {
                 loadWithOverviewMode = true
                 setSupportZoom(false)
                 cacheMode = WebSettings.LOAD_NO_CACHE
+                // Look like Chrome for Android, not a WebView: old game pages read "Version/4.0"
+                // and "; wv" as Android's stock browser and refuse to start ("Please launch
+                // Google Chrome", Ninja Painter 2 and other Spil/Silvergames titles).
+                userAgentString = userAgentString.replace("; wv", "").replace(Regex("""Version/\d+(\.\d+)* """), "")
             }
             webViewClient = Client(this@GameActivity)
             webChromeClient = object : WebChromeClient() {
@@ -153,6 +158,7 @@ class GameActivity : ComponentActivity() {
         // Ruffle polyfills <embed>/<object> Flash on any page the WebView loads.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.POLYFILL, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(web, RufflePage.EMBED_FRAMES, setOf("*"))
         }
 
         val target = when (runner) {
@@ -287,6 +293,45 @@ object RufflePage {
           window.RufflePlayer.config = Object.assign($CONFIG, window.__fpmDisplay || {});
           var s = document.createElement('script'); s.src = '/__fpm/ruffle/ruffle.js';
           (document.head || document.documentElement).appendChild(s);
+        })();
+    """.trimIndent()
+
+    /**
+     * Pages that show a web page through `<embed src="index.html">` (or `<object data=...>`).
+     * The desktop launcher's browser draws those like an iframe; Android's WebView, which has no
+     * plugins, draws nothing, so the game sat on a black page (Phineas and Ferb: Drusselstein
+     * Driving Test, and about 60 other HTML5 entries). Each such element becomes an iframe with
+     * the same size and styling. Flash embeds are left for Ruffle.
+     */
+    val EMBED_FRAMES = """
+        (function(){
+          if (window.__fpmFrames) return; window.__fpmFrames = true;
+          var page = /\.(x?html?|php)([?#].*)?$/i;
+          function fix(el) {
+            if (el.__fpmDone) return; el.__fpmDone = true;
+            var src = el.getAttribute(el.tagName === 'OBJECT' ? 'data' : 'src') || '';
+            var type = (el.getAttribute('type') || '').toLowerCase();
+            if (!(type.indexOf('html') >= 0 || (!type && page.test(src)))) return;
+            var f = document.createElement('iframe');
+            f.src = src;
+            ['width', 'height', 'style', 'class', 'id', 'name'].forEach(function(a) {
+              var v = el.getAttribute(a); if (v != null) f.setAttribute(a, v);
+            });
+            f.setAttribute('frameborder', '0');
+            f.setAttribute('allow', 'autoplay; fullscreen; gamepad');
+            if (!f.style.border) f.style.border = '0';
+            el.parentNode.replaceChild(f, el);
+          }
+          function scan(root) {
+            (root.querySelectorAll ? root.querySelectorAll('embed, object') : []).forEach(fix);
+          }
+          new MutationObserver(function(ms) {
+            ms.forEach(function(m) { m.addedNodes.forEach(function(n) {
+              if (n.nodeType !== 1) return;
+              if (n.tagName === 'EMBED' || n.tagName === 'OBJECT') fix(n); else scan(n);
+            }); });
+          }).observe(document.documentElement || document, { childList: true, subtree: true });
+          document.addEventListener('DOMContentLoaded', function() { scan(document); });
         })();
     """.trimIndent()
 

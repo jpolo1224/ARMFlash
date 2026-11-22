@@ -80,6 +80,11 @@ class Library(private val ctx: Context) {
         get() = prefs.getBoolean("legacyOnline", true)
         set(v) = prefs.edit().putBoolean("legacyOnline", v).apply()
 
+    /** Last resort for files in neither the game's data nor Legacy: the original site (see fp-proxy). */
+    var liveWeb: Boolean
+        get() = prefs.getBoolean("liveWeb", true)
+        set(v) = prefs.edit().putBoolean("liveWeb", v).apply()
+
     val legacyBase: String get() = if (legacyOnline) DEFAULT_LEGACY else ""
 
     init {

@@ -34,6 +34,10 @@ pub struct Config {
     pub legacy_base: Option<String>,
     /// Save files fetched from the remote Legacy server into `htdocs`.
     pub cache_remote: bool,
+    /// Last resort for a file in neither the game's data nor Legacy: the original site, if it
+    /// still serves it (the desktop game server's live-internet fallback). Some curations rely
+    /// on it, such as Disney's HTML5 games, whose start-up script was never archived.
+    pub live_web: bool,
 }
 
 /// Where a request was found.

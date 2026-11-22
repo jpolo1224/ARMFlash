@@ -102,6 +102,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             ConfigRow("Legacy Files Online", "Fetch Legacy game files from Flashpoint's server when they are not on the device.") {
                 Switch(legacy, { legacy = it; lib.legacyOnline = it })
             }
+            var live by remember { mutableStateOf(lib.liveWeb) }
+            ConfigRow("Live Web Fallback", "When a file is in neither the game's data nor Legacy, ask the site it originally came from. Some games need this to start.") {
+                Switch(live, { live = it; lib.liveWeb = it })
+            }
             Action("Update Game Info", "Last updated: ${vm.lastSync.take(10).ifBlank { "never" }}", "Update") { vm.syncDatabase() }
             Action("Import Database", "Replace the game database with a flashpoint.sqlite from a desktop install.", "Import", onImport)
         }

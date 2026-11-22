@@ -225,33 +225,23 @@ fn client() -> &'static Client<Https, Empty<Bytes>> {
     })
 }
 
-/// Fetch from the remote Legacy server, if configured, and cache into htdocs.
+/// Fetch from the remote Legacy server, then (if allowed) the original site, and cache into htdocs.
 async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Bytes, Option<HeaderValue>)> {
     let cfg = srv.config();
-    let base = cfg.legacy_base.as_deref()?;
     if key.dir {
         return None;
     }
     let rel = utf8_percent_encode(&key.htdocs_rel(), PATH_ESC).to_string();
-    let mut url = format!("{}{}", if base.ends_with('/') { base.to_string() } else { format!("{base}/") }, rel);
-    if let Some(q) = query.filter(|q| !q.is_empty()) {
-        url.push('?');
-        url.push_str(q);
+    let q = query.filter(|q| !q.is_empty()).map(|q| format!("?{q}")).unwrap_or_default();
+    let mut found = None;
+    if let Some(base) = cfg.legacy_base.as_deref() {
+        let url = format!("{}{}{q}", if base.ends_with('/') { base.to_string() } else { format!("{base}/") }, rel);
+        found = fetch(&url, "legacy").await;
     }
-    let uri: hyper::Uri = url.parse().ok()?;
-    let resp = match client().get(uri).await {
-        Ok(r) => r,
-        Err(e) => {
-            log::warn!("legacy fetch failed: {url}: {e}");
-            return None;
-        }
-    };
-    if resp.status() != StatusCode::OK {
-        log::info!("legacy miss {} {url}", resp.status());
-        return None;
+    if found.is_none() && cfg.live_web && !tracker(&rel) {
+        found = fetch(&format!("http://{rel}{q}"), "live").await;
     }
-    let ct = resp.headers().get(header::CONTENT_TYPE).cloned();
-    let bytes = resp.into_body().collect().await.ok()?.to_bytes();
+    let (bytes, ct) = found?;
     if cfg.cache_remote {
         if let Some(root) = cfg.htdocs {
             let dest = root.join(key.htdocs_rel());
@@ -267,8 +257,50 @@ async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Byt
             });
         }
     }
-    log::info!("legacy hit {url} ({} bytes)", bytes.len());
     Some((bytes, ct))
+}
+
+/// Analytics and ad beacons old games still call: never sent to the live web.
+fn tracker(rel: &str) -> bool {
+    const HOSTS: &[&str] = &[
+        "scorecardresearch.com", "google-analytics.com", "googletagmanager.com", "doubleclick.net",
+        "cloudflareinsights.com", "quantserve.com", "omtrdc.net", "2o7.net", "hotjar.com", "facebook.net",
+        "appspot.com/cto/", "go.com/b/ss/",
+    ];
+    let r = rel.to_ascii_lowercase();
+    let host = r.split('/').next().unwrap_or("");
+    HOSTS.iter().any(|h| if h.contains('/') { r.contains(h) } else { host == *h || host.ends_with(&format!(".{h}")) })
+}
+
+/// GET a URL, following up to three redirects. `what` names the source in the log.
+async fn fetch(url: &str, what: &str) -> Option<(Bytes, Option<HeaderValue>)> {
+    let mut url = url.to_string();
+    for _ in 0..4 {
+        let uri: hyper::Uri = url.parse().ok()?;
+        let resp = match client().get(uri.clone()).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("{what} fetch failed: {url}: {e}");
+                return None;
+            }
+        };
+        if resp.status().is_redirection() {
+            let loc = resp.headers().get(header::LOCATION)?.to_str().ok()?.to_string();
+            url = if loc.starts_with("http") { loc } else {
+                format!("{}://{}{}", uri.scheme_str().unwrap_or("http"), uri.authority()?.as_str(), loc)
+            };
+            continue;
+        }
+        if resp.status() != StatusCode::OK {
+            log::info!("{what} miss {} {url}", resp.status());
+            return None;
+        }
+        let ct = resp.headers().get(header::CONTENT_TYPE).cloned();
+        let bytes = resp.into_body().collect().await.ok()?.to_bytes();
+        log::info!("{what} hit {url} ({} bytes)", bytes.len());
+        return Some((bytes, ct));
+    }
+    None
 }
 
 // ---- bodies ----------------------------------------------------------------------------
