@@ -170,6 +170,10 @@ data class TouchLayout(
     /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*). */
     val pad: Map<Int, Int> = DEFAULT_PAD,
     val stickMovesCursor: Boolean = false,
+    /** Display: "default" (the game decides), "fit", "stretch", "fill", "original". */
+    val scale: String = "default",
+    /** Flash quality: "low", "medium", "high", "best". */
+    val quality: String = "high",
 ) {
     companion object {
         val DEFAULT_BUTTONS = listOf(
@@ -201,6 +205,11 @@ data class TouchLayout(
 /** Layouts saved per game, falling back to the user's default, then the built-in one. */
 class LayoutStore(ctx: Context) {
     private val p = ctx.getSharedPreferences("touch", Context.MODE_PRIVATE)
+
+    /** Which edge the quick menu docks to (follows the person, not the game). */
+    var menuLeft: Boolean
+        get() = p.getBoolean("menuLeft", false)
+        set(v) = p.edit().putBoolean("menuLeft", v).apply()
 
     fun load(gameId: String): TouchLayout =
         (p.getString("game.$gameId", null) ?: p.getString("default", null))

@@ -63,9 +63,26 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /** Everything the overlay shows and edits. */
+/** What the overlay asks of the game screen it sits on. */
+interface OverlayHost {
+    val title: String
+    val runner: String
+    fun save(asDefault: Boolean)
+    fun keyboard()
+    fun restart()
+    fun exit()
+    /** The quick menu opened or closed: pause or resume the game. */
+    fun menuOpen(open: Boolean)
+    fun display(scale: String, quality: String)
+    var menuLeft: Boolean
+}
+
 class OverlayState(layout: TouchLayout) {
     var layout by mutableStateOf(layout)
     var menu by mutableStateOf(false)
+    var tab by mutableStateOf(MenuTab.SESSION)
+    /** Controller button being remapped (its keycode), while the key picker is open for it. */
+    var padPick by mutableStateOf<Int?>(null)
     var editing by mutableStateOf(false)
     var selected by mutableStateOf<Int?>(null)
     var picking by mutableStateOf(false)
@@ -75,7 +92,9 @@ class OverlayState(layout: TouchLayout) {
 private val Accent = Color(0xFF5CB531)
 
 @Composable
-fun GameOverlay(st: OverlayState, inj: GameInput, onSave: (asDefault: Boolean) -> Unit, onKeyboard: () -> Unit, onExit: () -> Unit) {
+fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
+    val onSave: (Boolean) -> Unit = host::save
+    androidx.compose.runtime.LaunchedEffect(st.menu) { host.menuOpen(st.menu) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
@@ -106,15 +125,16 @@ fun GameOverlay(st: OverlayState, inj: GameInput, onSave: (asDefault: Boolean) -
         }
 
         // Menu button, top right.
-        Box(
+        if (!st.menu) Box(
             Modifier.align(Alignment.TopEnd).padding(10.dp).size(40.dp).clip(CircleShape)
                 .background(Color(0x66000000)).clickable { st.menu = !st.menu; st.editing = false },
             contentAlignment = Alignment.Center,
         ) { Text("☰", color = Color.White, fontSize = 20.sp) }
 
-        if (st.menu) Menu(st, onSave, onKeyboard, onExit, Modifier.align(Alignment.TopEnd).padding(top = 56.dp, end = 10.dp))
+        if (st.menu) QuickMenu(st, host)
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
         if (st.picking) KeyPicker(st)
+        st.padPick?.let { PadKeyPicker(st, it, host) }
     }
 }
 
@@ -402,49 +422,16 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
 }
 
 @Composable
-private fun Panel(modifier: Modifier, content: @Composable () -> Unit) {
+internal fun Panel(modifier: Modifier, content: @Composable () -> Unit) {
     Column(modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xEE1C1C1E)).padding(12.dp)) { content() }
 }
 
 @Composable
-private fun Pill(label: String, on: Boolean = false, onClick: () -> Unit) {
+internal fun Pill(label: String, on: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.padding(3.dp).clip(RoundedCornerShape(6.dp)).background(if (on) Accent else Color(0xFF3A3A3E))
             .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp),
     ) { Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun Menu(st: OverlayState, onSave: (Boolean) -> Unit, onKeyboard: () -> Unit, onExit: () -> Unit, modifier: Modifier) {
-    Panel(modifier) {
-        Text("Pointer", color = Color.White, fontWeight = FontWeight.Black)
-        FlowRow {
-            listOf("direct" to "Direct touch", "touchpad" to "Touchpad", "point" to "Point & click").forEach { (m, label) ->
-                Pill(label, st.layout.mode == m) {
-                    st.layout = st.layout.copy(mode = m)
-                    if (m == "direct") st.cursor = null
-                    onSave(false)
-                }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        FlowRow {
-            Pill(if (st.layout.visible) "Hide keys" else "Show keys") { st.layout = st.layout.copy(visible = !st.layout.visible); onSave(false) }
-            Pill("Edit layout") { st.editing = true; st.menu = false; st.selected = null }
-            Pill("Keyboard") { st.menu = false; onKeyboard() }
-            Pill(if (st.layout.stickMovesCursor) "Left stick: cursor" else "Left stick: arrows") {
-                st.layout = st.layout.copy(stickMovesCursor = !st.layout.stickMovesCursor); onSave(false)
-            }
-        }
-        Text("Key opacity", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-        var op by remember { mutableFloatStateOf(st.layout.opacity) }
-        Slider(op, { op = it; st.layout = st.layout.copy(opacity = it) }, valueRange = 0.15f..1f, onValueChangeFinished = { onSave(false) })
-        Row(horizontalArrangement = Arrangement.SpaceBetween) {
-            Pill("Close menu") { st.menu = false }
-            Pill("Exit game", on = false, onClick = onExit)
-        }
-    }
 }
 
 @Composable

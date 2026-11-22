@@ -91,7 +91,7 @@ private fun App(vm: BrowseVm) {
                         UiMusic.pause()
                         val web = GameActivity.intent(
                             ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
-                            vm.library.htdocs.path, vm.library.legacyBase,
+                            vm.library.htdocs.path, vm.library.legacyBase, ready.game.title,
                         )
                         val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && vm.prefs2.flashPlayer.value == "native"
                         playLauncher.launch(if (native) com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web) else web)

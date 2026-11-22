@@ -47,6 +47,33 @@ class GameActivity : ComponentActivity() {
     private lateinit var overlay: OverlayState
     private lateinit var layouts: LayoutStore
     private var gameId = ""
+    private var displayScript: androidx.webkit.ScriptHandler? = null
+
+    private val host = object : OverlayHost {
+        override val title get() = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
+        override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
+        override fun keyboard() = showKeyboard()
+        override fun restart() = web.reload()
+        override fun exit() = quit()
+        override fun menuOpen(open: Boolean) {
+            if (open) { web.onPause(); web.pauseTimers() } else { web.resumeTimers(); web.onResume() }
+        }
+        override fun display(scale: String, quality: String) {
+            setDisplayScript(scale, quality)
+            web.reload()
+        }
+        override var menuLeft: Boolean
+            get() = layouts.menuLeft
+            set(v) { layouts.menuLeft = v }
+    }
+
+    /** Ruffle (web) reads its scale and quality from this, set before every page load. */
+    private fun setDisplayScript(scale: String, quality: String) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        displayScript?.remove()
+        displayScript = WebViewCompat.addDocumentStartJavaScript(web, RufflePage.displayJs(scale, quality), setOf("*"))
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,12 +134,7 @@ class GameActivity : ComponentActivity() {
         val ui = androidx.compose.ui.platform.ComposeView(this).apply {
             setContent {
                 val st = this@GameActivity.overlay
-                com.armsx.flashpoint.ui.FpTheme { GameOverlay(
-                    st, inj,
-                    onSave = { asDefault -> layouts.save(gameId, st.layout, asDefault) },
-                    onKeyboard = ::showKeyboard,
-                    onExit = ::quit,
-                ) }
+                com.armsx.flashpoint.ui.FpTheme { GameOverlay(st, inj, host) }
             }
         }
         setContentView(FrameLayout(this).apply {
@@ -120,6 +142,7 @@ class GameActivity : ComponentActivity() {
             addView(ui)
         })
         pad = PadMapper(inj, overlay) { web.width }
+        setDisplayScript(overlay.layout.scale, overlay.layout.quality)
         web.post { inj.moveCursor(web.width / 2f, web.height / 2f) }
 
         // Ruffle polyfills <embed>/<object> Flash on any page the WebView loads.
@@ -220,10 +243,12 @@ class GameActivity : ComponentActivity() {
         const val EXTRA_LEGACY = "legacy"
         const val EXTRA_GAME_ID = "gameId"
         const val EXTRA_SECONDS = "seconds"
+        const val EXTRA_TITLE = "title"
 
-        fun intent(ctx: Context, gameId: String, runner: Runner, url: String, zips: List<String>, htdocs: String, legacy: String) =
+        fun intent(ctx: Context, gameId: String, runner: Runner, url: String, zips: List<String>, htdocs: String, legacy: String, title: String = "") =
             Intent(ctx, GameActivity::class.java)
                 .putExtra(EXTRA_GAME_ID, gameId)
+                .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_RUNNER, runner.name)
                 .putExtra(EXTRA_URL, url)
                 .putExtra(EXTRA_ZIPS, zips.toTypedArray())
@@ -242,11 +267,23 @@ object RufflePage {
         (function(){
           if (window.__fpmRuffle) return; window.__fpmRuffle = true;
           window.RufflePlayer = window.RufflePlayer || {};
-          window.RufflePlayer.config = $CONFIG;
+          window.RufflePlayer.config = Object.assign($CONFIG, window.__fpmDisplay || {});
           var s = document.createElement('script'); s.src = '/__fpm/ruffle/ruffle.js';
           (document.head || document.documentElement).appendChild(s);
         })();
     """.trimIndent()
+
+    /** Scale mode and quality for Ruffle's web build, as a document-start script. */
+    fun displayJs(scale: String, quality: String): String {
+        val parts = mutableListOf("\"quality\":\"$quality\"")
+        when (scale) {
+            "fit" -> parts += listOf("\"scale\":\"showAll\"", "\"forceScale\":true")
+            "stretch" -> parts += listOf("\"scale\":\"exactFit\"", "\"forceScale\":true", "\"letterbox\":\"off\"")
+            "fill" -> parts += listOf("\"scale\":\"noBorder\"", "\"forceScale\":true", "\"letterbox\":\"off\"")
+            "original" -> parts += listOf("\"scale\":\"noScale\"", "\"forceScale\":true")
+        }
+        return "window.__fpmDisplay={" + parts.joinToString(",") + "};"
+    }
 
     fun playerUrl(swfUrl: String): String {
         val u = Uri.parse(swfUrl)
@@ -287,7 +324,7 @@ object RufflePage {
         <style>html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none}
         #p{position:fixed;inset:0}ruffle-player{width:100%;height:100%;display:block}</style>
         <script>if(!window.__fpmRuffle){window.__fpmRuffle=true;window.RufflePlayer=window.RufflePlayer||{};
-        window.RufflePlayer.config=$CONFIG;document.write('<script src="/__fpm/ruffle/ruffle.js"><\/script>');}</script>
+        window.RufflePlayer.config=Object.assign($CONFIG,window.__fpmDisplay||{});document.write('<script src="/__fpm/ruffle/ruffle.js"><\/script>');}</script>
         </head><body><div id="p"></div><script>
         (function(){
           var url = ${jsString(swf)};

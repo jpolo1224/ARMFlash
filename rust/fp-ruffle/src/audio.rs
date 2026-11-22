@@ -1,4 +1,5 @@
 // From ruffle-android (github.com/ruffle-rs/ruffle-android), MIT OR Apache-2.0, Ruffle contributors.
+// FlashARM: play/pause no longer panic (set_running).
 use ndk::audio::{AudioDirection, AudioFormat, AudioStream, AudioStreamBuilder, AudioStreamState};
 use ruffle_core::backend::audio::{
     swf, AudioBackend, AudioMixer, DecodeError, RegisterError, SoundHandle, SoundInstanceHandle,
@@ -30,6 +31,11 @@ impl AAudioAudioBackend {
         Ok(result)
     }
 
+    /// A backend with no stream yet; it tries again whenever the game plays.
+    pub fn silent() -> Self {
+        Self { stream: None, mixer: AudioMixer::new(2, 44100), paused: true }
+    }
+
     pub fn recreate_stream(&mut self) -> Result<(), Error> {
         let proxy = self.mixer.proxy();
 
@@ -57,10 +63,27 @@ impl AAudioAudioBackend {
     }
 
     pub fn recreate_stream_if_needed(&mut self) {
-        let stream_state = self.stream.as_ref().unwrap().state();
-        if stream_state == AudioStreamState::Disconnected {
-            // I'm sure it's fine...
+        let bad = match self.stream.as_ref() {
+            None => true,
+            Some(s) => s.state() == AudioStreamState::Disconnected,
+        };
+        if bad {
             let _ = self.recreate_stream();
+        }
+    }
+
+    /// FlashARM: start or pause without ever panicking. A stream the system refuses to move
+    /// (device change, headset gone, no audio device) is rebuilt once; if that fails too the
+    /// game simply runs without sound.
+    fn set_running(&mut self, run: bool) {
+        self.paused = !run;
+        let ok = self.stream.as_mut().map(|s| if run { s.request_start() } else { s.request_pause() }.is_ok()).unwrap_or(false);
+        if !ok {
+            log::warn!("audio stream would not {}; rebuilding it", if run { "start" } else { "pause" });
+            if let Err(e) = self.recreate_stream() {
+                log::warn!("no audio: {e}");
+                self.stream = None;
+            }
         }
     }
 }
@@ -69,20 +92,10 @@ impl AudioBackend for AAudioAudioBackend {
     impl_audio_mixer_backend!(mixer);
 
     fn play(&mut self) {
-        self.stream
-            .as_mut()
-            .expect("Error trying to resume audio stream.")
-            .request_start()
-            .expect("Error trying to resume audio stream.");
-        self.paused = false;
+        self.set_running(true);
     }
 
     fn pause(&mut self) {
-        self.stream
-            .as_mut()
-            .expect("Error trying to pause audio stream.")
-            .request_pause()
-            .expect("Error trying to pause audio stream.");
-        self.paused = true;
+        self.set_running(false);
     }
 }

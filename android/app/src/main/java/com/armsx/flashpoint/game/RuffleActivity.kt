@@ -31,6 +31,34 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     private lateinit var layouts: LayoutStore
     private var gameId = ""
     private var started = 0L
+    private var restarting = false
+
+    private val host = object : OverlayHost {
+        override val title get() = intent.getStringExtra(GameActivity.EXTRA_TITLE).orEmpty()
+        override val runner: String
+            get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } + ")"
+        override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
+        override fun keyboard() {
+            val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            mSurfaceView.requestFocus()
+            imm.showSoftInput(mSurfaceView, 0)
+        }
+        override fun restart() {
+            // Same process, fresh player: start the game again, then let this one go.
+            restarting = true
+            startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            finish()
+        }
+        override fun exit() = quit()
+        override fun menuOpen(open: Boolean) = nativeSetPlaying(!open)
+        override fun display(scale: String, quality: String) = nativeDisplay(scaleCode(scale), qualityCode(quality))
+        override var menuLeft: Boolean
+            get() = layouts.menuLeft
+            set(v) { layouts.menuLeft = v }
+    }
+
+    private fun scaleCode(s: String) = when (s) { "fit" -> 1; "stretch" -> 2; "fill" -> 3; "original" -> 4; else -> 0 }
+    private fun qualityCode(q: String) = when (q) { "low" -> 0; "medium" -> 1; "best" -> 3; else -> 2 }
 
     // Read and written by Rust: the player loop's event sender.
     @Suppress("unused")
@@ -67,12 +95,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             ComposeView(this).apply {
                 setContent {
                     com.armsx.flashpoint.ui.FpTheme {
-                        GameOverlay(
-                            st, input,
-                            onSave = { asDefault -> layouts.save(gameId, st.layout, asDefault) },
-                            onKeyboard = {},
-                            onExit = ::quit,
-                        )
+                        GameOverlay(st, input, host)
                     }
                 }
             },
@@ -103,7 +126,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isFinishing) android.os.Process.killProcess(android.os.Process.myPid())
+        if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     // ---- read by Rust ------------------------------------------------------------------
@@ -130,6 +153,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "backend" -> getSharedPreferences("settings", Context.MODE_PRIVATE).getString("flashBackend", "auto")
         // Flash cookies (SharedObjects), kept per install like the desktop's.
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
+        "scale" -> scaleCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).scale).toString()
+        "quality" -> qualityCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).quality).toString()
         else -> null
     }
 
@@ -138,6 +163,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeKey(code: Int, down: Boolean)
     external fun nativeMouse(x: Double, y: Double, button: Int, down: Boolean)
     external fun nativeSetPlaying(playing: Boolean)
+    external fun nativeDisplay(scale: Int, quality: Int)
 
     companion object {
         init {

@@ -135,6 +135,8 @@ async fn run(app: AndroidApp) {
         backend: String,
         storage: std::path::PathBuf,
         trace: Option<std::path::PathBuf>,
+        scale: i32,
+        quality: i32,
     }
     let settings = vm
         .attach_current_thread(|env| -> jni::errors::Result<_> {
@@ -145,6 +147,8 @@ async fn run(app: AndroidApp) {
                 backend: JavaInterface::get_string(env, &activity, "backend"),
                 storage: JavaInterface::storage_dir(env, &activity),
                 trace: Some(JavaInterface::get_string(env, &activity, "traceOutput")).filter(|s| !s.is_empty()).map(Into::into),
+                scale: JavaInterface::get_string(env, &activity, "scale").parse().unwrap_or(0),
+                quality: JavaInterface::get_string(env, &activity, "quality").parse().unwrap_or(2),
             };
             let _ = unsafe { env.set_rust_field(&*activity, jni_str!("eventLoopHandle"), sender.clone()) };
             Ok(s)
@@ -257,7 +261,10 @@ async fn run(app: AndroidApp) {
                                 id: player_id,
                                 player: PlayerBuilder::new()
                                     .with_renderer(renderer)
-                                    .with_audio(AAudioAudioBackend::new().unwrap())
+                                    .with_audio(AAudioAudioBackend::new().unwrap_or_else(|e| {
+                                        log::warn!("audio stream failed to open ({e}); starting without sound");
+                                        AAudioAudioBackend::silent()
+                                    }))
                                     .with_storage(Box::new(DiskStorageBackend::new(settings.storage.clone())))
                                     .with_navigator(navigator)
                                     .with_log(FileLogBackend::new(settings.trace.as_deref()))
@@ -271,6 +278,7 @@ async fn run(app: AndroidApp) {
                             player_lock.set_is_playing(true);
                             player_lock.set_letterbox(ruffle_core::config::Letterbox::On);
                             player_lock.set_viewport_dimensions(dimensions);
+                            apply_display(&mut player_lock, settings.scale, settings.quality);
                             last_frame_time = Instant::now();
                             next_frame_time = Some(Instant::now());
                             log::info!("MOVIE STARTED");
@@ -357,6 +365,10 @@ async fn run(app: AndroidApp) {
                     }
                 }
                 RuffleEvent::SetPlaying(on) => player.player.lock().unwrap().set_is_playing(on),
+                RuffleEvent::Display { scale, quality } => {
+                    apply_display(&mut player.player.lock().unwrap(), scale, quality);
+                    needs_redraw = true;
+                }
             }
         }
 
@@ -390,6 +402,29 @@ async fn run(app: AndroidApp) {
         let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw) }?;
         let _: jni::errors::Result<EventSender> = unsafe { env.take_rust_field(&*activity, jni_str!("eventLoopHandle")) };
         Ok(())
+    });
+}
+
+/// Scale mode and quality, from the in-game menu (or the game's saved choice at start).
+fn apply_display(p: &mut Player, scale: i32, quality: i32) {
+    use ruffle_render::quality::StageQuality;
+    use ruffle_core::StageScaleMode;
+    let (mode, force) = match scale {
+        1 => (StageScaleMode::ShowAll, true),
+        2 => (StageScaleMode::ExactFit, true),
+        3 => (StageScaleMode::NoBorder, true),
+        4 => (StageScaleMode::NoScale, true),
+        _ => (StageScaleMode::ShowAll, false), // the game decides
+    };
+    p.set_forced_scale_mode(false);
+    p.set_scale_mode(mode);
+    p.set_forced_scale_mode(force);
+    p.set_letterbox(if scale == 2 || scale == 3 { ruffle_core::config::Letterbox::Off } else { ruffle_core::config::Letterbox::On });
+    p.set_quality(match quality {
+        0 => StageQuality::Low,
+        1 => StageQuality::Medium,
+        3 => StageQuality::Best,
+        _ => StageQuality::High,
     });
 }
 
@@ -445,6 +480,17 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeMou
         with_sender(env, &this, |s| s.send(ev))
     })
     .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeDisplay<'local>(
+    mut env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    scale: jint,
+    quality: jint,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::Display { scale, quality })) })
+        .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[no_mangle]
