@@ -3,6 +3,7 @@ package com.armsx.flashpoint.lab
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import java.io.File
@@ -29,6 +30,35 @@ class LabActivity : androidx.activity.ComponentActivity() {
 
     private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
+        // Desktop themes read from their CSS: every palette's colors, logged.
+        if (step == "themes") {
+            val root = (application as com.armsx.flashpoint.FpApp).library.root
+            com.armsx.flashpoint.ui.FpThemes.all.forEach { t ->
+                fun h(c: androidx.compose.ui.graphics.Color) = "%06x".format(c.toArgb() and 0xffffff)
+                Log.i(TAG, "theme ${t.name}: header ${h(t.header)} browse ${h(t.browse)} sidebar ${h(t.sidebar)} card ${h(t.card)} text ${h(t.text)} dim ${h(t.textDim)} accent ${h(t.accent)} light ${t.light}")
+            }
+            Log.i(TAG, "themes: ${com.armsx.flashpoint.ui.FpThemes.all.size}, logos ${java.io.File(root, "Data/Logos").list()?.size}, credits ${java.io.File(root, "Data/credits.json").length()}")
+            return finish()
+        }
+        // Sound: ARMFlash's ALSA plugin and audio server, with a 440 Hz test tone (r/tmp/tone, a
+        // small ALSA program run through the APK's glibc loader).
+        if (step == "tone") {
+            val r = File(dataDir, "r").path
+            val lib = applicationInfo.nativeLibraryDir
+            Thread {
+                runCatching {
+                    val server = com.armsx.flashpoint.win.AudioServer("armflash.audio.lab")
+                    val pb = ProcessBuilder("$lib/libldlinux.so", "$r/tmp/tone").redirectErrorStream(true)
+                    pb.environment().putAll(mapOf("LD_LIBRARY_PATH" to "$r/usr/lib", "ALSA_PLUGIN_DIR" to lib, "ARMFLASH_AUDIO" to "armflash.audio.lab"))
+                    val p = pb.start()
+                    p.inputStream.bufferedReader().forEachLine { Log.i(TAG, "tone: $it") }
+                    Log.i(TAG, "tone exit ${p.waitFor()}")
+                    Thread.sleep(1000); server.close()
+                }.onFailure { Log.e(TAG, "tone", it) }
+            }.start()
+            setContentView(android.widget.TextView(this).apply { text = "ARMFlash lab: tone" })
+            return
+        }
         // RetroArch shaders: download the pack, index it, read one preset's parameters.
         if (step == "shaders") {
             Thread {

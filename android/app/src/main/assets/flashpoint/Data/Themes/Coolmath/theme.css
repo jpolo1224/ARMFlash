@@ -1,0 +1,519 @@
+/*
+	==Theme==
+	@name              Coolmath Classic
+	@version           1.1
+	@description       Relive your computer lab memories!
+	@author            Wumbo
+	@launcher-version  12.0
+	==/Theme==
+*/
+@font-face {
+    font-family: "Snap ITC";
+    src: url(fonts/SnapITC.ttf);
+}
+@font-face {
+    font-family: "Andy";
+    src: url(fonts/AndyBold.ttf);
+}
+:root {
+    --coolmath__font:                                               "Arial", sans-serif;
+    --coolmath__background:                                         #000;
+    --coolmath__background-faded:                                   #000c;
+    --coolmath__text-color:                                         #fff;
+    --coolmath__text-highlight-color:                               #28a9ff;
+    --coolmath__primary-border:                                     #f00;
+    --coolmath__secondary-border:                                   #0f0;
+    --coolmath__tertiary-border:                                    #ff0;
+    --coolmath__quaternary-border:                                  #fff;
+    --coolmath__slider:                                             #a0a;
+    --coolmath__slider-active:                                      #ff0;
+                                
+    --coolmath__play-button:                                        #0b0;
+    --coolmath__stop-button:                                        #f00;
+    --coolmath__download-button:                                    #18f;
+                                
+    --coolmath__title-font:                                         "Snap ITC", "Comic Sans MS", "Arial", sans-serif;
+    --coolmath__title-outline:                                      1px 0 #ff0, -1px 0 #ff0, 0 1px #ff0, 0 -1px #ff0, 1px 1px #ff0, -1px -1px #ff0, 1px -1px #ff0, -1px 1px #ff0;
+    --coolmath__title-size:                                         24px;
+    --coolmath__title-color:                                        #f00;
+    --coolmath__title-height:                                       42px;
+                                
+    --layout__primary-font:                                         var(--coolmath__font);
+    --layout__primary-background:                                   var(--coolmath__background);
+    --layout__secondary-background:                                 var(--coolmath__background);
+    --layout__tertiary-background:                                  var(--coolmath__background);
+    --layout__quaternary-background:                                var(--coolmath__background);
+    --layout__background-faded:                                     var(--coolmath__background-faded);
+    --layout__primary-text-color:                                   var(--coolmath__text-color);
+    --layout__secondary-text-color:                                 var(--coolmath__text-color);
+    --layout__primary-outline-color:                                var(--coolmath__secondary-border);
+    --layout__primary-outline-color:                                var(--coolmath__secondary-border);
+    
+    --layout__simple-button-background:                             var(--coolmath__background);
+    --layout__simple-button-border:                                 var(--coolmath__secondary-border);
+                                
+    --layout__scroll-thumb-color:                                   var(--coolmath__slider);
+    --layout__scroll-thumb-color-hover:                             var(--coolmath__slider);
+    --layout__scroll-thumb-color-active:                            var(--coolmath__slider-active);
+    --layout__slider-background:                                    var(--coolmath__slider);
+    --layout__slider-background-hover:                              var(--coolmath__slider);
+    --layout__slider-background-active:                             var(--coolmath__slider-active);
+    --layout__footer-scale-slider-icon-color:                       var(--coolmath__text-color);
+    --layout__footer-scale-slider-background:                       var(--coolmath__background);
+    
+    --layout__home-page-box-border:                                 var(--coolmath__primary-border);
+    --layout__home-page-box-background:                             var(--coolmath__background);
+                
+    --layout__browse-sidebar-divider-background-hover:              var(--coolmath__tertiary-border);
+    --layout__browse-right-sidebar-searchable-hover:                var(--coolmath__text-highlight-color);
+                
+    --layout__playlist-list-item-even-background:                   var(--coolmath__background);
+    --layout__playlist-list-fake-even-background:                   var(--coolmath__background);
+    --layout__playlist-list-item-content-background:                var(--coolmath__background);
+    --layout__playlist-list-item-hover-color:                       var(--coolmath__text-color);
+    --layout__playlist-list-fake-hover-background:                  var(--coolmath__background);
+    --layout__playlist-list-item-drag-over-background:              var(--coolmath__background);
+    --layout__playlist-list-item-drag-over-border:                  var(--coolmath__secondary-border);
+    --layout__playlist-list-item-editing-odd-background:            var(--coolmath__background);
+    --layout__playlist-list-item-editing-even-background:           var(--coolmath__background);
+    --layout__playlist-list-item-editing-content-background:        var(--coolmath__background);
+    --layout__playlist-list-item-editing-description-background:    var(--coolmath__background);
+    
+    --layout__play-button:                                          var(--coolmath__play-button);
+    --layout__play-button--hover:                                   var(--coolmath__play-button);
+    --layout__play-button--active:                                  var(--coolmath__play-button);
+    --layout__play-button--running:                                 var(--coolmath__stop-button);
+    --layout__play-button--running--hover:                          var(--coolmath__stop-button);
+    --layout__play-button--running--active:                         var(--coolmath__stop-button);
+    --layout__play-button--download:                                var(--coolmath__download-button);
+    --layout__play-button--download--hover:                         var(--coolmath__download-button);
+    --layout__play-button--download--active:                        var(--coolmath__download-button);
+                
+    --layout__game-item-color:                                      var(--coolmath__text-color);
+    --layout__game-item-color-hover:                                var(--coolmath__text-color);
+    --layout__game-item-color-selected:                             var(--coolmath__text-color);
+    --layout__game-item-color-selected-hover:                       var(--coolmath__text-color);
+    --layout__game-item-background-hover:                           var(--coolmath__background);
+    --layout__game-item-background-selected:                        var(--coolmath__background);
+    --layout__game-item-background-selected-hover:                  var(--coolmath__background);
+    --layout__game-list-item-background-even:                       var(--coolmath__background);
+    
+    --layout__credits-tooltip-border:                               var(--coolmath__primary-border);
+    --layout__credits-tooltip-background:                           var(--coolmath__background);
+    
+    --layout__log-page-bar-background:                              var(--coolmath__background);
+    
+    --layout__confirm-color:                                        #0f0;
+    --layout__confirm-hover-color:                                  #0f0;
+    --layout__confirm-active-color:                                 #0f0;
+    --layout__warning-dark-color:                                   #f00;
+    --layout__warning-medium-color:                                 #f00;
+    --layout__warning-bright-color:                                 #f00;
+    --layout__warning-shallow:                                      #ff0;
+}
+.simple-button:hover {
+    border-color: #ff0;
+    background-color: #0000;
+}
+.input-field--edit {
+    border: 1px solid #0f0;
+}
+.input-dropdown__input-field__input {
+    margin-right: -1px;
+}
+.slider-checked {
+    background-color: #18f;
+}
+.input-dropdown__input-field__button {
+    border: 1px solid var(--coolmath__secondary-border);
+}
+.title-bar {
+    height: var(--coolmath__title-height);
+    border: 1px solid var(--coolmath__primary-border);
+}
+.title-bar__title {
+    font-family: var(--coolmath__title-font);
+    text-shadow: var(--coolmath__title-outline);
+    font-size: var(--coolmath__title-size);
+    color: var(--coolmath__title-color);
+    height: var(--coolmath__title-height);
+    padding: 2px 6px;
+}
+.title-bar__button-bar {
+    height: var(--coolmath__title-height);
+}
+.title-bar__button-bar__min,
+.title-bar__button-bar__max,
+.title-bar__button-bar__cross {
+    width: 32px;
+    opacity: 1;
+}
+.title-bar__button-bar__min {
+    background-image: url(images/triangle.png);
+}
+.title-bar__button-bar__max {
+    background-image: url(images/square.png);
+}
+.title-bar__button-bar__cross {
+    background-image: url(images/pentagon.png);
+}
+.title-bar__button-bar__min:hover,
+.title-bar__button-bar__max:hover,
+.title-bar__button-bar__cross:hover {
+    filter: hue-rotate(180deg) saturate(100);
+    background-color: #0000;
+}
+.header {
+    border: 1px solid var(--coolmath__primary-border);
+    padding: 0;
+}
+.header__menu__item__link {
+    color: #0f0;
+    text-transform: uppercase;
+}
+.header__menu__item__link:hover {
+    background-color: #0000;
+    border-color: #0000;
+}
+.header__menu__item__link:active,
+.header__menu__item__link-selected {
+    font-weight: normal;
+    text-decoration: none;
+}
+.header__menu__item__link:active {
+    color: var(--coolmath__text-highlight-color);
+}
+.header__menu__item__link-selected {
+    color: #ff0;
+}
+.header__search {
+    height: 18px;
+}
+.header__search__input,
+.header__search__input:active {
+    border: none;
+    padding: 0.05rem;
+}
+.header__search__right__inner {
+    margin-top: -1px;
+}
+.header__search__icon.icon--magnifying-glass {
+    opacity: 1;
+}
+.header__search__icon.icon--circle-x {
+    margin: 1px 0;
+}
+.header-user-box {
+    padding: 0.2rem;
+    margin-right: 0.6rem;
+}
+.header-user-box:hover {
+    outline: 1px solid var(--coolmath__secondary-border);
+}
+.header-user-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-right: 0.4rem;
+    border: none;
+    border-radius: 0;
+}
+.header-user-name {
+    margin-right: 0.2rem !important;
+}
+.header__toggle-sidebar {
+    width: 16px;
+    height: 16px;
+    background-image: url(images/arrow.png);
+    margin-right: 8px !important;
+}
+.header__toggle-sidebar[title="Show left sidebar"],
+.header__toggle-sidebar[title="Hide right sidebar"] {
+    transform: scaleX(-1);
+}
+.header__toggle-sidebar > svg {
+    display: none;
+}
+.footer {
+    border-top: 1px solid var(--coolmath__primary-border);
+}
+.footer__update-panel {
+    height: 19px;
+    font-size: 13px;
+    background-color: var(--layout__secondary-background) !important;
+    margin: 0 1px;
+    border: 1px solid var(--coolmath__secondary-border);
+    box-sizing: border-box;
+}
+.footer__update-panel:hover {
+    border: 1px solid var(--coolmath__tertiary-border);
+}
+.footer__update-panel-updates-ready {
+    border: 1px solid var(--coolmath__primary-border);
+}
+.footer__layout-selector {
+    margin: 0 0.8em 0 0.5em;
+}
+.footer__layout-title {
+    font-size: 14px;
+}
+.footer__scale-slider__inner {
+    box-shadow: 0 0 0 2px var(--coolmath__slider);
+}
+.footer__scale-percent {
+    width: 40px;
+    margin: 1px 0 0 3px;
+}
+.footer__scale-percent p {
+    width: 100%;
+    display: inline-block;
+    font-size: 14px;
+    text-align: center;
+}
+.fp-logo {
+    background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+    background-size: var(--zoom) 100%;
+}
+.home-page {
+    font-weight: bold;
+}
+.home-page :link,
+.clickable-url {
+    color: var(--coolmath__text-highlight-color);
+    text-decoration: underline;
+}
+.home-page :link:active,
+.clickable-url:active {
+    color: #f00;
+}
+.home-page p {
+    margin: 4px 0;
+}
+.home-page__box {
+    width: 950px;
+    box-shadow: 0 0 0 4px var(--coolmath__primary-border);
+    border: none;
+    background-color: var(--coolmath__background);
+    margin: 0 auto 3px;
+}
+.home-page__box-head {
+    border-bottom-color: var(--coolmath__secondary-border);
+    margin: 0 8px;
+}
+.home-page__box-head--title {
+    font-family: var(--coolmath__title-font);
+    text-shadow: var(--coolmath__title-outline);
+    font-size: var(--coolmath__title-size);
+    color: var(--coolmath__title-color);
+    height: var(--coolmath__title-height);
+    padding: 0.3rem;
+    text-transform: uppercase;
+}
+.home-page__box-head--minimize {
+    border-left-color: #0000;
+}
+.home-page__box-head--minimize:hover {
+    background-color: #0000;
+}
+.home-page__box--random-games .home-page__box-body {
+    padding-bottom: 10px;
+}
+.home-page__box-item-icon {
+    filter: brightness(0.5) sepia(1) hue-rotate(45deg) saturate(100);
+    margin: 2px 6px;
+}
+.home-page__box--quickStart .home-page__box-item-icon {
+    filter: brightness(0.5) sepia(1) hue-rotate(15deg) saturate(100);
+}
+.random-games {
+    justify-content: center;
+    margin: 8px 0;
+}
+.random-games .game-grid-item {
+    margin: 0 8px;
+}
+.random-games .game-grid-item__title {
+    padding-top: 4px;
+}
+.game-browser__center {
+    border-top: 4px solid var(--coolmath__primary-border);
+    border-bottom: 4px solid var(--coolmath__primary-border);
+}
+.game-browser__sidebar {
+    --divider-width: 4px;
+    background-color: var(--coolmath__background);
+    border: 4px solid var(--coolmath__primary-border);
+}
+.playlist-list-fake-item__inner__title,
+.playlist-list-item__title p {
+    color: var(--coolmath__text-highlight-color);
+    text-decoration: underline;
+    font-weight: normal;
+}
+.playlist-list-fake-item:active .playlist-list-fake-item__inner__title,
+.playlist-list-item:active .playlist-list-item__title p {
+    color: #f00;
+}
+.playlist-list-item--selected .playlist-list-item__title p {
+    color: #ff0;
+}
+.playlist-list {
+    margin: 0.1rem 0;
+}
+.playlist-list-fake-item__inner {
+    padding-left: 0.05rem;
+}
+.playlist-list-fake-item__inner .icon {
+    filter: brightness(0.5) sepia(1) hue-rotate(45deg) saturate(100);
+}
+.playlist-list-fake-item__inner__title {
+    font-size: 1rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    padding-left: 0.7rem;
+    padding-top: 0.1rem;
+}
+.playlist-list-item__title {
+    padding-right: 2px;
+}
+.playlist-list-item__author {
+    font-style: normal;
+    padding-right: 4px;
+}
+.browse-right-sidebar {
+    font-weight: bold;
+}
+.browse-right-sidebar__play-button,
+.browse-right-sidebar__play-button--busy,
+.browse-right-sidebar__play-button--running,
+.browse-right-sidebar__play-button--download {
+    font-family: "Andy", "Comic Sans MS", "Arial", sans-serif;
+    text-shadow: 0px 0px 4px #000, 1px 2px 4px #000, 2px 5px 4px #000;
+    height: 50px;
+    color: #ff0;
+    padding-top: 6px;
+    border: none;
+    border-radius: 50%;
+    -webkit-text-stroke-width: 0px;
+}
+.browse-right-sidebar__play-button--text:hover {
+    background-color: #0000;
+}
+.browse-right-sidebar__play-button--dropdown {
+    position: absolute;
+    border: none;
+    right: 22px;
+    top: 204px;
+}
+.browse-right-sidebar__play-button--dropdown:hover {
+    background-color: #0000;
+}
+.browse-right-sidebar__row:not(.browse-right-sidebar__row--additional-applications-name) > p:first-child {
+    color: #0f0;
+}
+.tags-page .browse-right-sidebar__section {
+    margin: 6px 4px 6px 8px;
+}
+.game-grid-item:active .game-grid-item__title__text {
+    color: #f00;
+}
+.game-grid-item--selected .game-grid-item__title__text {
+    color: #ff0;
+}
+.game-grid-item__thumb {
+    width: calc(var(--width) * 0.9px);
+    height: calc(var(--width) * 0.9px);
+    border: 1px solid var(--coolmath__quaternary-border);
+    margin: 0 auto;
+}
+.game-grid-item__thumb__image {
+    border-radius: 0;
+}
+.game-grid-item__title {
+    padding-top: calc(var(--width) * 0.003rem);
+}
+.game-grid-item__title__text {
+    color: var(--coolmath__text-highlight-color);
+    text-decoration: underline;
+}
+.game-grid .ReactVirtualized__Grid__innerScrollContainer {
+    margin: 12px auto;
+}
+.game-list-header-column,
+.tag-list-header-column {
+    color: #ff0;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.game-list-item__field--title,
+.tag-list-item__field--name {
+    color: var(--coolmath__text-highlight-color);
+    text-decoration: underline;
+}
+.game-list-item:active .game-list-item__field--title,
+.tag-list-item:active .tag-list-item__field--name {
+    color: #f00;
+}
+.game-list-item--selected .game-list-item__field--title,
+.tag-list-item--selected .tag-list-item__field--name {
+    color: #ff0;
+}
+.game-list-item__icon,
+.tag-list-icon {
+    width: calc(0.675px * var(--height));
+    height: calc(0.675px * var(--height));
+    margin: calc(0.15px * var(--height)) calc(0.2px * var(--height)) 0 calc(0.225px * var(--height))
+}
+.config-page__title,
+.setting__title,
+.about-page__title,
+.about-page__credits__title {
+    font-family: var(--coolmath__title-font);
+    text-shadow: var(--coolmath__title-outline);
+    color: var(--coolmath__title-color);
+    text-transform: uppercase;
+}
+.about-page__credits__profile {
+    clip-path: none;
+}
+.setting__title {
+    width: 934px;
+    padding: 6px 0 8px;
+    border-bottom: 1px solid var(--coolmath__secondary-border);
+}
+.config-page__description {
+    font-weight: bold;
+    font-style: normal;
+    margin-bottom: 12px;
+}
+.setting {
+    max-width: 950px;
+    width: 950px;
+    box-shadow: 0 0 0 4px var(--coolmath__primary-border);
+    margin: 4px auto;
+}
+.setting__body {
+    box-shadow: none;
+    border-radius: 0;
+}
+.setting__row__content--override-row .input-field--edit {
+    margin: 0 8px;
+}
+.setting__row__content--source-row {
+    margin-top: 6px;
+}
+.about-page__section__title,
+.about-page__credits__role-name {
+    color: #ff0;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.about-page__section__links a {
+    color: var(--coolmath__text-highlight-color);
+}
+.about-page__section__links a:active {
+    color: #f00;
+}
+.game-data-info,
+.game-data-info__table {
+    border-color: var(--coolmath__background);
+}

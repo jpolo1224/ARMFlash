@@ -1,0 +1,293 @@
+/*
+	==Theme==
+	@name              HypnOS
+	@version           2.3.1
+	@description       Theme based off Hypnospace Outlaw
+	@author            Spacy
+	@launcher-version  9.0.3
+	==/Theme==
+*/
+ 
+/*
+If using Hypnospace stuff interferes with copyright or something, name this theme as "Enforcer Edition" instead of HypnOS.
+Assets shouldn't be an issue, as they're not taken from the game itself colors aside
+
+*/
+.title-bar{
+    
+    background-image: url("assets/topbar_bg.png");
+    background-size:contain;
+    background-repeat: repeat-x;
+    color: white;
+}
+
+.game-list-item{
+    background-color: #3C0D26;
+}
+.game-list-item:hover{
+    background-color: #4d1131;
+}
+.game-list-item:nth-child(odd){
+    background-color: #2D092D;
+}
+.game-list-item:nth-child(odd):hover{
+    background-color: #410d41;
+}
+.game-list-header > div{
+    background-color: #9AC7F5;
+    color: #302454;
+    font-weight: bold;
+}
+.game-list-header-column__title{
+    
+    background-color: #9AC7F5;
+}
+.game-list-header__scroll-fill{
+    display: none;
+}
+.header{
+    padding: 0px;
+    background-color: #9BC8EF;
+}
+
+.footer__scale-slider__inner{
+    background-color: #8A37CD;
+}
+.footer__scale-slider__inner.slider_buttons{
+    color: red;
+}
+
+
+.header__wrap{
+    background-image: url("assets/blablabla.png");
+    background-size:contain;
+    background-repeat: repeat-x;
+    color: black;
+}
+.header__wrap--width-restricted{
+    margin-right: 0px;
+}
+.footer{
+    background-image: url("assets/test.png");
+    background-size: contain;
+    color: black;
+    background-repeat: repeat-x;
+}
+.main{
+    background-image: url("assets/bgt.png");
+    background-size: 64px;
+}
+
+.game-grid{
+    color: white;
+    background:linear-gradient(rgba(0,0,0,0.3),rgba(0,0,0,0.3)), url("assets/bgt.png");
+    background-size: 32px;
+
+}
+.game-grid-item__title__text{
+    color: white;
+}
+.game-grid-item__thumb__image{
+    background-color: #4F667A;
+}
+.game-browser__sidebar__content{
+    color: white;
+    background-image: url("assets/bgt.png");
+    background-size: 64px;
+}
+
+.home-page__box-head{
+    background-image: url("assets/topbar_bg.png");
+    background-size: contain;
+    background-repeat: repeat-x;
+    border: 0px;
+
+}
+.home-page__box-body{
+    background: #2D2456;
+}
+.setting__row{
+    background: #2D2456;
+}
+.browse-right-sidebar{
+    background: linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5));
+}
+.playlist-list-item > .playlist-list-item{
+    background-color: #0A0812;
+}
+.playlist-list-item:nth-child(2n){
+    background-color: #0A0812;
+
+}
+.header__search{
+    border: none;
+    background-color: #884BD3;
+}
+.header__search__input{
+    color:#DCAFF0;
+}
+.header__search__input::placeholder {
+    color:#472b53;
+}
+
+.input-dropdown__input-field__back{
+    background-color: #884BD3;
+}
+.simple-input{
+    background-color:#2D092D !important;
+}
+.simple-selector{
+    background-color: #2D092D ;
+    color:#DCAFF0;
+
+}
+option:hover{
+    background-color: #2D092D ;
+    color:#DCAFF0;
+
+}
+label{
+    background-color: #2D092D;
+}
+label:hover{
+    color: #72C8D7;
+    background-color: #894AD3 !important;
+}
+
+
+
+.floating-container{
+    background-color: #9BC7F5;
+    color: #5E4280;
+}
+.progress-bar__top-text{
+    color: #5E4280;
+
+}
+.slider-checked{
+    background-color: #884BD3;
+}
+
+.game-browser__sidebar__divider{
+    width: 10px;
+    background-color: #96C6F7;
+    border-right: 4px solid #875ACA;
+}
+.game-browser__sidebar__divider:hover {
+    background-color: #6486a8;
+    border-right: 4px solid #875ACA;
+}
+
+.progress-bar__bar__inner{
+    background-color: #118ADB;
+    border-bottom: #006D8F solid 4px;
+    border-top: #006D8F solid 2px;
+}
+
+.playlist-list-item .playlist-list-item__text-field{
+    color: #BF4AD4;
+}
+.playlist-list-item:hover{
+    background-color: #894AD3;
+    color: #72C8D7;
+    
+}
+.playlist-list-item:hover .playlist-list-item__text-field{
+    background-color: #894AD3;
+    color: #72C8D7;
+    
+}
+
+.playlist-list-item{
+    background-color: #0A0812;
+}
+.playlist-list-fake-item {
+    background-size: contain;
+    background-repeat: repeat-x;
+    background-color: #9CC7F1;
+    border: #707AC3 solid 2px;
+    font-size:10px;
+}
+.playlist-list-fake-item:hover{
+    background: #707AC3;
+    border: #3e4470 solid 2px;
+    color: white;
+}
+.playlist-list-fake-item__inner__title{
+    font-size: 18px;
+    font-weight: bold;
+    color: white;
+}
+.playlist-list-item__text-field{
+    color: white;
+}
+.header__menu__item__link:hover{
+    text-decoration: underline;
+    background: none;
+    border: none;
+}
+.header__menu__item__link{
+    border: none;
+}
+.playlist-list-content{
+    background: #2D092D;
+}
+.playlist-list-content p{
+    color: white;
+}
+
+.about-page{
+    background: linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5));
+}
+
+.log-page__content{
+    background-color: #282244;
+    border-top: #3F3571 solid 2px;
+}
+.log-page__bar{
+    background-color: #282244;
+    border-top: #3F3571 solid 2px;
+}
+
+input:double-button{
+    background-color: 1;
+}
+
+.simple-button{
+    background-color: #894AD3;
+    color: #FFFFFF;
+
+}
+.simple-button:hover{
+    background-color: #2D2456;
+    color: #FFFFFF;
+
+}
+
+.simple-dropdown__select-box{
+    background-color: #2D092D;
+    color: #FFFFFF;
+}
+
+.browse-right-sidebar__row{
+    padding-bottom: 4px;
+    margin-bottom: 0px;
+}
+.browse-right-sidebar__middle{
+    background-color: #2D092D;
+    border: solid black 4px;
+    margin: 4px;
+    padding: 0px;
+}
+.browse-right-sidebar__section{
+    margin-bottom: 0px;
+}
+
+.browse-right-sidebar__play-button--text{
+    background-color: #168224;
+    color: #EBE4DB;
+}
+.browse-right-sidebar__play-button--text:hover{
+    background-color: #1F571E; 
+    color: #EBE4DB;
+}

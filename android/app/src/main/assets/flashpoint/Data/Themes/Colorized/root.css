@@ -1,0 +1,150 @@
+:root {
+  --hue: 240; /* HSL Hue. */
+  --saturation: 0.5; /* Percentage to multiply the base saturation values by. Must be a decimal. */
+  --lightness: 0.23; /* Percentage to multiply the base lightness values by. Must be a decimal. */
+  --alternate: 0%; /* Extra lightness between back-secondary and back-primary. Set to 0% to make them both be back-secondary. */
+  --accent: 1; /* How bright text and other elements should be. 100% is white, 50% is gray, while 0% is black. Must be a decimal. */
+  
+  --primary:        hsl(var(--hue), calc(100% * var(--saturation)), calc(10% + 65% * var(--lightness))); /*  75%-10% 25%*/
+  --secondary:      hsl(var(--hue), calc(100% * var(--saturation)), calc(0% + 65% * var(--lightness))); /*  65%- 0% 15% */
+  --tertiary:       hsl(var(--hue), calc(calc(65% + 25% * var(--lightness)) * var(--saturation)),  calc(5% + 65% * var(--lightness))); /*  70%- 5% 20% */
+  --highlight:      hsl(var(--hue), calc(100% * var(--saturation)), calc(20% + 65% * var(--lightness))); /*  85%-20% 35% */
+  
+  --dim-bright:     hsl(var(--hue), calc(calc(45% + 25% * var(--lightness)) * var(--saturation)),  calc(35% + 65% * var(--lightness) * var(--accent))); /* 100%-35% 50% */
+  --dim:            hsl(var(--hue), calc(calc(45% + 25% * var(--lightness)) * var(--saturation)),  calc(28% + 65% * var(--lightness) * var(--accent))); /*  93%-28% 43% */
+  --dim-dark:       hsl(var(--hue), calc(calc(45% + 25% * var(--lightness)) * var(--saturation)),  calc(21% + 65% * var(--lightness) * var(--accent))); /*  86%-21% 36% */
+  
+  --outline:        hsl(var(--hue), calc(calc(45% + 25% * var(--lightness)) * var(--saturation)),  calc(25% + 65% * var(--lightness) * var(--accent))); /*  90%-25% 40% */
+  
+  --back-primary:   hsl(var(--hue), calc(calc(65% + 25% * var(--lightness)) * var(--saturation)),  calc(0% + 60% * var(--lightness))); /*  60%- 0% ~10% */
+  --back-secondary: hsl(var(--hue), calc(calc(65% + 25% * var(--lightness)) * var(--saturation)),  calc(calc(0% + 60% * var(--lightness)) + var(--alternate)));
+  --back-highlight: hsl(var(--hue), calc(calc(65% + 25% * var(--lightness)) * var(--saturation)),  calc(8% + 65% * var(--lightness))); /*  73%- 8% 23% */
+  
+  --acc:            hsl(0, 0%, calc(var(--accent) * 100%));
+  --acc-secondary:  hsl(0, 0%, calc(calc(var(--accent) * 100% - 50%) / 2 + 50%));
+  
+  /* ------- Layout Variables ------- */
+  /* Text Color */
+  --layout__primary-text-color:     var(--acc);
+  --layout__secondary-text-color:   var(--acc-secondary);
+  --layout__highlighted-text-color: var(--acc);
+  --layout__disabled-text-color:    var(--acc-secondary);
+  /* Background */
+  --layout__primary-background:    var(--back-primary);
+  --layout__secondary-background:  var(--primary);
+  --layout__tertiary-background:   var(--secondary);
+  --layout__quaternary-background: var(--tertiary);
+  /* Outline Color */
+  --layout__primary-outline-color: var(--outline);
+  /* Scrollbar */
+  --layout__scroll-thumb-color:        var(--dim-bright);
+  --layout__scroll-thumb-color-hover:  var(--dim);
+  --layout__scroll-thumb-color-active: var(--dim-dark);
+  /* Slider */
+  --layout__slider-background:        var(--dim-bright);
+  --layout__slider-background-hover:  var(--dim);
+  --layout__slider-background-active: var(--dim-dark);
+  --layout__footer-scale-slider-icon-color:        var(--dim);
+  --layout__footer-scale-slider-background:        var(--back-primary);
+  /* Game Item */
+  --layout__game-item-color-selected:            var(--accent-secondary);
+  --layout__game-item-color-hover:               #e6e6e6;
+   --layout__game-item-color-selected-hover:     var(--accent);
+  --layout__game-list-item-background-even:      var(--back-secondary); /* Only used in "list" mode. */
+  --layout__game-item-background-hover:          var(--dim-dark);
+  --layout__game-item-background-selected:       var(--primary);
+  --layout__game-item-background-selected-hover: var(--highlight);
+  /* Browse Sidebar(s) */
+  --layout__browse-sidebar-background:         var(--tertiary);
+  --layout__browse-sidebar-divider-background: var(--back-highlight);
+  /* Right Browse Sidebar */
+  --layout__browse-right-sidebar-screenshot-placeholder-background: var(--back-primary);
+  --layout__browse-right-sidebar-screenshot-placeholder-border:     var(--outline);
+  --layout__browse-right-sidebar-searchable-hover:                  var(--dim-bright);
+  /* Playlist List */
+  --layout__playlist-list-item-even-background:                var(--back-secondary);
+  --layout__playlist-list-fake-even-background:                var(--back-primary);
+  --layout__playlist-list-item-content-background:             var(--secondary);
+  --layout__playlist-list-fake-hover-background:               var(--dim-dark);
+  --layout__playlist-list-item-drag-over-background:           var(--dim-dark);
+  --layout__playlist-list-item-drag-over-border:               var(--dim-bright);
+  --layout__playlist-list-item-editing-odd-background:         var(--dim-dark);
+  --layout__playlist-list-item-editing-even-background:        var(--dim-dark);
+  --layout__playlist-list-item-editing-content-background:     var(--dim-dark);
+  --layout__playlist-list-item-editing-description-background: var(--primary);
+  /* Game Image Split */
+  --layout__game-image-split-hover-color:    #575757;
+  --layout__game-image-split-disabled-color: #141414;
+  /* Home Page */
+  --layout__home-page-box-border:     var(--outline);
+  --layout__home-page-box-background: var(--secondary);
+  /* Credits */
+  --layout__credits-tooltip-border:           var(--outline);
+  --layout__credits-tooltip-background:       var(--back-primary);
+  --layout__credits-tooltip-roles-background: var(--back-primary);
+  /* Log Page */
+  --layout__log-page-bar-background: var(--tertiary);
+  /* Curate Page */
+  --layout__curate-entry-collision-color: #efef98;
+  /* Developer Page */
+  --layout__developer-page-log-background: var(--back-primary);
+  --layout__developer-page-log-border:     var(--outline);
+  /* Simple Button */
+  --layout__simple-button-background: var(--dim-bright);
+  --layout__simple-button-border:     var(--outline);
+  /* Header Menu Item */
+  --layout__header-menu-item-hover-background: var(--dim-bright);
+  --layout__header-menu-item-hover-border:     var(--outline);
+  /* Misc */
+  --layout__title-bar-cross-color:                 #eb4b4b;
+  --layout__no-theme-suggestion-color:             var(--layout__secondary-text-color);
+  --layout__icon-button-hover-fill:                var(--dim); /* Color of "icon buttons" while the cursor is hovering over them. */
+  --layout__toggle-sidebar-fill:                   var(--dim-bright);
+}
+
+a:hover {
+  color: var(--layout__secondary-text-color);
+}
+a:active {
+  color: var(--dim-dark);
+}
+.title-bar__button-bar__min {
+  background-image: url('images/min.png');
+}
+.title-bar__button-bar__max {
+  background-image: url('images/max.png');
+}
+.title-bar__button-bar__cross {
+  background-image: url('images/cross.png');
+}
+.home-page__box,
+.curate-page__floating-box,
+.curate-box,
+.developer-page__log {
+  box-shadow: 0px 2px 4px 0px #09090a;
+  border-radius: 4px;
+  border: none;
+}
+.home-page__box__head {
+  border-bottom-color: var(--layout__tertiary-background);
+}
+.simple-button {
+  height: 20px;
+  font-size: 14px;
+  box-shadow: 0px 1px 0px 1px #09090a;
+  border-radius: 4px;
+}
+.simple-button:active {
+  background-color: var(--layout__primary-background);
+  box-shadow: 0px -2px 0px -2px #09090a;
+  transform: translate(0px, 1px);
+}
+.header__menu__item__link:active {
+  background-color: var(--layout__primary-background);
+}
+.ReactVirtualized__Grid__innerScrollContainer {
+  margin: 0px auto;
+}
+.footer__wrap {
+  padding-left: 2px;
+}

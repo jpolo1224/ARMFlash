@@ -202,6 +202,13 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         if (library.hasDatabase()) return
         library.useLocation(dir)
         location = library.root
+        // The new folder gets Flashpoint's credits, logos and themes too.
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            com.armsx.flashpoint.data.Defaults.install(ctx, library.root)
+            FpThemes.loadDesktop(library.root)
+            withContext(Dispatchers.Main) { Fp.load(ctx); LogoSets.load(ctx) }
+        }
     }
 
     fun cancelSync() = viewModelScope.launch(Dispatchers.IO) { runCatching { FpCore.cancelSync() } }

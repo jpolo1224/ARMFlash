@@ -13,6 +13,9 @@ class FpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         library = Library(this)
+        // Flashpoint's credits, platform logos, logo sets and themes, then the themes' colors.
+        com.armsx.flashpoint.data.Defaults.install(this, library.root)
+        com.armsx.flashpoint.ui.FpThemes.loadDesktop(library.root)
         com.armsx.flashpoint.ui.Fp.load(this)
         com.armsx.flashpoint.ui.LogoSets.load(this)
         com.armsx.flashpoint.data.CustomDriver.prefs = getSharedPreferences("settings", MODE_PRIVATE)

@@ -7,7 +7,8 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * The desktop launcher's Logo Sets: folders of platform logos (`<Platform>.png`) in the Flashpoint
- * folder's Data/LogoSets, copied from a desktop install. None picked: ARMFlash's lettered badges.
+ * folder's Data/LogoSets. None picked: Flashpoint's default platform logos (Data/Logos), as the
+ * desktop launcher shows them; a platform with no logo keeps ARMFlash's lettered badge.
  */
 object LogoSets {
     val current = androidx.compose.runtime.mutableStateOf<java.io.File?>(null)
@@ -17,7 +18,10 @@ object LogoSets {
     fun list(ctx: android.content.Context): List<java.io.File> =
         dir(ctx).listFiles { f -> f.isDirectory }.orEmpty().sortedBy { it.name.lowercase() }
 
+    private var defaults: java.io.File? = null
+
     fun load(ctx: android.content.Context) {
+        defaults = java.io.File((ctx.applicationContext as com.armsx.flashpoint.FpApp).library.root, "Data/Logos").takeIf { it.isDirectory }
         val n = ctx.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).getString("logoSet", null)
         current.value = n?.let { java.io.File(dir(ctx), it) }?.takeIf { it.isDirectory }
     }
@@ -29,7 +33,7 @@ object LogoSets {
 
     /** This platform's logo in the current set, matched like the launcher (any case, png or other image). */
     fun image(platform: String): java.io.File? {
-        val set = current.value ?: return null
+        val set = current.value ?: defaults ?: return null
         val files = cache.getOrPut(set.path) { set.listFiles().orEmpty().associateBy { it.nameWithoutExtension.lowercase() } }
         return files[platform.lowercase()]
     }
@@ -59,7 +63,49 @@ object FpThemes {
         text = Color(0xFFE8E8EA), textDim = Color(tint).lighten(0.55f), accent = Color(accent),
     )
 
-    val all: List<FpPalette> = listOf(
+    /** The built-in palettes, replaced by the desktop themes' own colors once they are read. */
+    var all: List<FpPalette> = builtIn()
+        private set
+
+    /**
+     * Desktop Flashpoint's themes from the Flashpoint folder's Data/Themes, each read from its
+     * CSS ([ThemeCss]); ARMFlash's own "Flashpoint" default stays first. A theme whose colors
+     * can't be read keeps the built-in palette of the same name, if there is one.
+     */
+    fun loadDesktop(root: java.io.File) {
+        val builtIn = builtIn()
+        val read = java.io.File(root, "Data/Themes").listFiles { f -> f.isDirectory }.orEmpty()
+            .filter { it.name != "Colorized" }
+            .mapNotNull { dir -> runCatching { fromCss(dir) }.getOrNull() ?: builtIn.firstOrNull { it.name.replace(" ", "") == dir.name.replace(" ", "") } }
+            .sortedBy { it.name.lowercase() }
+        if (read.isNotEmpty()) all = listOf(builtIn.first()) + read
+    }
+
+    private fun fromCss(dir: java.io.File): FpPalette? {
+        val p = ThemeCss.read(dir) ?: return null
+        fun c(vararg names: String) = names.firstNotNullOfOrNull { ThemeCss.color(p, it) }
+        val header = c("--layout__primary-background") ?: return null
+        val browse = c("--layout__secondary-background") ?: header
+        val sidebar = c("--layout__tertiary-background") ?: browse
+        val card = c("--layout__quaternary-background") ?: sidebar
+        val light = (browse.red * 0.299f + browse.green * 0.587f + browse.blue * 0.114f) > 0.5f
+        // Themes that only set backgrounds (Metal, FlatMetal) keep the launcher's default text.
+        val text = c("--layout__primary-text-color") ?: if (light) Color(0xFF111114) else Color(0xFFE6E6E8)
+        val dim = c("--layout__secondary-text-color")?.takeIf { it != text } ?: text.copy(alpha = 0.7f)
+        // The theme's accent, unless it would vanish against the background.
+        fun lum(x: Color) = x.red * 0.299f + x.green * 0.587f + x.blue * 0.114f
+        val accent = listOf("--highlight", "--layout__primary-outline-color", "--layout__scroll-thumb-color", "--layout__slider-background")
+            .mapNotNull { ThemeCss.color(p, it) }.firstOrNull { kotlin.math.abs(lum(it) - lum(browse)) > 0.22f }
+            ?: if (light) Color(0xFFB86A00) else Color(0xFFF0A030)
+        return FpPalette(
+            p.name, header = header, sidebar = sidebar, browse = browse, card = card, panel = sidebar,
+            field = if (light) header.darken(0.06f) else header.darken(0.25f),
+            text = text, textDim = dim, accent = accent, light = light,
+            play = if (light) Color(0xFF3F9A1C) else Color(0xFF5CB531), playDark = if (light) Color(0xFF2F7A14) else Color(0xFF3F8A1E),
+        )
+    }
+
+    private fun builtIn(): List<FpPalette> = listOf(
         FpPalette(
             "Flashpoint", header = Color(0xFF1C1C1E), sidebar = Color(0xFF262628), browse = Color(0xFF3A3A3C),
             card = Color(0xFF2C2C2E), panel = Color(0xFF2A2A2D), field = Color(0xFF1F1F21),
