@@ -3,6 +3,7 @@ package com.armsx.flashpoint.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -120,6 +121,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             }
         }
 
+        Section("Graphics Driver") {
+            DriverSection(vm)
+        }
+
         Section("Visuals") {
             ConfigRow("Screenshot Preview", "Show a game's screenshot in the grid.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -188,5 +193,86 @@ private fun TextSetting(title: String, desc: String, initial: String, save: (Str
         Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text(desc, color = Fp.TextDim, fontSize = 13.sp)
         OutlinedTextField(v, { v = it; save(it) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Custom Vulkan drivers (Turnip and other adrenotools packs) for native Flash, as in ARMSX3:
+ * the same driver sources, installs and packs. Used when Flash Player is Native and Graphics is
+ * Auto or Vulkan; the browser runner always uses the phone's own driver.
+ */
+@Composable
+private fun DriverSection(vm: BrowseVm) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var installed by remember { mutableStateOf(com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)) }
+    var selected by remember { mutableStateOf(com.armsx.flashpoint.data.CustomDriver.selected(ctx)?.id) }
+    var remote by remember { mutableStateOf<List<com.armsx.flashpoint.data.CustomDriver.RemoteDriver>?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            busy = "Installing"
+            val d = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.installFromUri(ctx, uri) }.getOrNull() }
+            busy = null
+            installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
+            vm.status = if (d != null) "Installed ${d.name}" else "That file is not a driver pack"
+        }
+    }
+    Text(
+        "For native Flash on Vulkan. Turnip and other custom drivers can run faster or fix glitches on Adreno GPUs. " +
+            "If a driver cannot load, the phone's own driver is used.",
+        color = Fp.TextDim, fontSize = 13.sp,
+    )
+    Spacer(Modifier.height(8.dp))
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("System driver", selected == null) { selected = null; com.armsx.flashpoint.data.CustomDriver.select(null) }
+        installed.forEach { d ->
+            Chip(d.name, selected == d.id) { selected = d.id; com.armsx.flashpoint.data.CustomDriver.select(d.id) }
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("Install from file", false) { picker.launch(arrayOf("application/zip", "*/*")) }
+        Chip("Download drivers", false) {
+            scope.launch {
+                busy = "Fetching driver list"
+                remote = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.fetchRemote() }.getOrDefault(emptyList()) }
+                busy = null
+            }
+        }
+        val sel = installed.firstOrNull { it.id == selected }
+        if (sel != null) Chip("Delete ${sel.name}", false) {
+            com.armsx.flashpoint.data.CustomDriver.delete(sel)
+            com.armsx.flashpoint.data.CustomDriver.select(null)
+            selected = null
+            installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
+        }
+    }
+    busy?.let { Text(it, color = Fp.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+    remote?.let { list ->
+        Spacer(Modifier.height(8.dp))
+        if (list.isEmpty()) Text("No drivers found (offline, or GitHub's rate limit).", color = Fp.TextDim, fontSize = 13.sp)
+        list.take(40).forEach { r ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(r.title, color = Color.White, fontSize = 14.sp)
+                    Text("${r.source}  |  ${r.publishedAt.take(10)}  |  ${r.sizeBytes / (1 shl 20)} MB", color = Fp.TextDim, fontSize = 12.sp)
+                }
+                Chip("Get", false) {
+                    scope.launch {
+                        busy = "Downloading ${r.title}"
+                        val d = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.download(ctx, r) }.getOrNull() }
+                        busy = null
+                        installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
+                        if (d != null) { selected = d.id; com.armsx.flashpoint.data.CustomDriver.select(d.id) }
+                        vm.status = if (d != null) "Installed ${d.name}" else "Download failed"
+                    }
+                }
+            }
+        }
     }
 }

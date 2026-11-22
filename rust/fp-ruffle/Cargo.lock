@@ -1100,9 +1100,11 @@ version = "0.1.0"
 dependencies = [
  "android-activity",
  "android_logger",
+ "ash",
  "async-channel",
  "async-task",
  "backtrace",
+ "futures",
  "indexmap",
  "jni",
  "log",
@@ -1118,6 +1120,7 @@ dependencies = [
  "tracing",
  "url",
  "wgpu",
+ "wgpu-hal",
 ]
 
 [[package]]

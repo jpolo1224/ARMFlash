@@ -36,6 +36,9 @@ backtrace = "0.3.76"
 async-task = "4.7.1"
 url = "2.5.2"
 indexmap = "2"
+wgpu-hal = { version = "30.0.2", features = ["vulkan"] }
+ash = "0.38"
+futures = "0.3.34"
 async-channel = "2.5.0"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
 

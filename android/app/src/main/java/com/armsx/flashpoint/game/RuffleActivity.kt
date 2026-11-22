@@ -25,6 +25,8 @@ import java.io.File
  */
 class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     private var proxyUrl = ""
+    private var vkGipa = 0L
+    private var driverName = ""
     private lateinit var overlay: OverlayState
     private lateinit var input: RuffleInput
     private lateinit var pad: PadMapper
@@ -37,7 +39,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         override val title get() = intent.getStringExtra(GameActivity.EXTRA_TITLE).orEmpty()
         override val logoUrl get() = intent.getStringExtra(GameActivity.EXTRA_LOGO).orEmpty()
         override val runner: String
-            get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } + ")"
+            get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } +
+                (if (driverName.isNotEmpty()) ", $driverName" else "") + ")"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() {
             val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
@@ -77,6 +80,14 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             proxyUrl = "http://127.0.0.1:$port"
         } catch (e: Exception) {
             Toast.makeText(this, "Game server failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+        // A custom Vulkan driver, if one is chosen and Flash may use Vulkan.
+        if (getString("backend") != "gl") {
+            com.armsx.flashpoint.data.CustomDriver.selected(this)?.let { d ->
+                vkGipa = com.armsx.flashpoint.data.CustomDriver.open(this, d)
+                driverName = if (vkGipa != 0L) d.name else ""
+                if (vkGipa == 0L) Toast.makeText(this, com.armsx.flashpoint.data.FpDriver.lastError(), Toast.LENGTH_LONG).show()
+            }
         }
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -151,6 +162,9 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     private fun getString(key: String): String? = when (key) {
         "swfUrl" -> intent.getStringExtra(GameActivity.EXTRA_URL)
         "proxyUrl" -> proxyUrl
+        // vkGetInstanceProcAddr of a custom driver (decimal address), or "0".
+        "vkGipa" -> vkGipa.toString()
+        "sdk" -> android.os.Build.VERSION.SDK_INT.toString()
         "backend" -> getSharedPreferences("settings", Context.MODE_PRIVATE).getString("flashBackend", "auto")
         // Flash cookies (SharedObjects), kept per install like the desktop's.
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path

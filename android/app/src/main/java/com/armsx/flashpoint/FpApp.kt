@@ -13,5 +13,6 @@ class FpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         library = Library(this)
+        com.armsx.flashpoint.data.CustomDriver.prefs = getSharedPreferences("settings", MODE_PRIVATE)
     }
 }

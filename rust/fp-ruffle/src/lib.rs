@@ -12,6 +12,7 @@
 
 mod audio;
 mod custom_event;
+mod driver;
 mod java;
 mod keycodes;
 mod navigator;
@@ -137,6 +138,8 @@ async fn run(app: AndroidApp) {
         trace: Option<std::path::PathBuf>,
         scale: i32,
         quality: i32,
+        vk_gipa: usize,
+        sdk: u32,
     }
     let settings = vm
         .attach_current_thread(|env| -> jni::errors::Result<_> {
@@ -149,6 +152,8 @@ async fn run(app: AndroidApp) {
                 trace: Some(JavaInterface::get_string(env, &activity, "traceOutput")).filter(|s| !s.is_empty()).map(Into::into),
                 scale: JavaInterface::get_string(env, &activity, "scale").parse().unwrap_or(0),
                 quality: JavaInterface::get_string(env, &activity, "quality").parse().unwrap_or(2),
+                vk_gipa: JavaInterface::get_string(env, &activity, "vkGipa").parse().unwrap_or(0),
+                sdk: JavaInterface::get_string(env, &activity, "sdk").parse().unwrap_or(30),
             };
             let _ = unsafe { env.set_rust_field(&*activity, jni_str!("eventLoopHandle"), sender.clone()) };
             Ok(s)
@@ -219,7 +224,21 @@ async fn run(app: AndroidApp) {
                             player_lock.set_is_playing(true);
                         } else {
                             let wanted = backends(&settings.backend);
-                            let renderer = unsafe {
+                            // A custom Vulkan driver first, when one was loaded.
+                            let custom = if settings.vk_gipa != 0 && wanted.contains(wgpu::Backends::VULKAN) {
+                                match unsafe {
+                                    driver::renderer_with_driver(settings.vk_gipa, surface_target(window), (dimensions.width, dimensions.height), settings.sdk)
+                                } {
+                                    Ok(r) => Some(r),
+                                    Err(e) => {
+                                        log::warn!("custom driver could not render ({e}); using the system driver");
+                                        None
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+                            let renderer = if let Some(r) = custom { Ok(r) } else { unsafe {
                                 WgpuRenderBackend::for_window_unsafe(
                                     surface_target(window),
                                     (dimensions.width, dimensions.height),
@@ -227,7 +246,7 @@ async fn run(app: AndroidApp) {
                                     wgpu::PowerPreference::HighPerformance,
                                     None,
                                 )
-                            };
+                            } };
                             // Vulkan refused (no driver, broken driver): fall back to OpenGL ES.
                             let renderer = match renderer {
                                 Ok(r) => r,

@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.armsx.flashpoint"
     compileSdk = 37
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "com.armsx.flasharm"
@@ -15,6 +16,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         ndk { abiFilters.add("arm64-v8a") }
+        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
     }
 
     buildTypes {
@@ -29,7 +31,16 @@ android {
         // Ruffle's wasm must stay uncompressed-readable; and big zips should not be re-deflated.
         noCompress += listOf("wasm")
     }
-    packaging { jniLibs { useLegacyPackaging = false } }
+    // libadrenotools' hook libraries are loaded by path from nativeLibraryDir, so native
+    // libraries are installed as files (as in ARMSX3).
+    packaging { jniLibs { useLegacyPackaging = true } }
+    // libfpdriver.so: custom Vulkan driver loading (libadrenotools).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 // libfpcore.so comes from Rust: scripts/build-native.sh (cargo + NDK clang).
