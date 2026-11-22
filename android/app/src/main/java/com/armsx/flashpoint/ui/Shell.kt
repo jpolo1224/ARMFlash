@@ -52,6 +52,14 @@ import com.armsx.flashpoint.core.Game
 /** The desktop launcher's top tabs. Help opens the online manual, as on desktop. */
 enum class Tab(val label: String) { HOME("Home"), NEWS("News"), GAMES("Games"), ANIMATIONS("Animations"), LOGS("Logs"), CONFIG("Config"), HELP("Help"), ABOUT("About") }
 
+/** LB / RB on a controller: step through the launcher's tabs (set by MainActivity). */
+object ShellNav {
+    /** Bumped with each press; [dir] is the direction of the latest one. */
+    val tick = androidx.compose.runtime.mutableIntStateOf(0)
+    var dir = 1
+    fun step(d: Int) { dir = d; tick.intValue++ }
+}
+
 const val MANUAL_URL = "https://flashpointproject.github.io/manual/"
 
 @Composable
@@ -67,6 +75,14 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
         }
     }
     androidx.activity.compose.BackHandler(enabled = tab != Tab.HOME && vm.selected == null) { tab = Tab.HOME }
+    // LB / RB: previous / next tab, wrapping round; Help (which opens the manual) is skipped.
+    LaunchedEffect(ShellNav.tick.intValue) {
+        if (ShellNav.tick.intValue == 0) return@LaunchedEffect
+        val tabs = Tab.entries.filter { it != Tab.HELP }
+        val i = tabs.indexOf(tab).coerceAtLeast(0)
+        vm.clearSelection()
+        go(tabs[(i + ShellNav.dir + tabs.size) % tabs.size])
+    }
 
     Column(Modifier.fillMaxSize().background(Fp.Header)) {
         // The pad enters the tab row on the tab that is open, not whichever is nearest.
@@ -148,6 +164,15 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                     Text("Don't forget to read the help page or manual if you're having issues.", color = Fp.Text, fontSize = 14.sp)
                 }
             }
+            LaunchedEffect(vm.recentTick) { vm.loadHomeRows() }
+            val rows: @Composable () -> Unit = {
+                if (vm.recent.isNotEmpty()) GameRow(vm, "Recently Played", vm.recent, onAll = { vm.pickShelf(Shelf.HISTORY); go(Tab.GAMES) }) { g ->
+                    vm.select(g); go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES)
+                }
+                if (vm.installedGames.isNotEmpty()) GameRow(vm, "Installed", vm.installedGames, onAll = { vm.pickShelf(Shelf.INSTALLED); go(Tab.GAMES) }) { g ->
+                    vm.select(g); go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES)
+                }
+            }
             val right: @Composable () -> Unit = {
                 vm.gotd?.let { g -> GotdBox(vm, g, onPlay) }
                 HomeBox("Random Picks", action = "Re-Roll Picks" to { vm.rerollPicks() }) {
@@ -156,6 +181,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                     }
                 }
             }
+            rows()
             if (wide) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Column(Modifier.weight(1f)) { left() }
@@ -207,6 +233,16 @@ private fun GotdBox(vm: BrowseVm, g: Gotd, onPlay: (Game) -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 Chip("Play", on = true) { vm.select(game); onPlay(game) }
             }
+        }
+    }
+}
+
+/** A Home row of games that scrolls sideways, with View All opening the matching shelf. */
+@Composable
+private fun GameRow(vm: BrowseVm, title: String, games: List<Game>, onAll: () -> Unit, onPick: (Game) -> Unit) {
+    HomeBox(title, action = "View All" to onAll) {
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(games.size) { i -> MiniCard(vm, games[i]) { onPick(games[i]) } }
         }
     }
 }

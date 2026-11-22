@@ -33,7 +33,7 @@
 package com.armsx.flashpoint.discord;
 
 /**
- * JNI surface of libarmsx2_discord.so.
+ * JNI surface of libflasharm_discord.so.
  *
  * Loaded ONLY in the :discord process. That is a licensing boundary, not an implementation detail:
  * ARMSX2 is GPL-3.0+ and the Discord Social SDK is proprietary, so the emulator and the SDK are
@@ -53,7 +53,7 @@ public final class DiscordNative {
     /**
      * Load the bridge, once, tolerating its absence.
      *
-     * A build without the SDK staged has no libarmsx2_discord.so at all, and an install that
+     * A build without the SDK staged has no libflasharm_discord.so at all, and an install that
      * somehow lacks it must not take the process down — this is an opt-in feature nobody has
      * necessarily asked for.
      */
@@ -64,7 +64,7 @@ public final class DiscordNative {
             System.loadLibrary("flasharm_discord");
             sLoaded = true;
         } catch (Throwable t) {
-            android.util.Log.w("ARMSX2Discord", "libarmsx2_discord.so unavailable: " + t.getMessage());
+            android.util.Log.w("FlashARMDiscord", "libflasharm_discord.so unavailable: " + t.getMessage());
             sLoaded = false;
         }
         return sLoaded;

@@ -169,7 +169,9 @@ data class TouchLayout(
     val buttons: List<TouchButton> = DEFAULT_BUTTONS,
     /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*). */
     val pad: Map<Int, Int> = DEFAULT_PAD,
-    val stickMovesCursor: Boolean = false,
+    /** Left stick drives the mouse cursor (the default: most Flash games are point and click,
+     *  and the D-pad still sends the arrow keys); off, it sends the arrow keys too. */
+    val leftStickCursor: Boolean = true,
     /**
      * When the touch keys show (ARMSX2's on-screen controls setting): "auto" hides them while a
      * controller is attached, "always", "off", or "timed", which hides them [hideAfter] seconds
@@ -190,6 +192,7 @@ data class TouchLayout(
             TouchButton("key", KeyEvent.KEYCODE_SPACE, x = 0.83f, y = 0.88f, size = 56f),
             TouchButton("key", KeyEvent.KEYCODE_Z, x = 0.74f, y = 0.66f, size = 62f),
             TouchButton("key", KeyEvent.KEYCODE_X, x = 0.87f, y = 0.62f, size = 62f),
+            TouchButton("key", KeyEvent.KEYCODE_C, x = 0.79f, y = 0.46f, size = 62f),
             TouchButton("key", KeyEvent.KEYCODE_ENTER, x = 0.92f, y = 0.40f, size = 46f),
         )
         val DEFAULT_PAD = mapOf(

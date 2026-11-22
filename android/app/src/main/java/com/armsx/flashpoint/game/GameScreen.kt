@@ -15,9 +15,21 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
 
     private val im = act.getSystemService(InputManager::class.java)
 
+    private val census = object : Runnable {
+        override fun run() {
+            Thread { android.util.Log.i("FlashARM", "Maps: " + MapCensus.summary()) }.start()
+            handler.postDelayed(this, 30_000)
+        }
+    }
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
     fun onCreate() {
+        handler.postDelayed(census, 5_000)
         MenuSfx.load(act)
         PauseMusic.load(act)
+        OsdPrefs.load(act)
+        GamePrefs.load(act)
+        GamePrefs.apply(act)
         overlay.padConnected = gamepadAttached()
         im.registerInputDeviceListener(this, null)
     }
@@ -36,6 +48,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     }
 
     fun onDestroy() {
+        handler.removeCallbacks(census)
         im.unregisterInputDeviceListener(this)
         PauseMusic.stop()
     }
@@ -68,4 +81,43 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     override fun onInputDeviceAdded(deviceId: Int) { overlay.padConnected = gamepadAttached() }
     override fun onInputDeviceRemoved(deviceId: Int) { overlay.padConnected = gamepadAttached() }
     override fun onInputDeviceChanged(deviceId: Int) { overlay.padConnected = gamepadAttached() }
+}
+
+/** Game settings the pause menu's Options tab changes while a game runs; shared by every game. */
+object GamePrefs {
+    /** Screen orientation for games: an ActivityInfo constant by name. */
+    val orientations = listOf(
+        "sensorLandscape" to "Landscape", "landscape" to "Landscape (fixed)", "reverseLandscape" to "Upside down",
+        "sensorPortrait" to "Portrait", "sensor" to "Rotate freely",
+    )
+    val orientation = androidx.compose.runtime.mutableStateOf("sensorLandscape")
+    val keepScreenOn = androidx.compose.runtime.mutableStateOf(true)
+    val volume = androidx.compose.runtime.mutableFloatStateOf(1f)
+    private var prefs: android.content.SharedPreferences? = null
+
+    fun load(ctx: android.content.Context) {
+        if (prefs != null) return
+        val p = ctx.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+        prefs = p
+        orientation.value = p.getString("game.orientation", "sensorLandscape")!!
+        keepScreenOn.value = p.getBoolean("game.keepScreenOn", true)
+        volume.floatValue = p.getFloat("game.volume", 1f)
+    }
+
+    /** Apply orientation and keep-screen-on to [act] now. */
+    fun apply(act: Activity) {
+        act.requestedOrientation = when (orientation.value) {
+            "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            "reverseLandscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            "sensorPortrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            "sensor" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        val flag = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        if (keepScreenOn.value) act.window.addFlags(flag) else act.window.clearFlags(flag)
+    }
+
+    fun setOrientation(act: Activity, v: String) { orientation.value = v; prefs?.edit()?.putString("game.orientation", v)?.apply(); apply(act) }
+    fun setKeepScreenOn(act: Activity, v: Boolean) { keepScreenOn.value = v; prefs?.edit()?.putBoolean("game.keepScreenOn", v)?.apply(); apply(act) }
+    fun setVolume(v: Float) { volume.floatValue = v; prefs?.edit()?.putFloat("game.volume", v)?.apply() }
 }

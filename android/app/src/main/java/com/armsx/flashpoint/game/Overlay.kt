@@ -80,6 +80,11 @@ interface OverlayHost {
     fun menuOpen(open: Boolean)
     fun display(scale: String, quality: String)
     var menuLeft: Boolean
+    /** Frames the game has drawn so far (for the FPS counter), or -1 if the player cannot say. */
+    fun frames(): Long = -1
+    /** Whether [setVolume] works for this player. */
+    val hasVolume: Boolean get() = false
+    fun setVolume(v: Float) {}
 }
 
 class OverlayState(layout: TouchLayout) {
@@ -111,7 +116,8 @@ private val Accent = Color(0xFF5CB531)
 @Composable
 fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
     val onSave: (Boolean) -> Unit = host::save
-    androidx.compose.runtime.LaunchedEffect(st.menu) { host.menuOpen(st.menu) }
+    // The game also pauses while its touch layout is being edited, as in ARMSX2.
+    androidx.compose.runtime.LaunchedEffect(st.menu || st.editing) { host.menuOpen(st.menu || st.editing) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
@@ -145,7 +151,10 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         val keysShown = st.editing || when {
             !l.visible -> false
             l.showMode == "off" -> false
-            l.showMode == "auto" -> !st.padConnected
+            // Auto follows the last input, as ARMSX2 does on handhelds: a device with built-in
+            // controls (Odin) always has a pad attached, so hiding for that alone hid the keys for
+            // good. Touch brings them back, a button press hides them.
+            l.showMode == "auto" -> !(st.padConnected && com.armsx.flashpoint.ui.PadInput.active.value)
             l.showMode == "timed" -> !timedOut
             else -> true
         }
@@ -162,7 +171,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         if (!st.menu && !st.editing) {
             var revealed by remember { mutableStateOf(false) }
             androidx.compose.runtime.LaunchedEffect(revealed) { if (revealed) { kotlinx.coroutines.delay(PauseRevealMs); revealed = false } }
-            val shown = (!l.pauseTapToReveal && !st.padConnected) || revealed
+            val shown = (!l.pauseTapToReveal && !(st.padConnected && com.armsx.flashpoint.ui.PadInput.active.value)) || revealed
             val shownNow = androidx.compose.runtime.rememberUpdatedState(shown)
             Box(
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(52.dp)
@@ -181,6 +190,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
             }
         }
 
+        OsdOverlay(host::frames, Modifier.align(Alignment.TopStart))
         if (st.menu) QuickMenu(st, host)
         WelcomeBannerOverlay(this)
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))

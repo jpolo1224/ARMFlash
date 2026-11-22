@@ -44,7 +44,15 @@ fn e<E: std::fmt::Display>(err: E) -> String {
 }
 
 /// Open (and migrate, like the launcher does) a flashpoint.sqlite. `:memory:` for tests.
+fn db_path() -> &'static RwLock<String> {
+    static P: OnceLock<RwLock<String>> = OnceLock::new();
+    P.get_or_init(|| RwLock::new(String::new()))
+}
+
 pub fn open_database(path: &str) -> Res {
+    if let Ok(mut p) = db_path().write() {
+        *p = path.to_string();
+    }
     let mut fp = FlashpointArchive::new();
     fp.load_database(path).map_err(e)?;
     let count = rt().block_on(fp.count_games()).map_err(e)?;
@@ -207,6 +215,20 @@ pub fn optimize() -> Res {
 
 pub fn clear_playtime() -> Res {
     with_db(|fp| rt().block_on(fp.clear_playtime_tracking()).map(|_| "{}".to_string()).map_err(e))
+}
+
+/// Time played, without counting another play: the play itself is recorded when the game
+/// starts (add_playtime with 0 s), so one that crashes or is swiped away still shows in Play
+/// History. flashpoint-archive's own call always counts a play, hence this one UPDATE.
+pub fn add_seconds(game_id: &str, seconds: i64) -> Res {
+    let path = db_path().read().map_err(|_| "lock poisoned")?.clone();
+    if path.is_empty() {
+        return Err("no database loaded".into());
+    }
+    let conn = rusqlite::Connection::open(&path).map_err(e)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(e)?;
+    conn.execute("UPDATE game SET playtime = playtime + ?1 WHERE id = ?2", rusqlite::params![seconds, game_id]).map_err(e)?;
+    Ok("{}".into())
 }
 
 pub fn add_playtime(game_id: &str, seconds: i64) -> Res {

@@ -12,6 +12,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 fp-proxy = { path = "../fp-proxy" }
 flashpoint-archive = "0.13.7"
+# Same version flashpoint-archive uses (its bundled SQLite), for the one write it has no call for.
+rusqlite = "0.30"
 jni = "0.21.1"
 tokio = { version = "1.54", features = ["rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }

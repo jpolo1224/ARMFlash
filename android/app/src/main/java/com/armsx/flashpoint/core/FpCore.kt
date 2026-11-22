@@ -30,6 +30,8 @@ object FpCore {
     @JvmStatic private external fun platforms(): String
     @JvmStatic private external fun markDataOnDisk(path: String, gameDataId: Long): String
     @JvmStatic private external fun addPlaytime(id: String, seconds: Long): String
+
+    @JvmStatic private external fun addSeconds(id: String, seconds: Long): String
     @JvmStatic private external fun proxyStart(htdocs: String, legacy: String, port: Int, cache: Boolean, live: Boolean): String
     @JvmStatic private external fun proxyMount(zip: String): String
     @JvmStatic private external fun proxyUnmountAll(): String
@@ -72,6 +74,11 @@ object FpCore {
 
     fun playtime(id: String, seconds: Long) {
         check(addPlaytime(id, seconds))
+    }
+
+    /** Add time played without counting another play (the play is counted at launch). */
+    fun playSeconds(id: String, seconds: Long) {
+        check(addSeconds(id, seconds))
     }
 
     /** Starts the game server (once per process). Returns its port. */

@@ -17,6 +17,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 
 /**
  * Whether a controller (or the keyboard's arrows) is driving the launcher right now, as in
@@ -80,9 +88,37 @@ fun Modifier.padScrollTop(state: ScrollState): Modifier = composed {
     }
 }
 
-/** `verticalScroll` for a launcher page, with [padScrollTop]. */
+/**
+ * `verticalScroll` for a launcher page, with [padScrollTop], and D-pad scrolling where a page
+ * has nothing to land on: Up/Down first try to move focus; if there is no control that way
+ * (a long stretch of text, the credits, the end of a page) or the next one is more than a
+ * screen away, the page scrolls by most of a screen instead of getting stuck.
+ */
 @androidx.compose.runtime.Composable
 fun Modifier.padVerticalScroll(): Modifier {
     val state = androidx.compose.foundation.rememberScrollState()
-    return padScrollTop(state).then(Modifier.verticalScroll(state))
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+    var viewport by remember { mutableStateOf(0) }
+    return this
+        .onSizeChanged { viewport = it.height }
+        .onPreviewKeyEvent { e ->
+            val down = e.key == Key.DirectionDown
+            if (!(down || e.key == Key.DirectionUp) || e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            val before = state.value
+            if (focus.moveFocus(if (down) FocusDirection.Down else FocusDirection.Up)) {
+                // Moved; if that jumped further than a screen, the page scrolled past unread content.
+                scope.launch {
+                    kotlinx.coroutines.delay(16)
+                    val jumped = kotlin.math.abs(state.value - before)
+                    if (viewport > 0 && jumped > viewport) state.animateScrollTo(before + (if (down) 1 else -1) * (viewport * 0.8f).toInt())
+                }
+                return@onPreviewKeyEvent true
+            }
+            if (!down && state.value == 0) return@onPreviewKeyEvent false
+            scope.launch { state.animateScrollBy((if (down) 1 else -1) * viewport * 0.6f) }
+            true
+        }
+        .then(padScrollTop(state))
+        .then(Modifier.verticalScroll(state))
 }

@@ -15,6 +15,8 @@ pub enum RuffleEvent {
     MouseButton { down: bool, x: f64, y: f64, button: MouseButton },
     /// Pause or resume (in-game menu).
     SetPlaying(bool),
+    /// Game volume, 0.0 to 1.0.
+    Volume(f32),
     /// Display: scale 0 game default, 1 fit, 2 stretch, 3 fill (crop), 4 original size;
     /// quality 0 low, 1 medium, 2 high, 3 best.
     Display { scale: i32, quality: i32 },

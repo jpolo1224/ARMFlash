@@ -51,6 +51,28 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
         Text("Config", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
 
+        // What games run on comes first: the player, its graphics API and the GPU driver.
+        Section("Renderer") {
+            ConfigRow("Flash Player", "Native runs Ruffle directly on the GPU (fastest). Browser runs Ruffle's web version, for the rare game that needs it.") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Chip("Native", p.flashPlayer.value == "native") { p.flashPlayer.value = "native" }
+                    Chip("Browser", p.flashPlayer.value == "web") { p.flashPlayer.value = "web" }
+                }
+            }
+            ConfigRow("Graphics", "What native Flash draws with. Auto uses Vulkan where it works and OpenGL ES otherwise.") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Auto", "vulkan" to "Vulkan", "gl" to "OpenGL ES").forEach { (v, label) ->
+                        Chip(label, p.flashBackend.value == v) { p.flashBackend.value = v }
+                    }
+                }
+            }
+        }
+
+        Section("Graphics Driver") {
+            DriverSection(vm)
+        }
+
+
         Section("Preferences") {
             Toggle("Show Extreme Filters", "Allows Extreme tag filters to be toggled, to control content unsuitable for children.", p.extremeGames) { vm.refreshAll() }
             Toggle("Hide Extreme Screenshots", "Hides screenshots of Extreme tagged content.", p.hideExtremeScreenshots)
@@ -108,26 +130,6 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             }
             Action("Update Game Info", "Last updated: ${vm.lastSync.take(10).ifBlank { "never" }}", "Update") { vm.syncDatabase() }
             Action("Import Database", "Replace the game database with a flashpoint.sqlite from a desktop install.", "Import", onImport)
-        }
-
-        Section("Flash") {
-            ConfigRow("Flash Player", "Native runs Ruffle directly on the GPU (fastest). Browser runs Ruffle's web version, for the rare game that needs it.") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Chip("Native", p.flashPlayer.value == "native") { p.flashPlayer.value = "native" }
-                    Chip("Browser", p.flashPlayer.value == "web") { p.flashPlayer.value = "web" }
-                }
-            }
-            ConfigRow("Graphics", "What native Flash draws with. Auto uses Vulkan where it works and OpenGL ES otherwise.") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto" to "Auto", "vulkan" to "Vulkan", "gl" to "OpenGL ES").forEach { (v, label) ->
-                        Chip(label, p.flashBackend.value == v) { p.flashBackend.value = v }
-                    }
-                }
-            }
-        }
-
-        Section("Graphics Driver") {
-            DriverSection(vm)
         }
 
         Section("Visuals") {

@@ -97,6 +97,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             status = ""
             refresh(immediate = true)
             rerollPicks()
+            loadHomeRows()
             loadGotd()
             loadPlaylists()
         } catch (e: Exception) {
@@ -244,6 +245,22 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Home's Recently Played and Installed rows: the newest few of each, games and animations together. */
+    var recent by mutableStateOf<List<Game>>(emptyList())
+        private set
+    var installedGames by mutableStateOf<List<Game>>(emptyList())
+        private set
+
+    fun loadHomeRows() = viewModelScope.launch {
+        val bl = tagBlacklist()
+        recent = withContext(Dispatchers.IO) {
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), 12) }.getOrDefault(emptyList())
+        }
+        installedGames = withContext(Dispatchers.IO) {
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), 12) }.getOrDefault(emptyList())
+        }
+    }
+
     fun loadGotd() = viewModelScope.launch {
         gotd = withContext(Dispatchers.IO) { Gotd.today()?.let { (entry, _) -> runCatching { FpCore.game(entry.id) }.getOrNull()?.let { entry.copy(game = it) } } }
     }
@@ -257,7 +274,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     private fun baseOpts() = SearchOpts(
-        library = if (shelf == Shelf.ALL) lib else null,
+        // Every shelf stays inside its tab: Installed on Animations lists installed animations only.
+        library = lib,
         tagBlacklist = tagBlacklist(),
         installed = if (shelf == Shelf.INSTALLED) true else null,
         order = if (shelf == Shelf.HISTORY) "LASTPLAYED" else order,
@@ -358,9 +376,23 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         onReady(Ready(game, plan, zips))
     }
 
-    fun addPlaytime(id: String, seconds: Long) = viewModelScope.launch(Dispatchers.IO) {
-        if (prefs2.enablePlaytimeTracking.value) runCatching { FpCore.playtime(id, seconds) }
+    /** A game started: count the play and its date now, so it is in Play History even if it never returns cleanly. */
+    fun recordPlay(game: Game) = viewModelScope.launch(Dispatchers.IO) {
+        if (!tracks(game)) return@launch
+        runCatching { FpCore.playtime(game.id, 0) }
     }
+
+    fun addPlaytime(id: String, seconds: Long) = viewModelScope.launch(Dispatchers.IO) {
+        if (prefs2.enablePlaytimeTracking.value) runCatching { FpCore.playSeconds(id, seconds) }
+        recentTick++
+    }
+
+    private fun tracks(game: Game) = prefs2.enablePlaytimeTracking.value &&
+        (prefs2.enablePlaytimeTrackingExtreme.value || game.tags.split(';').none { it.trim() in ExtremeTags.list })
+
+    /** Bumped when a game returns, so the Home rows reload. */
+    var recentTick by mutableStateOf(0)
+        private set
 
     companion object {
         const val PAGE = 120

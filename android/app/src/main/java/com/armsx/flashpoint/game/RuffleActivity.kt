@@ -56,6 +56,9 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             finish()
         }
         override fun exit() = quit()
+        override fun frames(): Long = nativeFrames()
+        override val hasVolume get() = true
+        override fun setVolume(v: Float) = nativeVolume(v)
         override fun menuOpen(open: Boolean) {
             screen?.onMenu(open)
             nativeSetPlaying(!open)
@@ -203,6 +206,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeKey(code: Int, down: Boolean)
     external fun nativeMouse(x: Double, y: Double, button: Int, down: Boolean)
     external fun nativeSetPlaying(playing: Boolean)
+    external fun nativeFrames(): Long
+    external fun nativeVolume(volume: Float)
     external fun nativeDisplay(scale: Int, quality: Int)
 
     companion object {

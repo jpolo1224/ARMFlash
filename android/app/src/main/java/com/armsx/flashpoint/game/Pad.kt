@@ -163,7 +163,6 @@ class PadMapper(
         if (!isPad(ev) || ev.action != MotionEvent.ACTION_MOVE) return false
         // In the menu, leave the hat and stick to Android, which turns them into D-pad keys for focus.
         if (menuOpen) { if (holders.isNotEmpty()) reset(); return false }
-        com.armsx.flashpoint.ui.PadInput.active.value = true
 
         val hat = hatMask(ev.getAxisValue(MotionEvent.AXIS_HAT_X), ev.getAxisValue(MotionEvent.AXIS_HAT_Y))
         applyMask("hat", hatMask, hat); hatMask = hat
@@ -172,7 +171,7 @@ class PadMapper(
         val ly = ev.getAxisValue(MotionEvent.AXIS_Y)
         val rx = ev.getAxisValue(MotionEvent.AXIS_Z)
         val ry = ev.getAxisValue(MotionEvent.AXIS_RZ)
-        if (overlay.layout.stickMovesCursor) {
+        if (overlay.layout.leftStickCursor) {
             aimX = rx + lx; aimY = ry + ly
             applyMask("stick", stickMask, 0); stickMask = 0
         } else {
@@ -188,6 +187,8 @@ class PadMapper(
             if ((t xor trig) and 2 != 0) { if (t and 2 != 0) press("lt", Keys.MOUSE_RIGHT) else release("lt", Keys.MOUSE_RIGHT) }
             trig = t
         }
+        // Only a real push counts as using the pad (resting sticks still send small moves).
+        if (hat != 0 || stickMask != 0 || t != 0 || aimX * aimX + aimY * aimY > 0.09f) com.armsx.flashpoint.ui.PadInput.active.value = true
         if (aimX * aimX + aimY * aimY > 0.04f) startAim()
         return true
     }

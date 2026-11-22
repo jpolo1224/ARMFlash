@@ -21,7 +21,12 @@ import java.net.URL
 /** Adapted from ARMSX3 News.kt: release notes from GitHub releases, with their pictures. */
 object News {
     private const val TAG = "News"
-    private const val RELEASES_URL = "https://api.github.com/repos/ARMSX2/FlashARM/releases?per_page=20"
+    /** FlashARM's GitHub repository ("owner/name"). Empty until it has one: nothing is fetched. */
+    const val REPO = ""
+    private val RELEASES_URL get() = "https://api.github.com/repos/$REPO/releases?per_page=20"
+
+    /** A release's page on GitHub. */
+    fun releaseUrl(tag: String) = if (REPO.isEmpty()) "" else "https://github.com/$REPO/releases/tag/$tag"
     private const val CACHE_FILE = "releases.json"
     private const val CACHE_TTL_MS = 6L * 60 * 60 * 1000 // 6h; releases are not frequent
     private const val MAX_BODY_BYTES = 512 * 1024
@@ -92,6 +97,7 @@ object News {
         ) {
             parse(runCatching { cache.readText() }.getOrNull())?.let { return Result(it, false) }
         }
+        if (REPO.isEmpty()) return null
         val body = get(RELEASES_URL)
         val parsed = parse(body)
         if (parsed != null) {

@@ -65,6 +65,16 @@ class MainActivity : ComponentActivity() {
     // Pad or touch: decides whether the launcher shows its controller selection ring.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         com.armsx.flashpoint.ui.PadInput.onKey(event)
+        // LB / RB switch the launcher's tabs.
+        val shoulder = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_BUTTON_L1 -> -1
+            android.view.KeyEvent.KEYCODE_BUTTON_R1 -> 1
+            else -> 0
+        }
+        if (shoulder != 0) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) com.armsx.flashpoint.ui.ShellNav.step(shoulder)
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -110,6 +120,7 @@ private fun App(vm: BrowseVm) {
                 vm,
                 onPlay = { game ->
                     vm.prepare(game) { ready ->
+                        vm.recordPlay(ready.game)
                         UiMusic.pause()
                         com.armsx.flashpoint.discord.DiscordPresence.setPlaying(
                             com.armsx.flashpoint.discord.PlayingGame(ready.game.id, ready.game.title, ready.game.primaryPlatform, vm.library.logoUrl(ready.game.id)),

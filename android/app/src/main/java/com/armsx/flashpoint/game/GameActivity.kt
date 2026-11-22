@@ -48,6 +48,7 @@ class GameActivity : ComponentActivity() {
     private lateinit var layouts: LayoutStore
     private var gameId = ""
     private var displayScript: androidx.webkit.ScriptHandler? = null
+    @Volatile private var pageFrames = -1L
 
     private val host = object : OverlayHost {
         override val title get() = intent.getStringExtra(EXTRA_TITLE).orEmpty()
@@ -59,9 +60,21 @@ class GameActivity : ComponentActivity() {
         override fun keyboard() = showKeyboard()
         override fun restart() = web.reload()
         override fun exit() = quit()
+        // The page's frame count (a requestAnimationFrame counter in the top frame), read
+        // asynchronously: each call returns the last value and asks for a fresh one.
+        override fun frames(): Long {
+            web.evaluateJavascript("window.__fpmFrames||-1") { v -> pageFrames = v?.toLongOrNull() ?: -1 }
+            return pageFrames
+        }
         override fun menuOpen(open: Boolean) {
             screen?.onMenu(open)
-            if (open) { web.onPause(); web.pauseTimers() } else { web.resumeTimers(); web.onResume(); web.requestFocus() }
+            // Audio first, while the page still runs: pausing the WebView does not stop Web Audio.
+            if (open) {
+                web.evaluateJavascript("window.__fpmPause && window.__fpmPause(true)") { web.onPause(); web.pauseTimers() }
+            } else {
+                web.resumeTimers(); web.onResume(); web.requestFocus()
+                web.evaluateJavascript("window.__fpmPause && window.__fpmPause(false)", null)
+            }
         }
         override fun display(scale: String, quality: String) {
             setDisplayScript(scale, quality)
@@ -159,6 +172,7 @@ class GameActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.POLYFILL, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.EMBED_FRAMES, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(web, RufflePage.AUDIO_GATE, setOf("*"))
         }
 
         val target = when (runner) {
@@ -332,6 +346,49 @@ object RufflePage {
             }); });
           }).observe(document.documentElement || document, { childList: true, subtree: true });
           document.addEventListener('DOMContentLoaded', function() { scan(document); });
+        })();
+    """.trimIndent()
+
+    /**
+     * Silence for the pause menu. Pausing the WebView stops timers and drawing but not Web Audio
+     * or <audio>/<video>, so a paused game kept playing its music. Every AudioContext a page
+     * makes is remembered; `__fpmPause(true)` suspends them all, pauses playing media and Ruffle
+     * players, and passes the call into every frame (games inside iframes, other origins too).
+     */
+    val AUDIO_GATE = """
+        (function(){
+          if (window.__fpmPause) return;
+          var ctxs = [], paused = [];
+          ['AudioContext', 'webkitAudioContext'].forEach(function(n) {
+            var C = window[n]; if (!C) return;
+            var W = function() { var c = new (Function.prototype.bind.apply(C, [null].concat([].slice.call(arguments))))(); ctxs.push(c); return c; };
+            W.prototype = C.prototype; window[n] = W;
+          });
+          function frames(on) {
+            for (var i = 0; i < window.frames.length; i++) {
+              try { window.frames[i].postMessage({ __fpmPause: on }, '*'); } catch (e) {}
+            }
+          }
+          window.__fpmPause = function(on) {
+            ctxs.forEach(function(c) { try { on ? c.suspend() : c.resume(); } catch (e) {} });
+            if (on) {
+              paused = [].filter.call(document.querySelectorAll('audio, video'), function(m) { return !m.paused; });
+              paused.forEach(function(m) { m.pause(); });
+            } else {
+              paused.forEach(function(m) { m.play().catch(function(){}); }); paused = [];
+            }
+            [].forEach.call(document.querySelectorAll('ruffle-player, ruffle-embed, ruffle-object'), function(p) {
+              try { on ? p.pause() : p.play(); } catch (e) {}
+            });
+            frames(on);
+          };
+          if (window.top === window) {
+            window.__fpmFrames = 0;
+            (function tick() { window.__fpmFrames++; requestAnimationFrame(tick); })();
+          }
+          window.addEventListener('message', function(e) {
+            if (e.data && typeof e.data.__fpmPause === 'boolean') window.__fpmPause(e.data.__fpmPause);
+          });
         })();
     """.trimIndent()
 

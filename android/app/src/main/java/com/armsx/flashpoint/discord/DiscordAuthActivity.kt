@@ -91,13 +91,13 @@ class DiscordAuthActivity : Activity() {
                 onEngineBound = null
                 waiting?.invoke()
             }
-            .onFailure { Log.w("ARMSX2DiscordSvc", "setEngineActivity failed: ${it.message}") }
+            .onFailure { Log.w("FlashARMDiscord", "setEngineActivity failed: ${it.message}") }
 
         // Only when asked. Handing the Activity over is now also done on a plain start, and that
         // must not drag the browser up with it.
         if (intent?.getBooleanExtra(EXTRA_AUTHORIZE, false) == true) {
             runCatching { DiscordNative.authorize() }
-                .onFailure { Log.w("ARMSX2DiscordSvc", "authorize failed: ${it.message}") }
+                .onFailure { Log.w("FlashARMDiscord", "authorize failed: ${it.message}") }
         }
 
         finish()

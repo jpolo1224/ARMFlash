@@ -198,8 +198,16 @@ private fun Rail(st: OverlayState) {
 private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit) {
     // With a pad, focus lands on the pane's first control when the menu opens or the tab changes.
     val first = remember { androidx.compose.ui.focus.FocusRequester() }
+    val view = androidx.compose.ui.platform.LocalView.current
     LaunchedEffect(st.tab) {
-        if (com.armsx.flashpoint.ui.PadInput.active.value) { delay(60); runCatching { first.requestFocus() } }
+        if (!com.armsx.flashpoint.ui.PadInput.active.value) return@LaunchedEffect
+        // The game view (a WebView after Resume) may hold Android focus; the menu's own view
+        // must take it back, or the D-pad keeps going to the game behind the menu.
+        view.requestFocus()
+        repeat(3) {
+            delay(60)
+            if (runCatching { first.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalFirstFocus provides first) { MenuPageBody(st, host, compact, left, onLeft, close) }
 }
@@ -218,7 +226,7 @@ private fun MenuPageBody(st: OverlayState, host: OverlayHost, compact: Boolean, 
                 MenuTab.SESSION -> SessionPane(st, host, close)
                 MenuTab.DISPLAY -> DisplayPane(st, host)
                 MenuTab.CONTROLS -> ControlsPane(st, host)
-                MenuTab.OPTIONS -> OptionsPane(left, onLeft)
+                MenuTab.OPTIONS -> OptionsPane(host, left, onLeft)
             }
         }
     }
@@ -319,6 +327,7 @@ private fun MenuHeader(host: OverlayHost, compact: Boolean) {
 
 private data class MenuAction(val title: String, val detail: String, val glyph: String, val accent: Color?, val action: () -> Unit)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) {
     ActionGrid(
@@ -332,6 +341,26 @@ private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) 
             MenuAction("Close", host.title, "■", Danger) { host.exit() },
         ),
     )
+    MenuSwitchRow("Menu button: tap to reveal", st.layout.pauseTapToReveal) {
+        st.layout = st.layout.copy(pauseTapToReveal = it); host.save(false)
+    }
+    SectionCard("Performance overlay") {
+        MenuSwitchRow("Show performance overlay", OsdPrefs.enabled.value) { OsdPrefs.setEnabled(it) }
+        Spacer(Modifier.height(8.dp))
+        Text("Shows", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OsdPrefs.Stat.entries.forEach { s -> OptionChip(s.label, s in OsdPrefs.stats.value) { OsdPrefs.toggle(s) } }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Colour", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OsdPrefs.Colors.forEachIndexed { i, (name, c) ->
+                OptionChip(name, OsdPrefs.color.value == i, dot = c) { OsdPrefs.setColor(i) }
+            }
+        }
+    }
 }
 
 @Composable
@@ -544,7 +573,7 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
             }
         }
         val status = when (mode) {
-            "auto" -> if (st.padConnected) "Hidden while a controller is attached" else "Shown: no controller attached"
+            "auto" -> if (st.padConnected) "Hidden while you play with the controller, back when you touch the screen" else "Shown: no controller attached"
             "timed" -> "Hide ${st.layout.hideAfter} s after the last touch, back on the next touch"
             else -> null
         }
@@ -559,10 +588,6 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
             }
         }
         Spacer(Modifier.height(6.dp))
-        MenuSwitchRow("Menu button: tap to reveal", st.layout.pauseTapToReveal) {
-            st.layout = st.layout.copy(pauseTapToReveal = it); host.save(false)
-        }
-        Spacer(Modifier.height(6.dp))
         var op by remember { mutableFloatStateOf(st.layout.opacity) }
         Text("Opacity  ${(op * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         Slider(
@@ -574,8 +599,8 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
     }
     SectionCard("Controller") {
-        MenuCycleRow("Left stick", if (st.layout.stickMovesCursor) "Mouse cursor" else "Arrow keys") {
-            st.layout = st.layout.copy(stickMovesCursor = !st.layout.stickMovesCursor); host.save(false)
+        MenuCycleRow("Left stick", if (st.layout.leftStickCursor) "Mouse cursor" else "Arrow keys") {
+            st.layout = st.layout.copy(leftStickCursor = !st.layout.leftStickCursor); host.save(false)
         }
         Spacer(Modifier.height(6.dp))
         PAD_BUTTONS.forEach { (code, name) ->
@@ -587,9 +612,26 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
 }
 
 @Composable
-private fun OptionsPane(left: Boolean, onLeft: (Boolean) -> Unit) {
+private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, first = true, onSelect = onLeft)
+    val act = ctx as? android.app.Activity
+    HorizontalOptions(
+        "Screen orientation", GamePrefs.orientations, GamePrefs.orientation.value,
+        description = "For every game. Landscape turns with the device either way up.", first = true,
+    ) { v -> act?.let { GamePrefs.setOrientation(it, v) } }
+    if (host.hasVolume) SectionCard("Game volume") {
+        var v by remember { mutableFloatStateOf(GamePrefs.volume.floatValue) }
+        Text("${(v * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        Slider(
+            v, { v = it; host.setVolume(it) }, valueRange = 0f..1f,
+            onValueChangeFinished = { GamePrefs.setVolume(v) },
+            modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
+        )
+    }
+    SectionCard("Screen") {
+        MenuSwitchRow("Keep the screen on while playing", GamePrefs.keepScreenOn.value) { on -> act?.let { GamePrefs.setKeepScreenOn(it, on) } }
+    }
+    HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, onSelect = onLeft)
     SectionCard("Sound") {
         MenuSwitchRow("Menu sounds", MenuSfx.enabled.value) { MenuSfx.set(ctx, it) }
         Spacer(Modifier.height(6.dp))
@@ -672,7 +714,7 @@ private fun <T> HorizontalOptions(title: String, options: List<Pair<T, String>>,
 }
 
 @Composable
-private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun OptionChip(label: String, selected: Boolean, dot: Color? = null, onClick: () -> Unit) {
     Surface(
         onClick = { MenuSfx.play(MenuSfx.Event.SELECT); onClick() },
         modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
@@ -680,11 +722,14 @@ private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f) else MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.38f)),
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = if (dot != null) 11.dp else 0.dp)) {
+        if (dot != null) Box(Modifier.size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(dot))
         Text(
             label, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 2,
         )
+        }
     }
 }
 

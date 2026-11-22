@@ -66,6 +66,8 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOnDisk(path: JString), game_d
     => core::mark_data_on_disk(game_data_id, &path));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addPlaytime(id: JString), seconds: jlong
     => core::add_playtime(&id, seconds));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_addSeconds(id: JString), seconds: jlong
+    => core::add_seconds(&id, seconds));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyStart(htdocs: JString, legacy: JString), port: jint, cache: jboolean, live: jboolean
     => core::proxy_start(port as u16, &htdocs, &legacy, cache != 0, live != 0).map(|p| serde_json::json!({ "port": p }).to_string()));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyMount(zip: JString) => core::proxy_mount(&zip));

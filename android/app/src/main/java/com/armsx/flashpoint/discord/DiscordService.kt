@@ -58,7 +58,7 @@ import android.util.Log
  */
 class DiscordService : Service() {
     private companion object {
-        const val TAG = "ARMSX2DiscordSvc"
+        const val TAG = "FlashARMDiscord"
         // The SDK's callback queue wants draining often; the pump is cheap when idle.
         const val PUMP_INTERVAL_MS = 50L
         // While the app is out of sight (MSG_IDLE) nothing waits on a callback, so don't wake twenty

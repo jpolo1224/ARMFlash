@@ -384,6 +384,7 @@ async fn run(app: AndroidApp) {
                     }
                 }
                 RuffleEvent::SetPlaying(on) => player.player.lock().unwrap().set_is_playing(on),
+                RuffleEvent::Volume(v) => player.player.lock().unwrap().set_volume(v),
                 RuffleEvent::Display { scale, quality } => {
                     apply_display(&mut player.player.lock().unwrap(), scale, quality);
                     needs_redraw = true;
@@ -412,6 +413,7 @@ async fn run(app: AndroidApp) {
             if let Some(player) = playerbox.as_ref() {
                 if let Ok(mut player) = player.player.lock() {
                     player.render();
+                    FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
         }
@@ -519,6 +521,28 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeSet
     playing: jboolean,
 ) {
     env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::SetPlaying(playing))) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Frames drawn so far, for the performance overlay's FPS (the overlay samples the difference).
+static FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFrames<'local>(
+    _env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+) -> jni::sys::jlong {
+    FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
+}
+
+/// The game's volume, 0.0 to 1.0 (the pause menu's Game volume).
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeVolume<'local>(
+    mut env: EnvUnowned<'local>,
+    this: JObject<'local>,
+    volume: jni::sys::jfloat,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::Volume(volume))) })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
