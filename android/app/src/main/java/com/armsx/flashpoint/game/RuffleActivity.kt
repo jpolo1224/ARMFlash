@@ -68,6 +68,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         }
         override fun display(scale: String, quality: String) = nativeDisplay(scaleCode(scale), qualityCode(quality))
         override val hasShaders get() = true
+        override fun flashTrouble(): Long = nativeTrouble()
         override fun shaderChanged(full: Boolean) = nativeShaderChanged(full)
         override var menuLeft: Boolean
             get() = layouts.menuLeft
@@ -222,6 +223,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeDisplay(scale: Int, quality: Int)
     /** The shader settings changed: reload the preset ([full]) or only its parameters. */
     external fun nativeShaderChanged(full: Boolean)
+    /** Errors Ruffle has reported (script errors, failed loads, panics). */
+    external fun nativeTrouble(): Long
 
     companion object {
         init {

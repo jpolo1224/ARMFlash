@@ -76,6 +76,8 @@ interface OverlayHost {
     val isFlash: Boolean get() = false
     /** Whether this player runs RetroArch shaders (native Flash), and how to tell it they changed. */
     val hasShaders: Boolean get() = false
+    /** Errors Ruffle reported running this game (0 when it never struggled, or not Ruffle). */
+    fun flashTrouble(): Long = 0
     fun shaderChanged(full: Boolean) {}
     fun save(asDefault: Boolean)
     fun keyboard()

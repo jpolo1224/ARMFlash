@@ -551,6 +551,38 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFra
     FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
 }
 
+/// Times Ruffle reported trouble running this game: an error from the player (a script error,
+/// a file the movie could not load, a failed loader) or a panic. The pause menu suggests Flash
+/// Player once this is above zero. Stubs (features Ruffle has not written yet) are not counted:
+/// most games hit some harmless ones.
+static TROUBLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+struct TroubleLogger(android_logger::AndroidLogger);
+
+impl log::Log for TroubleLogger {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        self.0.enabled(m)
+    }
+    fn log(&self, r: &log::Record) {
+        let t = r.target();
+        if r.level() == log::Level::Error && (t.starts_with("ruffle") || t == "panic") {
+            TROUBLE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.0.log(r)
+    }
+    fn flush(&self) {
+        self.0.flush()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeTrouble<'local>(
+    _env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+) -> jni::sys::jlong {
+    TROUBLE.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
+}
+
 /// Shader parameters from Kotlin: one "name value" pair per line.
 fn apply_shader_params(target: &ShaderTarget, params: &str) {
     for line in params.lines() {
@@ -598,12 +630,16 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeIni
     class: JClass<'local>,
 ) {
     env.with_env(|env| -> jni::errors::Result<()> {
-        android_logger::init_once(
+        // Android's log, plus a count of the trouble Ruffle reports (see TROUBLE).
+        let inner = android_logger::AndroidLogger::new(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Info)
                 .with_tag("fpruffle")
                 .with_filter(android_logger::FilterBuilder::new().parse("warn,fpruffle=info,ruffle=info").build()),
         );
+        if log::set_boxed_logger(Box::new(TroubleLogger(inner))).is_ok() {
+            log::set_max_level(log::LevelFilter::Info);
+        }
         panic::set_hook(Box::new(|info| {
             let thread = thread::current();
             log::error!(target: "panic", "thread '{}' {}\n{:?}", thread.name().unwrap_or("?"), info, backtrace::Backtrace::new());

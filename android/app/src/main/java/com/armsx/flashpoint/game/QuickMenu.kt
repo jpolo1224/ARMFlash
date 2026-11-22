@@ -466,6 +466,19 @@ private fun RendererCard(host: OverlayHost) {
     var backend by remember { mutableStateOf(FlashPrefs.gameBackend(ctx, host.gameId)) }
     val startedWith = remember { player to backend }
     SectionCard("Renderer") {
+        // Ruffle reported errors running this game: suggest the desktop's own player.
+        val trouble = remember { host.flashTrouble() }
+        if (trouble > 0 && FlashPrefs.player(ctx, host.gameId) != "flashplayer") {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Ruffle ran into trouble with this game ($trouble ${if (trouble == 1L) "error" else "errors"}). " +
+                        "If it misbehaves, set Player to Flash Player, the player desktop Flashpoint uses, then Apply & Restart.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         Text(
             "For this game. Native runs Ruffle straight on the GPU; Browser runs its web version. " +
                 "Graphics is what native Flash draws with.",

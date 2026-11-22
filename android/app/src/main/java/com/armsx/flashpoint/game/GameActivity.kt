@@ -56,6 +56,7 @@ class GameActivity : ComponentActivity() {
         override val gameId get() = intent.getStringExtra(EXTRA_GAME_ID).orEmpty()
         override val usesDriver = false
         override val isFlash get() = intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name
+        override fun flashTrouble(): Long = consoleErrors
         override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() = showKeyboard()
@@ -159,6 +160,8 @@ class GameActivity : ComponentActivity() {
             webChromeClient = object : WebChromeClient() {
                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean = false
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                    // Ruffle (web) reports script errors and failed loads as console errors.
+                    if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR && "ruffle" in m.sourceId().lowercase()) consoleErrors++
                     android.util.Log.i("fpgame", "${m.messageLevel()} ${m.message()} @${m.sourceId()}:${m.lineNumber()}")
                     return true
                 }
@@ -266,6 +269,7 @@ class GameActivity : ComponentActivity() {
     }
 
     private var restarting = false
+    @Volatile private var consoleErrors = 0L
 
     private class Client(private val ctx: Context) : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
