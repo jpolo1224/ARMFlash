@@ -96,6 +96,8 @@ class OverlayState(layout: TouchLayout) {
     var editing by mutableStateOf(false)
     var selected by mutableStateOf<Int?>(null)
     var picking by mutableStateOf(false)
+    /** The key being changed while the picker is open for it (null: the picker adds a new key). */
+    var swapping by mutableStateOf<Int?>(null)
     var cursor by mutableStateOf<Offset?>(null)
     /** Bumped on every touch so the auto-hide timer starts over. */
     var touchTick by mutableStateOf(0)
@@ -525,10 +527,11 @@ internal fun Pill(label: String, on: Boolean = false, onClick: () -> Unit) {
 @Composable
 private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modifier) {
     Panel(modifier) {
-        Text("Drag keys to move them. Tap one to select it.", color = Color.White, fontSize = 12.sp)
+        Text("Drag keys to move them. Tap one to select it, then change, resize or remove it.", color = Color.White, fontSize = 12.sp)
         Row {
-            Pill("Add key") { st.picking = true }
+            Pill("Add key") { st.swapping = null; st.picking = true }
             st.selected?.let { i ->
+                Pill("Change key", on = true) { st.swapping = i; st.picking = true }
                 Pill("Bigger") { resize(st, i, 1.15f) }
                 Pill("Smaller") { resize(st, i, 1 / 1.15f) }
                 Pill("Remove") {
@@ -552,9 +555,9 @@ private fun resize(st: OverlayState, i: Int, f: Float) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KeyPicker(st: OverlayState) {
-    Box(Modifier.fillMaxSize().background(Color(0xAA000000)).clickable { st.picking = false }, contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xAA000000)).clickable { st.picking = false; st.swapping = null }, contentAlignment = Alignment.Center) {
         Panel(Modifier.widthIn(max = 560.dp)) {
-            Text("Add a key", color = Color.White, fontWeight = FontWeight.Black)
+            Text(if (st.swapping != null) "Change this key to" else "Add a key", color = Color.White, fontWeight = FontWeight.Black)
             Column(Modifier.height(300.dp).verticalScroll(rememberScrollState())) {
                 FlowRow {
                     Pill("Arrow keys") { add(st, TouchButton("arrows", x = 0.15f, y = 0.7f, size = 150f)) }
@@ -571,8 +574,20 @@ private fun KeyPicker(st: OverlayState) {
     }
 }
 
+/** Add the picked key, or (when changing one) put it in place of the selected key, keeping its spot and size. */
 private fun add(st: OverlayState, b: TouchButton) {
-    st.layout = st.layout.copy(buttons = st.layout.buttons + b)
-    st.selected = st.layout.buttons.lastIndex
+    val i = st.swapping
+    if (i != null && i in st.layout.buttons.indices) {
+        val old = st.layout.buttons[i]
+        // A cluster swapped for a single key (or back) takes that kind's usual size.
+        val sameShape = (old.kind in setOf("key", "mouse")) == (b.kind in setOf("key", "mouse"))
+        val repl = b.copy(x = old.x, y = old.y, size = if (sameShape) old.size else b.size)
+        st.layout = st.layout.copy(buttons = st.layout.buttons.toMutableList().also { it[i] = repl })
+        st.selected = i
+    } else {
+        st.layout = st.layout.copy(buttons = st.layout.buttons + b)
+        st.selected = st.layout.buttons.lastIndex
+    }
+    st.swapping = null
     st.picking = false
 }

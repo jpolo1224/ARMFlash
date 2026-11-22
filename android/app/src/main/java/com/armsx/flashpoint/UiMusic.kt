@@ -66,12 +66,22 @@ object UiMusic {
                 }
             }.build().also { focus = it }
         if (am.requestAudioFocus(req) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return
-        val mp = player ?: MediaPlayer.create(app, R.raw.ui_music, attrs, am.generateAudioSessionId())?.apply {
+        val custom = com.armsx.flashpoint.data.CustomMedia.file(app, com.armsx.flashpoint.data.CustomMedia.Kind.UI_MUSIC)
+        val made = if (player == null && custom.length() > 0L) runCatching {
+            MediaPlayer().apply { setAudioAttributes(attrs); setDataSource(custom.path); prepare() }
+        }.getOrNull() else null
+        val mp = player ?: (made ?: MediaPlayer.create(app, R.raw.ui_music, attrs, am.generateAudioSessionId()))?.apply {
             isLooping = true
             setVolume(0f, 0f)
         }?.also { player = it; level = 0f } ?: return
         if (!mp.isPlaying) mp.start()
         fadeTo(volume.floatValue, FADE_IN_MS)
+    }
+
+    /** The track changed (a custom one picked or reset): start over with it. */
+    fun reload(ctx: Context) {
+        stop()
+        start(ctx)
     }
 
     /** The launcher is going away: fade out and pause in place. */

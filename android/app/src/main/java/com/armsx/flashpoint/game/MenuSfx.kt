@@ -151,7 +151,9 @@ object PauseMusic {
         val ok = runCatching {
             android.media.MediaPlayer().apply {
                 setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                setDataSource(context, android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.pause_music}"))
+                val custom = com.armsx.flashpoint.data.CustomMedia.file(context, com.armsx.flashpoint.data.CustomMedia.Kind.PAUSE_MUSIC)
+                if (custom.length() > 0L) setDataSource(custom.path)
+                else setDataSource(context, android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.pause_music}"))
                 isLooping = true
                 setVolume(0f, 0f)
                 prepare()

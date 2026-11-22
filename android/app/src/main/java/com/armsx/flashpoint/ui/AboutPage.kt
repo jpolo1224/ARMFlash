@@ -73,7 +73,7 @@ fun AboutPage() {
     BoxWithConstraints(Modifier.fillMaxSize().background(Fp.Browse)) {
         val wide = maxWidth >= 840.dp
         Column(Modifier.fillMaxSize().padVerticalScroll().padding(horizontal = 18.dp, vertical = 14.dp)) {
-            Text("About", color = Color.White, fontWeight = FontWeight.Black, fontSize = 34.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Text("About", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 34.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(10.dp))
             val left: @Composable () -> Unit = {
                 AboutSection("Flashpoint Archive") {
@@ -149,7 +149,7 @@ private fun AboutSection(title: String, content: @Composable () -> Unit) {
         Box(
             Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF111112), Color(0xFF111112), Color.Transparent)))
                 .padding(horizontal = 8.dp, vertical = 3.dp),
-        ) { Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold) }
+        ) { Text(title, color = Fp.Strong, fontSize = 22.sp, fontWeight = FontWeight.SemiBold) }
         Column(Modifier.padding(start = 10.dp, top = 4.dp)) { content() }
     }
 }
@@ -167,7 +167,7 @@ private fun AboutLink(label: String, modifier: Modifier = Modifier, onClick: () 
 @Composable
 private fun CreditsPanel(credits: Credits.Data, picked: Credits.Profile?, onPick: (Credits.Profile) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        Text("Credits", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+        Text("Credits", color = Fp.Strong, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
         if (credits.profiles.isEmpty()) {
             Text("Special Thanks: everyone who has contributed to Flashpoint Archive.", color = Fp.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
             Text("Copy credits.json from a desktop Flashpoint's Data folder into ${"\u0022"}Flashpoint/Data${"\u0022"} here to list every contributor.", color = Fp.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
@@ -188,7 +188,7 @@ private fun CreditsPanel(credits: Credits.Data, picked: Credits.Profile?, onPick
             // Who was picked, under their role, as the desktop's tooltip shows it.
             if (picked != null && people.contains(picked)) {
                 Column(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(6.dp)).background(Fp.Field).padding(10.dp)) {
-                    Text(picked.title, color = Color.White, fontWeight = FontWeight.Black)
+                    Text(picked.title, color = Fp.Strong, fontWeight = FontWeight.Black)
                     Text(picked.roles.joinToString(", "), color = role.color ?: Fp.Accent, fontSize = 12.sp)
                     picked.note?.let { Text(it, color = Fp.Text, fontSize = 13.sp) }
                 }

@@ -294,8 +294,14 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             val gen = ++generation
             val q = query
             val o = opts()
-            val idx = runCatching { withContext(Dispatchers.IO) { FpCore.index(q, o, PAGE) } }
-                .getOrElse { status = "Search failed: ${it.message}"; return@launch }
+            // A newer keystroke cancels this search: that is not a failure, so it must not be caught.
+            val idx = try {
+                withContext(Dispatchers.IO) { FpCore.index(q, o, PAGE) }
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                status = "Search failed: ${e.message}"; return@launch
+            }
             if (gen != generation) return@launch
             pages.clear()
             loading.clear()

@@ -100,7 +100,7 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
                     Modifier.then(if (on) Modifier.focusRequester(openTab) else Modifier).padFocus().clickable { go(t) }.padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(t.label, color = if (on) Color.White else Fp.TextDim, fontWeight = if (on) FontWeight.Black else FontWeight.Bold, fontSize = 15.sp)
+                    Text(t.label, color = if (on) Fp.Strong else Fp.TextDim, fontWeight = if (on) FontWeight.Black else FontWeight.Bold, fontSize = 15.sp)
                     Box(Modifier.padding(top = 3.dp).height(2.dp).width(if (on) 24.dp else 0.dp).background(Fp.Play))
                 }
             }
@@ -130,7 +130,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 Image(painterResource(R.drawable.fp_logo), null, Modifier.size(56.dp))
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("FlashARM", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+                    Text("FlashARM", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
                     Text("${vm.dbGames} games and animations", color = Fp.TextDim, fontSize = 13.sp)
                 }
             }
@@ -226,7 +226,7 @@ private fun GotdBox(vm: BrowseVm, g: Gotd, onPlay: (Game) -> Unit) {
             AsyncImage(vm.library.logoUrl(game.id), null, Modifier.size(110.dp).clip(RoundedCornerShape(4.dp)).background(Fp.Card), contentScale = ContentScale.Fit)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(game.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                Text(game.title, color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 17.sp)
                 Text("${g.date}  |  picked by ${g.author}", color = Fp.TextDim, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(g.description, color = Fp.Text, fontSize = 13.sp)
@@ -264,7 +264,7 @@ fun HomeBox(title: String, action: Pair<String, () -> Unit>? = null, content: @C
         Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(6.dp)).background(Fp.Panel).padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Text(title, color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
             action?.let { (label, f) -> Chip(label, on = false, onClick = f) }
         }
         Spacer(Modifier.height(8.dp))
@@ -297,7 +297,7 @@ private fun LogsPage() {
     }
     Column(Modifier.fillMaxSize().background(Fp.Browse).padding(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Logs", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.weight(1f))
+            Text("Logs", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.weight(1f))
             Chip("Refresh", on = false) { tick++ }
             Spacer(Modifier.width(6.dp))
             val ctx = LocalContext.current
@@ -318,7 +318,7 @@ private fun LogsPage() {
 fun ConfigRow(title: String, desc: String, control: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 10.dp)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(title, color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             if (desc.isNotEmpty()) Text(desc, color = Fp.TextDim, fontSize = 13.sp)
         }
         Box(Modifier.widthIn(max = 260.dp).padFocus()) { control() }
@@ -341,7 +341,7 @@ private fun NewsPage() {
     }
     Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("News", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
+            Text("News", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
             Chip("Refresh", on = false) { force++ }
         }
         Spacer(Modifier.height(10.dp))

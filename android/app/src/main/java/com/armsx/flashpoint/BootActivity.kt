@@ -29,6 +29,10 @@ import java.util.concurrent.ArrayBlockingQueue
  * the animation runs at its own 30 fps without holding every frame in memory.
  */
 class BootActivity : Activity() {
+    companion object {
+        const val EXTRA_PREVIEW = "preview"
+    }
+
     private val fps = 30
     private lateinit var view: ImageView
     private var player: MediaPlayer? = null
@@ -47,7 +51,11 @@ class BootActivity : Activity() {
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val part0 = frames("boot/part0")
         val part1 = frames("boot/part1")
-        if (!prefs.getBoolean("bootAnimation", true) || part0.isEmpty()) return next()
+        if (!prefs.getBoolean("bootAnimation", true)) return next()
+        // A custom intro (a video, as in ARMSX2) plays in place of the built-in animation.
+        val custom = com.armsx.flashpoint.data.CustomMedia.file(this, com.armsx.flashpoint.data.CustomMedia.Kind.BOOT_INTRO)
+        if (custom.length() > 0L) return playVideo(custom)
+        if (part0.isEmpty()) return next()
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -119,6 +127,29 @@ class BootActivity : Activity() {
         })
     }
 
+    /** The user's intro video, fitted to the screen; a tap skips it, an unplayable file goes straight on. */
+    private fun playVideo(file: java.io.File) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+        val video = android.widget.VideoView(this)
+        view = ImageView(this)
+        setContentView(FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(video, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
+            setOnClickListener { finishVideo(video) }
+        })
+        video.setOnCompletionListener { finishVideo(video) }
+        video.setOnErrorListener { _, _, _ -> finishVideo(video); true }
+        video.setVideoPath(file.path)
+        video.start()
+    }
+
+    private fun finishVideo(video: android.widget.VideoView) {
+        if (done) return
+        done = true
+        video.animate().alpha(0f).setDuration(280).withEndAction { video.stopPlayback(); next() }.start()
+    }
+
     private fun frames(dir: String): List<String> =
         (assets.list(dir) ?: emptyArray()).filter { it.endsWith(".webp") || it.endsWith(".png") }.sorted().map { "$dir/$it" }
 
@@ -131,6 +162,8 @@ class BootActivity : Activity() {
 
     private fun next() {
         running = false
+        // Config's Preview: just play it and go back.
+        if (intent.getBooleanExtra(EXTRA_PREVIEW, false)) return finish()
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()

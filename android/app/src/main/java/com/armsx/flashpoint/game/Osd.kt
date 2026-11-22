@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 
 /** The performance overlay's settings: shared by every game, kept with the app's settings. */
 object OsdPrefs {
-    enum class Stat(val label: String) { FPS("FPS"), FRAME("Frame time"), CPU("CPU"), RAM("Memory"), MAPS("Mappings"), BATTERY("Battery"), CLOCK("Clock") }
+    enum class Stat(val label: String) { FPS("FPS"), FRAME("Frame time"), CPU("CPU"), GPU("GPU"), RAM("Memory"), MAPS("Mappings"), BATTERY("Battery"), CLOCK("Clock") }
 
     val Colors = listOf(
         "Green" to Color(0xFF7FE04E), "White" to Color.White, "Yellow" to Color(0xFFFFE04A),
@@ -64,6 +64,8 @@ private data class Reading(
     val fps: Double? = null,
     val cpu: Double? = null,
     val ramMb: Long? = null,
+    val gpu: Int? = null,
+    val gpuMhz: Int? = null,
     val maps: Int? = null,
     val battery: Int? = null,
     val tempC: Double? = null,
@@ -103,6 +105,8 @@ fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
                 fps = fps,
                 cpu = cpu,
                 ramMb = withContext(Dispatchers.IO) { rssMb() },
+                gpu = if (OsdPrefs.Stat.GPU in OsdPrefs.stats.value) withContext(Dispatchers.IO) { Gpu.busy() } else null,
+                gpuMhz = if (OsdPrefs.Stat.GPU in OsdPrefs.stats.value) withContext(Dispatchers.IO) { Gpu.mhz() } else null,
                 maps = if (OsdPrefs.Stat.MAPS in OsdPrefs.stats.value) withContext(Dispatchers.IO) { MapCensus.count() } else null,
                 battery = bat?.let { b -> val l = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1); val s = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100); if (l >= 0) l * 100 / s else null },
                 tempC = bat?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)?.takeIf { it != Int.MIN_VALUE }?.div(10.0),
@@ -115,6 +119,7 @@ fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
         if (OsdPrefs.Stat.FPS in stats) add("FPS " + (r.fps?.let { "%.0f".format(it) } ?: "--"))
         if (OsdPrefs.Stat.FRAME in stats) add("Frame " + (r.fps?.takeIf { it > 0.5 }?.let { "%.1f ms".format(1000 / it) } ?: "--"))
         if (OsdPrefs.Stat.CPU in stats) add("CPU " + (r.cpu?.let { "%.0f%%".format(it) } ?: "--"))
+        if (OsdPrefs.Stat.GPU in stats) add("GPU " + (r.gpu?.let { "$it%" } ?: "--") + (r.gpuMhz?.let { "  $it MHz" } ?: ""))
         if (OsdPrefs.Stat.RAM in stats) add("RAM " + (r.ramMb?.let { "$it MB" } ?: "--"))
         if (OsdPrefs.Stat.MAPS in stats) add("MAPS " + (r.maps?.let { "$it / 65530" } ?: "--"))
         if (OsdPrefs.Stat.BATTERY in stats) add(
@@ -164,4 +169,25 @@ object MapCensus {
         val top = by.entries.sortedByDescending { it.value }.take(6).joinToString(", ") { "${it.key} ${it.value}" }
         "$n of $CAP; most: $top"
     }.getOrElse { "unreadable: ${it.message}" }
+}
+
+/**
+ * GPU load and clock where the kernel lets apps read them: Adreno's kgsl files (the Odin's, world
+ * readable), then Mali's. Null when the device keeps them private; the overlay shows "--".
+ */
+private object Gpu {
+    private fun read(path: String): String? = runCatching { java.io.File(path).readText().trim() }.getOrNull()
+
+    fun busy(): Int? {
+        read("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage")?.removeSuffix("%")?.trim()?.toIntOrNull()?.let { return it }
+        read("/sys/class/kgsl/kgsl-3d0/gpubusy")?.split(Regex("\\s+"))?.mapNotNull { it.toLongOrNull() }?.let { v ->
+            if (v.size >= 2 && v[1] > 0) return (v[0] * 100 / v[1]).toInt()
+        }
+        read("/sys/class/misc/mali0/device/utilization")?.toIntOrNull()?.let { return it }
+        return null
+    }
+
+    fun mhz(): Int? =
+        (read("/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq") ?: read("/sys/class/kgsl/kgsl-3d0/gpuclk")
+            ?: read("/sys/class/misc/mali0/device/clock"))?.toLongOrNull()?.let { if (it > 100_000) (it / 1_000_000).toInt() else it.toInt() }
 }

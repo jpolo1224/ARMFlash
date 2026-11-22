@@ -172,7 +172,7 @@ private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: By
             Spacer(Modifier.width(8.dp))
         }
         Column {
-            Text(label, color = if (on) Color.White else Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 2)
+            Text(label, color = if (on) Fp.Strong else Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 2)
             if (sub != null) Text(sub, color = Fp.TextDim, fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
         }
     }
@@ -287,7 +287,10 @@ private fun Grid(vm: BrowseVm, modifier: Modifier) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        items(total, key = { it }) { i ->
+        // Keys include the search, so the cards already on screen are rebuilt for new results
+        // instead of keeping the previous search's games until scrolled away.
+        val searchKey = System.identityHashCode(vm.index)
+        items(total, key = { "$searchKey:$it" }) { i ->
             val g = vm.gameAt(i)
             GameCard(vm, g, selected = g != null && g.id == vm.selected?.id) { if (g != null) vm.select(g) }
         }
@@ -324,6 +327,10 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
 @Composable
 fun PlatformBadge(platform: String, modifier: Modifier = Modifier) {
     if (platform.isBlank()) return
+    LogoSets.image(platform)?.let { f ->
+        AsyncImage(f, platform, modifier.size(26.dp), contentScale = ContentScale.Fit)
+        return
+    }
     Box(
         modifier.size(26.dp).clip(RoundedCornerShape(4.dp)).background(Fp.platformColor(platform)),
         contentAlignment = Alignment.Center,

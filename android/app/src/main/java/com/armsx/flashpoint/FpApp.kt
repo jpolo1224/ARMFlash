@@ -13,6 +13,8 @@ class FpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         library = Library(this)
+        com.armsx.flashpoint.ui.Fp.load(this)
+        com.armsx.flashpoint.ui.LogoSets.load(this)
         com.armsx.flashpoint.data.CustomDriver.prefs = getSharedPreferences("settings", MODE_PRIVATE)
         // Discord presence lives in the launcher process (the SDK itself in :discord).
         com.armsx.flashpoint.discord.DiscordPresence.appContext = this

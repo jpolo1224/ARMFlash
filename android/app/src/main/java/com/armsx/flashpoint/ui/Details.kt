@@ -49,7 +49,7 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (onClose != null) IconButton(onClick = onClose, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Icon(Icons.Filled.ArrowBack, "Back", tint = Fp.Text) }
             Column(Modifier.weight(1f)) {
-                Text(g.title, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text(g.title, color = Fp.Strong, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                 if (g.developer.isNotBlank()) Text("by ${g.developer}", color = Fp.TextDim, fontSize = 13.sp)
             }
             val fav = g.id in vm.favorites

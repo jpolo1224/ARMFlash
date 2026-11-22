@@ -23,7 +23,15 @@ object Launch {
     fun plan(game: Game): LaunchPlan {
         val app = game.applicationPath.replace('\\', '/').lowercase()
         val cmd = game.launchCommand
-        val url = urlRe.find(cmd)?.value ?: cmd.trim().trim('"')
+        // The desktop passes the whole command as one argument, so a URL may contain spaces
+        // ("games/Hidden Room Escape.swf"); a quoted one ends at its closing quote.
+        val t = cmd.trim()
+        val raw = when {
+            t.startsWith("\"") -> t.drop(1).substringBefore('"')
+            t.startsWith("http://", ignoreCase = true) || t.startsWith("https://", ignoreCase = true) -> t
+            else -> urlRe.find(cmd)?.value ?: t
+        }
+        val url = raw.trim().replace(" ", "%20")
         val path = url.substringBefore('?').lowercase()
         val platform = game.primaryPlatform.lowercase()
 

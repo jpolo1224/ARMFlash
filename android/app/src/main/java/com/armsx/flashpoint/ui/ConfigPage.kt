@@ -1,5 +1,9 @@
 package com.armsx.flashpoint.ui
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,9 +53,25 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
-        Text("Config", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+        Text("Config", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
 
-        // What games run on comes first: the player, its graphics API and the GPU driver.
+        Section("Theme") {
+            ConfigRow("Theme", "Colours for the launcher.") {
+                ThemeMenu()
+            }
+            ConfigRow("Logo Set", "Platform logos. Copy a desktop install's Data/LogoSets folders into Flashpoint/Data/LogoSets here to add sets.") {
+                LogoSetMenu()
+            }
+            LogoSets.current.value?.let { set ->
+                LogoPreview(set)
+            }
+        }
+
+        Section("Graphics Driver") {
+            DriverSection(vm)
+        }
+
+
         Section("Renderer") {
             ConfigRow("Flash Player", "Native runs Ruffle directly on the GPU (fastest). Browser runs Ruffle's web version, for the rare game that needs it.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -67,11 +87,6 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                 }
             }
         }
-
-        Section("Graphics Driver") {
-            DriverSection(vm)
-        }
-
 
         Section("Preferences") {
             Toggle("Show Extreme Filters", "Allows Extreme tag filters to be toggled, to control content unsuitable for children.", p.extremeGames) { vm.refreshAll() }
@@ -141,6 +156,11 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                 }
             }
             Toggle("Boot Animation", "Play the FlashARM intro with its sound when the app starts. Tap it to skip.", p.bootAnimation)
+            CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.BOOT_INTRO, arrayOf("video/*"), "A video of your own in place of the FlashARM intro.", onPreview = {
+                ctx.startActivity(android.content.Intent(ctx, com.armsx.flashpoint.BootActivity::class.java).putExtra(com.armsx.flashpoint.BootActivity.EXTRA_PREVIEW, true))
+            })
+            CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.UI_MUSIC, arrayOf("audio/*"), "A track of your own for the launcher.", onChanged = { UiMusic.reload(ctx) })
+            CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.PAUSE_MUSIC, arrayOf("audio/*"), "A track of your own for the in-game pause menu.")
             var music by remember { mutableStateOf(UiMusic.enabled.value) }
             var vol by remember { mutableStateOf(UiMusic.volume.floatValue) }
             ConfigRow("Launcher Music", "Background music while browsing.") {
@@ -182,6 +202,96 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     }
 }
 
+/** Choose, preview and reset a custom intro or track (ARMSX2's custom intro and music rows). */
+@Composable
+private fun CustomMediaRow(
+    kind: com.armsx.flashpoint.data.CustomMedia.Kind,
+    mime: Array<String>,
+    desc: String,
+    onChanged: () -> Unit = {},
+    onPreview: (() -> Unit)? = null,
+) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(com.armsx.flashpoint.data.CustomMedia.name(ctx, kind)) }
+    var busy by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            busy = true; note = null
+            val r = withContext(Dispatchers.IO) { com.armsx.flashpoint.data.CustomMedia.set(ctx, kind, uri) }
+            busy = false
+            name = com.armsx.flashpoint.data.CustomMedia.name(ctx, kind)
+            note = when (r) {
+                com.armsx.flashpoint.data.CustomMedia.Result.OK -> { onChanged(); null }
+                com.armsx.flashpoint.data.CustomMedia.Result.TOO_LARGE -> "That file is too big (up to ${kind.maxBytes / (1024 * 1024)} MB)."
+                com.armsx.flashpoint.data.CustomMedia.Result.UNREADABLE -> "That file could not be read."
+            }
+        }
+    }
+    ConfigRow("Custom ${kind.label}", (if (busy) "Copying\u2026" else name?.let { "Using $it" } ?: desc) + (note?.let { "\n$it" } ?: "")) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("Choose", false) { pick.launch(mime) }
+            if (onPreview != null) Chip("Preview", false, onClick = onPreview)
+            if (name != null) Chip("Reset", false) {
+                com.armsx.flashpoint.data.CustomMedia.clear(ctx, kind); name = null; onChanged()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeMenu() {
+    val ctx = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Chip("${Fp.theme.value.name} \u25BE", false) { open = true }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            FpThemes.all.forEach { t ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Box(Modifier.size(16.dp).background(t.browse).border(2.dp, t.accent))
+                            Spacer(Modifier.width(10.dp))
+                            Text(t.name)
+                        }
+                    },
+                    onClick = { open = false; Fp.set(ctx, t) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LogoSetMenu() {
+    val ctx = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val sets = remember(open) { LogoSets.list(ctx) }
+    Box {
+        Chip("${LogoSets.current.value?.name ?: "No Logo Set"} \u25BE", false) { open = true }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            androidx.compose.material3.DropdownMenuItem(text = { Text("No Logo Set") }, onClick = { open = false; LogoSets.set(ctx, null) })
+            sets.forEach { f ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(f.name) }, onClick = { open = false; LogoSets.set(ctx, f) })
+            }
+            if (sets.isEmpty()) androidx.compose.material3.DropdownMenuItem(text = { Text("No sets found in Data/LogoSets", color = Fp.TextDim) }, onClick = { open = false })
+        }
+    }
+}
+
+/** Every logo in the chosen set, as the desktop shows under its Logo Set row. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LogoPreview(set: java.io.File) {
+    val files = remember(set) { set.listFiles().orEmpty().filter { it.isFile }.sortedBy { it.name.lowercase() } }
+    androidx.compose.foundation.layout.FlowRow(
+        Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        files.forEach { f -> coil.compose.AsyncImage(f, f.nameWithoutExtension, Modifier.size(36.dp)) }
+    }
+}
+
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Spacer(Modifier.height(14.dp))
@@ -202,7 +312,7 @@ private fun Action(title: String, desc: String, button: String, onClick: () -> U
 private fun TextSetting(title: String, desc: String, initial: String, save: (String) -> Unit) {
     var v by remember { mutableStateOf(initial) }
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(title, color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text(desc, color = Fp.TextDim, fontSize = 13.sp)
         OutlinedTextField(v, { v = it; save(it) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
     }
@@ -289,7 +399,7 @@ private fun DriverSection(vm: BrowseVm) {
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
                     Text(if (open) "\u25BE " else "\u25B8 ", color = Fp.TextDim)
-                    Text(source, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text(source, color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${drivers.size}", color = Fp.TextDim, fontSize = 13.sp)
                 }
                 if (open) drivers.forEach { rd ->
@@ -325,7 +435,7 @@ private fun DriverRow(title: String, subtitle: String, active: Boolean, onUse: (
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(title, color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text(subtitle, color = Fp.TextDim, fontSize = 12.sp)
         }
         if (active) Text("Active", color = Fp.Play, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
@@ -340,7 +450,7 @@ private fun TurnipOptions() {
     var ubwc by remember { mutableStateOf(cd.ubwcFlagHint()) }
     var env by remember { mutableStateOf(cd.driverEnvText()) }
     Spacer(Modifier.height(10.dp))
-    Text("Turnip options", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    Text("Turnip options", color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
     Text("Tuning read by Turnip drivers. The system driver ignores it. Changes apply at the next game start.", color = Fp.TextDim, fontSize = 13.sp)
     ConfigRow(
         "UBWC flag hint",
