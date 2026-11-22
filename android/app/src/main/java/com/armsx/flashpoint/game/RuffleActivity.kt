@@ -40,6 +40,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         override val logoUrl get() = intent.getStringExtra(GameActivity.EXTRA_LOGO).orEmpty()
         override val gameId get() = intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()
         override val usesDriver = true
+        override val isFlash = true
         override val runner: String
             get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } +
                 (if (driverName.isNotEmpty()) ", $driverName" else "") + ")"
@@ -52,7 +53,9 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         override fun restart() {
             // Same process, fresh player: start the game again, then let this one go.
             restarting = true
-            startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            val id = intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()
+            startActivity(Intent(intent).setClass(this@RuffleActivity, FlashPrefs.activity(this@RuffleActivity, id))
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
             finish()
         }
         override fun exit() = quit()
@@ -92,7 +95,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             Toast.makeText(this, "Game server failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
         // A custom Vulkan driver, if one is chosen and Flash may use Vulkan.
-        if (getString("backend") != "gl") {
+        if (FlashPrefs.backend(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()) != "gl") {
             com.armsx.flashpoint.data.CustomDriver.selected(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())?.let { d ->
                 vkGipa = com.armsx.flashpoint.data.CustomDriver.open(this, d)
                 driverName = if (vkGipa != 0L) d.name else ""
@@ -194,7 +197,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         // vkGetInstanceProcAddr of a custom driver (decimal address), or "0".
         "vkGipa" -> vkGipa.toString()
         "sdk" -> android.os.Build.VERSION.SDK_INT.toString()
-        "backend" -> getSharedPreferences("settings", Context.MODE_PRIVATE).getString("flashBackend", "auto")
+        "backend" -> FlashPrefs.backend(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
         // Flash cookies (SharedObjects), kept per install like the desktop's.
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
         "scale" -> scaleCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).scale).toString()

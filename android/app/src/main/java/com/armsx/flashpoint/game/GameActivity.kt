@@ -55,10 +55,19 @@ class GameActivity : ComponentActivity() {
         override val logoUrl get() = intent.getStringExtra(EXTRA_LOGO).orEmpty()
         override val gameId get() = intent.getStringExtra(EXTRA_GAME_ID).orEmpty()
         override val usesDriver = false
+        override val isFlash get() = intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name
         override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() = showKeyboard()
-        override fun restart() = web.reload()
+        override fun restart() {
+            // A Flash game switched to the native player starts over there.
+            if (isFlash && FlashPrefs.player(this@GameActivity, gameId) == "native") {
+                restarting = true
+                startActivity(Intent(intent).setClass(this@GameActivity, RuffleActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
+                finish()
+            } else web.reload()
+        }
         override fun exit() = quit()
         // The page's frame count (a requestAnimationFrame counter in the top frame), read
         // asynchronously: each call returns the last value and asks for a fresh one.
@@ -253,8 +262,10 @@ class GameActivity : ComponentActivity() {
         if (::web.isInitialized) web.destroy()
         super.onDestroy()
         // The game process exists for one game; take everything it loaded with it.
-        if (isFinishing) android.os.Process.killProcess(android.os.Process.myPid())
+        if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }
+
+    private var restarting = false
 
     private class Client(private val ctx: Context) : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =

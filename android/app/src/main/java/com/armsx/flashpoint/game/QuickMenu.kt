@@ -425,7 +425,8 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
     }
     // The GPU driver first, as in Config.
     if (host.usesDriver) DriverCard(host)
-    else SectionCard("GPU driver") {
+    if (host.isFlash) RendererCard(host)
+    if (!host.usesDriver) SectionCard("GPU driver") {
         Text(
             "Browser games draw through Android's built-in browser, which always uses the device's own driver. " +
                 "Flash games and the other players can use a custom driver from here.",
@@ -456,6 +457,30 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
  * Apply & Restart, since a driver only loads when the renderer starts. Picks are per game;
  * "Same as Config" follows the global pick from Config > Graphics Driver.
  */
+/** Flash's player and graphics API for this game, applied with a restart, like the driver. */
+@Composable
+private fun RendererCard(host: OverlayHost) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var player by remember { mutableStateOf(FlashPrefs.gamePlayer(ctx, host.gameId)) }
+    var backend by remember { mutableStateOf(FlashPrefs.gameBackend(ctx, host.gameId)) }
+    val startedWith = remember { player to backend }
+    SectionCard("Renderer") {
+        Text(
+            "For this game. Native runs Ruffle straight on the GPU; Browser runs its web version. " +
+                "Graphics is what native Flash draws with.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        HorizontalOptions("Player", FlashPrefs.players, player, onSelect = { player = it; FlashPrefs.setGamePlayer(ctx, host.gameId, it) })
+        if (FlashPrefs.player(ctx, host.gameId) == "native") {
+            Spacer(Modifier.height(6.dp))
+            HorizontalOptions("Graphics", FlashPrefs.backends, backend, onSelect = { backend = it; FlashPrefs.setGameBackend(ctx, host.gameId, it) })
+        }
+        Spacer(Modifier.height(8.dp))
+        ApplyRestart(changed = (player to backend) != startedWith) { host.restart() }
+    }
+}
+
 @Composable
 private fun DriverCard(host: OverlayHost) {
     val ctx = androidx.compose.ui.platform.LocalContext.current

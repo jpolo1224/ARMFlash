@@ -72,6 +72,8 @@ interface OverlayHost {
     val gameId: String
     /** Whether this screen can use a custom Vulkan driver (native Flash). */
     val usesDriver: Boolean
+    /** A Flash game: the pause menu offers the player and graphics choice. */
+    val isFlash: Boolean get() = false
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()

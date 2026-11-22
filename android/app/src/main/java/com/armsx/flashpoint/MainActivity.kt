@@ -150,7 +150,7 @@ private fun App(vm: BrowseVm) {
                             ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
                             vm.library.htdocs.path, vm.library.legacyBase, ready.game.title, vm.library.logoUrl(ready.game.id),
                         )
-                        val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && vm.prefs2.flashPlayer.value == "native"
+                        val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && com.armsx.flashpoint.game.FlashPrefs.player(ctx, ready.game.id) == "native"
                         playLauncher.launch(if (native) com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web) else web)
                     }
                 },
