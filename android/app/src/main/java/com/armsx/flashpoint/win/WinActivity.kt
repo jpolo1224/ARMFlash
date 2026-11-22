@@ -149,6 +149,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         say("Starting the virtual screen…")
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
+        rt.ensureProxy(GAME_SERVER_PORT)
         val fp = File(intent.getStringExtra(EXTRA_ROOT).orEmpty())
         rt.mapDrive('f', fp)
         val app = intent.getStringExtra(EXTRA_APP).orEmpty().replace('/', '\\')

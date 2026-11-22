@@ -88,6 +88,19 @@ class WinRuntime(private val ctx: Context) {
         return code == 0 && File(prefix, "system.reg").isFile
     }
 
+    /**
+     * Point Windows' own proxy setting (WinINet, which Flash Player and most plugins use) at the
+     * game server, as desktop Flashpoint does, so every file a game asks for comes from its data.
+     */
+    fun ensureProxy(port: Int) {
+        val mark = File(prefix, ".flasharm-proxy-$port")
+        if (mark.isFile) return
+        val key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"
+        val ok = run(listOf("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"), null).waitFor() == 0 &&
+            run(listOf("reg", "add", key, "/v", "ProxyServer", "/t", "REG_SZ", "/d", "127.0.0.1:$port", "/f"), null).waitFor() == 0
+        if (ok) mark.writeText("")
+    }
+
     /** Map Windows drive F: to [dir] (the Flashpoint folder), as desktop Flashpoint's paths expect. */
     fun mapDrive(letter: Char, dir: File) {
         link(dir.path, File(prefix, "dosdevices/${letter.lowercaseChar()}:"))

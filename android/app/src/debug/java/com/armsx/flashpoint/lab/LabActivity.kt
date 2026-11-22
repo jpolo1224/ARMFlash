@@ -40,8 +40,10 @@ class LabActivity : Activity() {
             val r = File(dataDir, "r").path
             val base = Intent().putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_GAME_ID, "lab")
                 .putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_TITLE, "Lab")
-                .putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_ZIPS, arrayOf("$r/home/games/test.zip"))
-            startActivity(com.armsx.flashpoint.win.WinActivity.intent(this, base, "FPSoftware\\Shockwave\\PJ101\\SPR.exe",
+                .putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_ZIPS, arrayOf("$r/home/games/" + (intent.getStringExtra("zip") ?: "test.zip").substringAfterLast('/')))
+            // Only programs from a support pack (FPSoftware), never anything else.
+            val app = intent.getStringExtra("app")?.replace('/', '\\')?.takeIf { it.startsWith("FPSoftware\\") && ".." !in it } ?: "FPSoftware\\Shockwave\\PJ101\\SPR.exe"
+            startActivity(com.armsx.flashpoint.win.WinActivity.intent(this, base, app,
                 intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr", "$r/home/.wine/drive_c"))
             return finish()
         }
