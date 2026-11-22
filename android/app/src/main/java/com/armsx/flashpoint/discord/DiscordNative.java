@@ -64,7 +64,7 @@ public final class DiscordNative {
             System.loadLibrary("flasharm_discord");
             sLoaded = true;
         } catch (Throwable t) {
-            android.util.Log.w("FlashARMDiscord", "libflasharm_discord.so unavailable: " + t.getMessage());
+            android.util.Log.w("ARMFlashDiscord", "libflasharm_discord.so unavailable: " + t.getMessage());
             sLoaded = false;
         }
         return sLoaded;

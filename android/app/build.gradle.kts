@@ -5,7 +5,7 @@ plugins {
 }
 
 // Discord Rich Presence (as in ARMSX2): the Social SDK is a private, optional build input, and the
-// feature needs FlashARM's own Discord application id. Without both it compiles out.
+// feature needs ARMFlash's own Discord application id. Without both it compiles out.
 val discordSdkDir: String? = (System.getenv("DISCORD_SDK_DIR") ?: providers.gradleProperty("DISCORD_SDK_DIR").orNull)
     ?.takeIf { File(it, "include/discordpp.h").isFile }
 val discordAppId: String? = (System.getenv("FLASHARM_DISCORD_APP_ID") ?: providers.gradleProperty("flasharm.discordAppId").orNull)

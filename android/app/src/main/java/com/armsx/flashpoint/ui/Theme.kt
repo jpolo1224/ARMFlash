@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * The desktop launcher's Logo Sets: folders of platform logos (`<Platform>.png`) in the Flashpoint
- * folder's Data/LogoSets, copied from a desktop install. None picked: FlashARM's lettered badges.
+ * folder's Data/LogoSets, copied from a desktop install. None picked: ARMFlash's lettered badges.
  */
 object LogoSets {
     val current = androidx.compose.runtime.mutableStateOf<java.io.File?>(null)
@@ -47,7 +47,7 @@ data class FpPalette(
 )
 
 /**
- * FlashARM's themes. The first is the desktop launcher's default dark look; the rest are FlashARM's
+ * ARMFlash's themes. The first is the desktop launcher's default dark look; the rest are ARMFlash's
  * own palettes (the desktop's themes are stylesheets that ship with its install, so they cannot be
  * used here). Picked in Config > Theme.
  */

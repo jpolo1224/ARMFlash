@@ -24,7 +24,7 @@ class WinRuntime(private val ctx: Context) {
     val socket = File(xdir, "tmp/.X11-unix/X$DISPLAY_NO")
     private var xServer: Process? = null
     /** The audio server's socket name (abstract namespace), one per game process. */
-    val audioName = "flasharm.audio.${android.os.Process.myPid()}"
+    val audioName = "armflash.audio.${android.os.Process.myPid()}"
     private var wine: Process? = null
 
     /**
@@ -52,7 +52,7 @@ class WinRuntime(private val ctx: Context) {
         val ok = runCatching { com.armsx.flashpoint.core.FpCore.untarZst(tmp.path, ctx.dataDir.path) }
             .onFailure { progress("Unpacking failed: ${it.message}") }.isSuccess
         tmp.delete()
-        if (ok) File(root, ".flasharm-runtime").writeText(got)
+        if (ok) File(root, ".armflash-runtime").writeText(got)
         return ok && installed
     }
 
@@ -78,10 +78,10 @@ class WinRuntime(private val ctx: Context) {
             // This glibc's System V shared memory asks a helper socket named here; with nothing
             // listening, shmget fails cleanly and Wine uses plain X images (unset, it crashes).
             "ANDROID_SYSVSHM_SERVER" to "${root.path}/tmp/.sysvshm",
-            // Sound: libasound loads FlashARM's plugin (shipped in the APK) for the base
+            // Sound: libasound loads ARMFlash's plugin (shipped in the APK) for the base
             // system's "android_aserver" device, which streams to [AudioServer].
             "ALSA_PLUGIN_DIR" to lib,
-            "FLASHARM_AUDIO" to audioName,
+            "ARMFLASH_AUDIO" to audioName,
         )
 
     private fun link(target: String, at: File) {
@@ -129,7 +129,7 @@ class WinRuntime(private val ctx: Context) {
      * game server, as desktop Flashpoint does, so every file a game asks for comes from its data.
      */
     fun ensureProxy(port: Int) {
-        val mark = File(prefix, ".flasharm-proxy-$port")
+        val mark = File(prefix, ".armflash-proxy-$port")
         if (mark.isFile) return
         val key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"
         val ok = run(listOf("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"), null).waitFor() == 0 &&
@@ -182,8 +182,8 @@ class WinRuntime(private val ctx: Context) {
     }
 
     companion object {
-        const val TAG = "FlashARMWin"
-        /** Where the runtime downloads from (FlashARM's GitHub releases), once it is published. */
+        const val TAG = "ARMFlashWin"
+        /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"
         const val DISPLAY_NO = 1

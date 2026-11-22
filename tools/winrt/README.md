@@ -1,7 +1,7 @@
-# Windows plugins inside FlashARM (work in progress)
+# Windows plugins inside ARMFlash (work in progress)
 
 Goal: run Flashpoint's own Windows support packs (Shockwave projector, Unity, Java, Silverlight and
-the small plugins) inside FlashARM, Play-compliant (target SDK stays current).
+the small plugins) inside ARMFlash, Play-compliant (target SDK stays current).
 
 ## What Android allows a modern app (verified on the armsx_test emulator, 2026-11-22)
 - Starting a program that ships in the APK as a native library: yes.
@@ -45,5 +45,5 @@ Debug probe: `adb shell am start -n com.armsx.flasharm/com.armsx.flashpoint.lab.
 - The app must stay in the foreground while Wine runs: Android's cached-app freezer stops the
   child processes otherwise.
 - Notepad draws on Xvfb. Flashpoint's `FPSoftware\Shockwave\PJ101\SPR.exe` runs (WoW64, 32-bit)
-  and plays a Shockwave game (Lava Lamp) loaded through FlashARM's fp-proxy on port 22500 (the
+  and plays a Shockwave game (Lava Lamp) loaded through ARMFlash's fp-proxy on port 22500 (the
   port in the projector's port.txt), with the game's data pack mounted.

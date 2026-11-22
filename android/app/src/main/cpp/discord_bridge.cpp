@@ -1,7 +1,7 @@
-// SPDX-FileCopyrightText: 2026 FlashARM contributors
+// SPDX-FileCopyrightText: 2026 ARMFlash contributors
 // SPDX-License-Identifier: MIT
 //
-// Licensed MIT, deliberately, and NOT GPL like the rest of FlashARM.
+// Licensed MIT, deliberately, and NOT GPL like the rest of ARMFlash.
 //
 // This file is on the helper side of the Discord process boundary: it links, or
 // belongs to the process that links, Discord's proprietary Social SDK. A GPL-3.0+
@@ -18,7 +18,7 @@
 // Do not "fix" this back to the PCSX2 GPL header. It is not PCSX2 code, and the
 // licence is load-bearing.
 //
-// Copyright (c) 2026 FlashARM contributors
+// Copyright (c) 2026 ARMFlash contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of
 // this software and associated documentation files (the "Software"), to deal in
@@ -30,10 +30,10 @@
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
 //
-// Discord Social SDK bridge: rich presence, and which friends are in FlashARM right now.
+// Discord Social SDK bridge: rich presence, and which friends are in ARMFlash right now.
 //
 // DELIBERATELY FREE-STANDING. This file includes no PCSX2 header and links against no PCSX2 code:
-// only JNI and the Discord SDK. That is a licensing constraint, not a style preference — FlashARM is
+// only JNI and the Discord SDK. That is a licensing constraint, not a style preference — ARMFlash is
 // GPL-3.0+ and the Social SDK is proprietary, so the two must not become one linked program. This
 // builds into its own libarmsx2_discord.so, loaded only in the :discord process; emucore has no
 // DT_NEEDED on the SDK and never loads it.
@@ -49,7 +49,7 @@
 // is foregrounded. Polling a snapshot behind a mutex has none of that, and "once a second while a
 // screen is open" is not a budget worth optimising.
 //
-// Everything is behind FlashARM_HAS_DISCORD. A tree without the SDK staged still builds; every entry
+// Everything is behind ARMFlash_HAS_DISCORD. A tree without the SDK staged still builds; every entry
 // point below has a stub that reports "unavailable", so the Kotlin side needs no build-flavour
 // awareness at all.
 
@@ -57,11 +57,11 @@
 
 #include <android/log.h>
 
-#define DTAG "FlashARMDiscord"
+#define DTAG "ARMFlashDiscord"
 #define DLOGI(...) __android_log_print(ANDROID_LOG_INFO, DTAG, __VA_ARGS__)
 #define DLOGW(...) __android_log_print(ANDROID_LOG_WARN, DTAG, __VA_ARGS__)
 
-#ifdef FlashARM_HAS_DISCORD
+#ifdef ARMFlash_HAS_DISCORD
 
 // discordpp.h is a single-header library: everything below its DISCORDPP_IMPLEMENTATION guard is
 // the C++ wrapper's bodies, and the shipped .so exports ONLY the C API (Discord_*) — checked with
@@ -193,8 +193,8 @@ namespace
 		std::string want_ra;
 		// A remote play session's party id, while both players are in one; empty otherwise.
 		std::string want_party;
-		// Name the game, not FlashARM, in the status line: the player's Friends switch, and only ever
-		// set for a real game (a place such as the Icon Museum keeps "Playing FlashARM").
+		// Name the game, not ARMFlash, in the status line: the player's Friends switch, and only ever
+		// set for a real game (a place such as the Icon Museum keeps "Playing ARMFlash").
 		bool want_show_game = false;
 	};
 
@@ -204,7 +204,7 @@ namespace
 		return s;
 	}
 
-	constexpr uint64_t kApplicationId = FLASHARM_DISCORD_APP_ID; // FlashARM's Discord application (build setting)
+	constexpr uint64_t kApplicationId = FLASHARM_DISCORD_APP_ID; // ARMFlash's Discord application (build setting)
 	// Must match the intent filter in AndroidManifest.xml, and the redirect registered in the
 	// Discord developer portal. The SDK does not derive it for us.
 	const char* kRedirectUri = "discord-" FLASHARM_DISCORD_APP_ID_STR ":/authorize/callback";
@@ -218,7 +218,7 @@ namespace
 	// is the OLD mark, so the presence quietly showed outdated branding. The portal upload is the
 	// one that gets refreshed when the logo changes, so the key is the correct reference and the
 	// artwork can be updated without shipping a build.
-	// FlashARM's icon, uploaded as a Rich Presence art asset named "flasharm" in the developer portal.
+	// ARMFlash's icon, uploaded as a Rich Presence art asset named "flasharm" in the developer portal.
 	const char* kIdleImageKey = "flasharm";
 
 	const char* StatusName(BridgeStatus s)
@@ -263,15 +263,15 @@ namespace
 
 		discordpp::Activity activity;
 		// Name and applicationId are overwritten by the SDK — the header says so, and it is why
-		// the activity itself is always FlashARM. Details is therefore where the game has to go.
+		// the activity itself is always ARMFlash. Details is therefore where the game has to go.
 		activity.SetType(discordpp::ActivityTypes::Playing);
 		if (!title.empty())
 		{
 			activity.SetDetails(title);
 			// Discord's status line under someone's name then reads "Playing <game>" instead of
-			// "Playing FlashARM"; the activity card still shows FlashARM with the cover. Only for a game,
+			// "Playing ARMFlash"; the activity card still shows ARMFlash with the cover. Only for a game,
 			// and only while the Friends switch is on: a place (the Icon Museum) and the library keep
-			// "Playing FlashARM", which is how they were made to read.
+			// "Playing ARMFlash", which is how they were made to read.
 			// Idea, the desktop version and the switch by bshar1865 (https://github.com/bshar1865).
 			if (show_game)
 				activity.SetStatusDisplayType(discordpp::StatusDisplayTypes::Details);
@@ -310,12 +310,12 @@ namespace
 		// LargeText now carries the SERIAL, because State no longer can -- a friend's client reads
 		// this to look up cover art. Nothing else may be appended: it is parsed, not just shown.
 		// (Hover text on the cover is a reasonable home for a serial anyway.)
-		assets.SetLargeText(serial.empty() ? (title.empty() ? std::string("FlashARM") : title) : serial);
+		assets.SetLargeText(serial.empty() ? (title.empty() ? std::string("ARMFlash") : title) : serial);
 		if (!cover.empty())
 		{
-			// Small badge in the corner keeps FlashARM identifiable when the big image is a cover.
+			// Small badge in the corner keeps ARMFlash identifiable when the big image is a cover.
 			assets.SetSmallImage(std::string(kIdleImageKey));
-			assets.SetSmallText(std::string("FlashARM"));
+			assets.SetSmallText(std::string("ARMFlash"));
 		}
 		activity.SetAssets(std::move(assets));
 
@@ -369,7 +369,7 @@ namespace
 					if (const auto a = activity->Assets(); a.has_value())
 						large = a->LargeText().value_or(std::string());
 					const std::string candidate = !large.empty() ? large : *state;
-					if (candidate != "-" && candidate != f.game && candidate != "FlashARM")
+					if (candidate != "-" && candidate != f.game && candidate != "ARMFlash")
 						f.serial = candidate;
 				}
 			}
@@ -779,7 +779,7 @@ Java_com_armsx_flashpoint_discord_DiscordNative_self(JNIEnv* env, jclass)
 	return env->NewStringUTF(joined.c_str());
 }
 
-/// Friends currently in FlashARM, newline-separated. Empty string is a legitimate answer and means
+/// Friends currently in ARMFlash, newline-separated. Empty string is a legitimate answer and means
 /// nobody is on — distinct from not-connected, which the caller reads from discordStatus().
 JNIEXPORT jstring JNICALL
 Java_com_armsx_flashpoint_discord_DiscordNative_friends(JNIEnv* env, jclass)
@@ -833,7 +833,7 @@ Java_com_armsx_flashpoint_discord_DiscordNative_stop(JNIEnv*, jclass)
 
 } // extern "C"
 
-#else // !FlashARM_HAS_DISCORD
+#else // !ARMFlash_HAS_DISCORD
 
 // SDK not staged. Every entry point still exists so the Kotlin side is identical either way; it
 // simply reports Disabled and does nothing.
@@ -853,4 +853,4 @@ JNIEXPORT void JNICALL Java_com_armsx_flashpoint_discord_DiscordNative_pump(JNIE
 JNIEXPORT void JNICALL Java_com_armsx_flashpoint_discord_DiscordNative_stop(JNIEnv*, jclass) {}
 }
 
-#endif // FlashARM_HAS_DISCORD
+#endif // ARMFlash_HAS_DISCORD

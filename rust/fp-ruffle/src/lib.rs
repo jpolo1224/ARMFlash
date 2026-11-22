@@ -1,12 +1,12 @@
-//! libfpruffle.so: FlashARM's native Flash player.
+//! libfpruffle.so: ARMFlash's native Flash player.
 //!
 //! Adapted from ruffle-android (github.com/ruffle-rs/ruffle-android, MIT OR Apache-2.0, Ruffle
 //! contributors): the event loop, surface handling, AAudio backend and key mapping are theirs.
-//! FlashARM's changes:
+//! ARMFlash's changes:
 //! - the graphics backend is chosen by the app (Vulkan, OpenGL ES, or auto) instead of GL only;
-//! - every network request goes through FlashARM's in-process game server (the data packs);
+//! - every network request goes through ARMFlash's in-process game server (the data packs);
 //! - the movie loads from its original URL, so relative loads and sitelocks see the real host;
-//! - keys and mouse from FlashARM's touch overlay and controller mapping come in over JNI,
+//! - keys and mouse from ARMFlash's touch overlay and controller mapping come in over JNI,
 //!   including right clicks and hover; a real mouse's hover is handled too;
 //! - no context menu, no external browser.
 

@@ -35,7 +35,7 @@ import java.util.zip.ZipInputStream
 /*
  * Custom Vulkan drivers for native Flash. ARMSX2's CustomDriver.kt (driver sources incl. ARMSX2's
  * own Turnip and MaliSX2, GPU-aware lists, setup offer, per-game picks, install, Mesa env);
- * FlashARM's changes: settings live in FlashARM's prefs, and the driver is opened by
+ * ARMFlash's changes: settings live in ARMFlash's prefs, and the driver is opened by
  * libfpdriver.so (FpDriver), whose vkGetInstanceProcAddr the Rust player uses.
  */
 object CustomDriver {
@@ -182,7 +182,7 @@ object CustomDriver {
     private fun setupSource(renderer: String?): DriverSource? = when {
         MALISX2_SOURCE.supports(renderer) -> MALISX2_SOURCE
         isAdreno6xxOr7xx(renderer) -> ARMSX2_TURNIP_SOURCE
-        // FlashARM: Adreno 8xx gets the Turnip gen8 builds the driver card recommends there,
+        // ARMFlash: Adreno 8xx gets the Turnip gen8 builds the driver card recommends there,
         // since the stock driver's leak in native Flash hits these phones too.
         isAdreno8xx(renderer) -> STEVENMXZ_SOURCE
         else -> null
@@ -212,7 +212,7 @@ object CustomDriver {
      *  releases newest first, and a source's list order is kept. */
     fun fetchSetupOffer(renderer: String?): RemoteDriver? {
         val src = setupSource(renderer) ?: return null
-        val list = fetchSource(src, "FlashARM/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrNull().orEmpty().ifEmpty { "dev" })
+        val list = fetchSource(src, "ARMFlash/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrNull().orEmpty().ifEmpty { "dev" })
         // StevenMXZ's repo also carries Qualcomm's own driver packs and patched builds: offer the
         // newest plain Turnip Gen8 build.
         return if (src === STEVENMXZ_SOURCE) list.firstOrNull { TURNIP_GEN8.matches(it.assetName) } else list.firstOrNull()
@@ -382,7 +382,7 @@ object CustomDriver {
      *  callers can detect "I had drivers shown a moment ago, now
      *  nothing" by tracking the previous size. */
     fun fetchRemote(renderer: String?): List<RemoteDriver> {
-        val userAgent = "FlashARM/" + runCatching {
+        val userAgent = "ARMFlash/" + runCatching {
             com.armsx.flashpoint.BuildConfig.VERSION_NAME
         }.getOrNull().orEmpty().ifEmpty { "dev" }
         val out = mutableListOf<RemoteDriver>()
@@ -477,7 +477,7 @@ object CustomDriver {
         remote: RemoteDriver,
         onProgress: ((Long, Long) -> Unit)? = null,
     ): InstalledDriver? {
-        val userAgent = "FlashARM/" + runCatching {
+        val userAgent = "ARMFlash/" + runCatching {
             com.armsx.flashpoint.BuildConfig.VERSION_NAME
         }.getOrNull().orEmpty().ifEmpty { "dev" }
 

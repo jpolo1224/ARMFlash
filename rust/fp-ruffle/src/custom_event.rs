@@ -8,7 +8,7 @@ use crate::PlayerRunnable;
 pub enum RuffleEvent {
     /// A task is ready to be polled.
     TaskPoll(PlayerRunnable),
-    /// A key from FlashARM's touch overlay or controller mapping.
+    /// A key from ARMFlash's touch overlay or controller mapping.
     Key { down: bool, key_descriptor: KeyDescriptor },
     /// Mouse from the overlay's cursor: view coordinates (pixels of the player view).
     MouseMove { x: f64, y: f64 },

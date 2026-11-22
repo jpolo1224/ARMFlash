@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
 /**
  * First-time setup's GPU driver offer, ported from ARMSX2's onboarding driver page (ARMSX2
  * team): on a GPU one of the tuned drivers is built for, while the system driver is still in use,
- * offer to download and install it as the global driver. FlashARM's reason is native Flash: the
+ * offer to download and install it as the global driver. ARMFlash's reason is native Flash: the
  * stock Adreno driver leaks GPU memory in some games until the game crashes.
  */
 @Composable
@@ -95,7 +95,7 @@ fun SetupDriverOffer() {
             "installed" -> Text("Installed. It takes effect when a game starts.", color = Color(0xFF81C784), fontSize = 13.sp)
         }
         if (CustomDriver.offersMaliSX2(renderer)) Text(
-            "On some Mali phones the driver needs a newer Mali kernel driver than the phone has. If yours is too old, FlashARM keeps using the system driver on its own.",
+            "On some Mali phones the driver needs a newer Mali kernel driver than the phone has. If yours is too old, ARMFlash keeps using the system driver on its own.",
             color = Fp.TextDim, fontSize = 12.sp,
         )
         Text("You can skip this. The same driver is in Config, under GPU driver.", color = Fp.TextDim, fontSize = 12.sp)

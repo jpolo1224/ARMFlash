@@ -88,11 +88,11 @@ fun AboutPage() {
                     }
                 }
                 AboutSection("Flashpoint Launcher") {
-                    Text("An open-source desktop application used to browse, manage and play games from the Flashpoint Archive. FlashARM follows its design and uses its database library.", color = Fp.Text, fontSize = 14.sp)
+                    Text("An open-source desktop application used to browse, manage and play games from the Flashpoint Archive. ARMFlash follows its design and uses its database library.", color = Fp.Text, fontSize = 14.sp)
                     Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Black)) { append("License: ") }; append("MIT") }, color = Fp.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
                     AboutLink("GitHub", Modifier.padding(top = 4.dp)) { open("https://github.com/FlashpointProject/launcher") }
                 }
-                AboutSection("FlashARM") {
+                AboutSection("ARMFlash") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(painterResource(R.drawable.fp_logo), null, Modifier.size(44.dp))
                         Spacer(Modifier.width(10.dp))
@@ -111,7 +111,7 @@ fun AboutPage() {
                     Text("-Jason Scott", color = Fp.Text, fontSize = 13.sp)
                 }
                 AboutSection("Changelog") {
-                    if (releases.isEmpty()) Text("Release notes appear here once FlashARM has a GitHub release.", color = Fp.TextDim, fontSize = 13.sp)
+                    if (releases.isEmpty()) Text("Release notes appear here once ARMFlash has a GitHub release.", color = Fp.TextDim, fontSize = 13.sp)
                     releases.forEach { r ->
                         Column(
                             Modifier.fillMaxWidth().padding(vertical = 3.dp).padFocus(RoundedCornerShape(3.dp))
@@ -120,7 +120,7 @@ fun AboutPage() {
                                 .clickable { com.armsx.flashpoint.data.News.releaseUrl(r.tag).takeIf { it.isNotEmpty() }?.let { open(it) } }.padding(horizontal = 10.dp, vertical = 6.dp),
                         ) {
                             Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Black)) { append("Date: ") }; append(r.published.take(10)) }, color = Fp.Text, fontSize = 14.sp)
-                            Text("FlashARM ${r.title.ifBlank { r.tag }}", color = Fp.Text, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                            Text("ARMFlash ${r.title.ifBlank { r.tag }}", color = Fp.Text, fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
                     }
                 }

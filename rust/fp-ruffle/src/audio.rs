@@ -1,5 +1,5 @@
 // From ruffle-android (github.com/ruffle-rs/ruffle-android), MIT OR Apache-2.0, Ruffle contributors.
-// FlashARM: play/pause no longer panic (set_running).
+// ARMFlash: play/pause no longer panic (set_running).
 use ndk::audio::{AudioDirection, AudioFormat, AudioStream, AudioStreamBuilder, AudioStreamState};
 use ruffle_core::backend::audio::{
     swf, AudioBackend, AudioMixer, DecodeError, RegisterError, SoundHandle, SoundInstanceHandle,
@@ -72,7 +72,7 @@ impl AAudioAudioBackend {
         }
     }
 
-    /// FlashARM: start or pause without ever panicking. A stream the system refuses to move
+    /// ARMFlash: start or pause without ever panicking. A stream the system refuses to move
     /// (device change, headset gone, no audio device) is rebuilt once; if that fails too the
     /// game simply runs without sound.
     fn set_running(&mut self, run: bool) {

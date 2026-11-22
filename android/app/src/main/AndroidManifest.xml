@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- The Discord Social SDK's voice permissions: FlashARM uses no voice or microphone. -->
+    <!-- The Discord Social SDK's voice permissions: ARMFlash uses no voice or microphone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
@@ -59,6 +59,23 @@
             android:process=":game"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
             android:theme="@style/Theme.Fp.Game" />
+
+        <!-- Recently played games for companion apps, opt-in per app (ARMSX2's provider). -->
+        <provider
+            android:name=".data.recent.RecentGamesContentProvider"
+            android:authorities="${applicationId}.romlibrary"
+            android:exported="true" />
+        <activity
+            android:name=".data.recent.RecentGamesAccessActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="${applicationId}.action.REQUEST_RECENT_GAMES_ACCESS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!-- Windows plugin games (Shockwave, Unity and others) under Wine on a virtual screen. -->
         <activity

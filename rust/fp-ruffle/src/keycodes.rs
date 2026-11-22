@@ -1,5 +1,5 @@
 // From ruffle-android (github.com/ruffle-rs/ruffle-android), MIT OR Apache-2.0, Ruffle contributors.
-// FlashARM: split so a bare Android keycode (from the touch overlay) maps the same way.
+// ARMFlash: split so a bare Android keycode (from the touch overlay) maps the same way.
 use android_activity::input::{KeyEvent, Keycode};
 use ruffle_core::events::{KeyDescriptor, KeyLocation, LogicalKey, NamedKey, PhysicalKey};
 
@@ -8,7 +8,7 @@ pub fn android_key_event_to_ruffle_key_descriptor(android: &KeyEvent) -> Option<
 }
 
 pub fn keycode_to_ruffle_key_descriptor(code: Keycode) -> Option<KeyDescriptor> {
-    // FlashARM: every key needs its own physical key. Ruffle tracks held keys by (physical key,
+    // ARMFlash: every key needs its own physical key. Ruffle tracks held keys by (physical key,
     // location) and drops a KeyUp whose pair is not down. With every key Unknown, two keys held
     // at once shared one entry: the first release cleared it and the second key's release was
     // thrown away, so that key stayed held in the game forever (Right + Left, Right + X).

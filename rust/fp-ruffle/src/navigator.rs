@@ -1,4 +1,4 @@
-//! Ruffle's network side, routed through FlashARM's game server.
+//! Ruffle's network side, routed through ARMFlash's game server.
 //!
 //! Ruffle's own ExternalNavigatorBackend does the work (relative URLs, POST, cookies, loaders);
 //! it is given the in-process game server as its HTTP proxy, so `http://host/path` resolves

@@ -99,7 +99,7 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             }
         }
 
-        // Uninstall: only data packs FlashARM downloaded (legacy games have nothing to remove).
+        // Uninstall: only data packs ARMFlash downloaded (legacy games have nothing to remove).
         val pack = full?.activeData
         if (installed && pack != null && dl == null) {
             var confirm by remember { mutableStateOf(false) }

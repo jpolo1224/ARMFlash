@@ -1,4 +1,4 @@
-"""Relocate Winlator's base system to FlashARM's: rewrite every NUL-terminated string that starts
+"""Relocate Winlator's base system to ARMFlash's: rewrite every NUL-terminated string that starts
 with OLD to start with NEW (shorter), padding with NULs. Reads a tar, writes a tar of changed files."""
 import sys, tarfile, io
 OLD = b"/data/data/com.winlator/files/rootfs"

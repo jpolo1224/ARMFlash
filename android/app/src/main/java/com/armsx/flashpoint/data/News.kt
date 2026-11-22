@@ -21,7 +21,7 @@ import java.net.URL
 /** Adapted from ARMSX3 News.kt: release notes from GitHub releases, with their pictures. */
 object News {
     private const val TAG = "News"
-    /** FlashARM's GitHub repository ("owner/name"). Empty until it has one: nothing is fetched. */
+    /** ARMFlash's GitHub repository ("owner/name"). Empty until it has one: nothing is fetched. */
     const val REPO = ""
     private val RELEASES_URL get() = "https://api.github.com/repos/$REPO/releases?per_page=20"
 
@@ -237,5 +237,5 @@ object News {
         }
     }
 
-    private fun userAgent(): String = "FlashARM/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrDefault("dev")
+    private fun userAgent(): String = "ARMFlash/" + runCatching { com.armsx.flashpoint.BuildConfig.VERSION_NAME }.getOrDefault("dev")
 }

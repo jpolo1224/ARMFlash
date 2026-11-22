@@ -65,7 +65,7 @@ class Library(private val ctx: Context) {
         val dir = File(if (parts[0] == "primary") "/storage/emulated/0/${parts[1]}" else "/storage/${parts[0]}/${parts[1]}")
         // Write-probe it now, while the user can still pick another (as ARMSX2 does).
         return dir.takeIf {
-            runCatching { (it.isDirectory || it.mkdirs()) && File.createTempFile(".flasharm-probe-", ".tmp", it).delete() }.getOrDefault(false)
+            runCatching { (it.isDirectory || it.mkdirs()) && File.createTempFile(".armflash-probe-", ".tmp", it).delete() }.getOrDefault(false)
         }
     }
 
@@ -192,7 +192,7 @@ class Library(private val ctx: Context) {
             instanceFollowRedirects = true
             connectTimeout = 15_000
             readTimeout = 30_000
-            setRequestProperty("User-Agent", "FlashARM/0.1")
+            setRequestProperty("User-Agent", "ARMFlash/0.1")
         }
         try {
             if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode} for $url")

@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    // A frontend launch while FlashARM is already open.
+    // A frontend launch while ARMFlash is already open.
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         Frontend.gameId(this, intent)?.let { vm.pendingGame = it }
@@ -125,7 +125,7 @@ private fun App(vm: BrowseVm) {
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val dir = vm.library.customLocation(uri)
-        if (dir == null) vm.status = "FlashARM cannot write to that folder. Pick another."
+        if (dir == null) vm.status = "ARMFlash cannot write to that folder. Pick another."
         else vm.pickLocation(dir)
     }
     val allFiles = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -226,7 +226,7 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
             imp != null -> Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
             else -> {
                 Text(
-                    "FlashARM needs Flashpoint's game database: the details of over 220,000 games and animations. " +
+                    "ARMFlash needs Flashpoint's game database: the details of over 220,000 games and animations. " +
                         "Download it from Flashpoint Archive, or import flashpoint.sqlite from a desktop install. " +
                         "Games download on demand the first time you play them.",
                     color = Fp.Text, modifier = Modifier.widthIn(max = 560.dp),

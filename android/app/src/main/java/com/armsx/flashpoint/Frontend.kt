@@ -39,7 +39,7 @@ object Frontend {
     fun fileText(id: String, title: String, platform: String) =
         "# ARMFlash game: open with ARMFlash\nid=$id\ntitle=$title\nplatform=$platform\n"
 
-    /** A file name safe on every file system, "Title [Platform].flasharm". */
+    /** A file name safe on every file system, "Title [Platform].armflash". */
     fun fileName(title: String, platform: String): String {
         val clean = title.replace(Regex("""[\\/:*?"<>|\u0000-\u001f]"""), " ").replace(Regex("""\s+"""), " ").trim().take(120)
         return "$clean [$platform].$EXT"

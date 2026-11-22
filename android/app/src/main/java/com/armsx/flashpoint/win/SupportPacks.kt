@@ -30,7 +30,7 @@ object SupportPacks {
     fun isWindowsProgram(applicationPath: String) =
         idFor(applicationPath) != null && applicationPath.endsWith(".exe", ignoreCase = true)
 
-    private fun marker(root: File, id: String) = File(root, "FPSoftware/.flasharm/$id")
+    private fun marker(root: File, id: String) = File(root, "FPSoftware/.armflash/$id")
 
     fun installed(root: File, id: String) = marker(root, id).isFile
 
@@ -38,9 +38,9 @@ object SupportPacks {
     fun install(root: File, id: String, progress: (Long, Long) -> Unit) {
         if (installed(root, id)) return
         val soft = File(root, "FPSoftware").apply { mkdirs() }
-        val tmp = File(soft, ".flasharm/$id.zip.part").apply { parentFile?.mkdirs() }
+        val tmp = File(soft, ".armflash/$id.zip.part").apply { parentFile?.mkdirs() }
         val conn = URL("${BASE}supportpack-$id.zip").openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "FlashARM")
+        conn.setRequestProperty("User-Agent", "ARMFlash")
         conn.connectTimeout = 20_000; conn.readTimeout = 60_000
         try {
             if (conn.responseCode != 200) throw IOException("support pack $id: HTTP ${conn.responseCode}")

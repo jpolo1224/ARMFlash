@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 
 /**
  * The launcher's Config options that apply on Android, under the desktop names, plus
- * FlashARM's own (music, touch, Legacy online). Each is Compose state backed by prefs.
+ * ARMFlash's own (music, touch, Legacy online). Each is Compose state backed by prefs.
  */
 class AppPrefs(ctx: Context) {
     private val p: SharedPreferences = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)

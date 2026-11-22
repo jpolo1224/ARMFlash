@@ -8,8 +8,8 @@ import android.util.Log
 import java.io.File
 
 /**
- * Debug only: fixed probes for running Box64 and Wine inside FlashARM, where Android's real
- * execution rules apply. Logs under "FlashARMLab". Takes a step name, never a command:
+ * Debug only: fixed probes for running Box64 and Wine inside ARMFlash, where Android's real
+ * execution rules apply. Logs under "ARMFlashLab". Takes a step name, never a command:
  *
  *   adb shell am start -n com.armsx.flasharm/com.armsx.flashpoint.lab.LabActivity --es step box64
  *
@@ -50,7 +50,7 @@ class LabActivity : androidx.activity.ComponentActivity() {
                     Log.i(TAG, "shaders: ${crt.relPath} has ${params.size} parameters: " + params.take(6).joinToString { "${it.name}=${it.initial} [${it.minimum}..${it.maximum}]" })
                 }.onFailure { Log.e(TAG, "shaders", it) }
             }.start()
-            setContentView(android.widget.TextView(this).apply { text = "FlashARM lab: shaders" })
+            setContentView(android.widget.TextView(this).apply { text = "ARMFlash lab: shaders" })
             return
         }
         // Every cursor style at every size, for checking the drawings.
@@ -132,7 +132,7 @@ class LabActivity : androidx.activity.ComponentActivity() {
             "cmd" -> listOf(bx, wine, "cmd", "/c", "ver")
             "xvfb" -> listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac", "-extension", "MIT-SHM")
             "notepad" -> listOf(bx, wine, "notepad")
-            // Flashpoint's Shockwave projector on a test game, through FlashARM's game server on
+            // Flashpoint's Shockwave projector on a test game, through ARMFlash's game server on
             // the port the projector expects (its port.txt). Expects the support pack's PJ101 in
             // drive_c/FPSoftware/Shockwave and the game's data pack at home/games/test.zip.
             "spr" -> listOf(bx, wine, "C:\\FPSoftware\\Shockwave\\PJ101\\SPR.exe", intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr")
@@ -185,11 +185,11 @@ class LabActivity : androidx.activity.ComponentActivity() {
             }.onFailure { Log.e(TAG, "failed", it) }
         }.start()
         // Stay on screen: in the background Android's app freezer would freeze Wine's processes.
-        setContentView(android.widget.TextView(this).apply { text = "FlashARM lab: $step"; setPadding(40, 80, 40, 40) })
+        setContentView(android.widget.TextView(this).apply { text = "ARMFlash lab: $step"; setPadding(40, 80, 40, 40) })
     }
 
     companion object {
-        const val TAG = "FlashARMLab"
+        const val TAG = "ARMFlashLab"
         @Volatile var xServer: Process? = null
     }
 }

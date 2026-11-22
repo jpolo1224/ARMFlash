@@ -12,7 +12,7 @@ import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Sound for Windows players: the other end of FlashARM's ALSA plugin
+ * Sound for Windows players: the other end of ARMFlash's ALSA plugin
  * (tools/winrt/alsa/pcm_android_aserver.c). Each stream Wine opens connects here and plays
  * through its own AudioTrack; a blocking write paces the stream. The protocol is in the
  * plugin's header comment.

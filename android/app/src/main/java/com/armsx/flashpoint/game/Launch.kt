@@ -63,7 +63,7 @@ object Launch {
             ("basilisk" in app || "fpnavigator" in app || "firefox" in app) && platform == "flash" -> Runner.WEB
             else -> Runner.OTHER
         }
-        // Everything FlashARM has no native player for runs the desktop's own Windows player.
+        // Everything ARMFlash has no native player for runs the desktop's own Windows player.
         val windows = !runner.ready && com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
         return LaunchPlan(if (windows) Runner.WINDOWS else runner, url)
     }

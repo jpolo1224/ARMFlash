@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Just enough of the X11 protocol to drive a game on FlashARM's virtual screen: find the game's
+ * Just enough of the X11 protocol to drive a game on ARMFlash's virtual screen: find the game's
  * window, give it focus, and inject the player's input through XTEST. Written from the X11 and
  * XTEST protocol specifications; one connection, used from one thread at a time.
  */

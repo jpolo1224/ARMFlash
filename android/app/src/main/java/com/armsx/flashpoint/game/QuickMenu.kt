@@ -92,7 +92,7 @@ enum class MenuTab(val label: String, val glyph: String) {
     OPTIONS("Options", "⚙"),
 }
 
-// ---- colours: Flashpoint's (FlashARM's launcher theme) in ARMSX2's menu ------------------
+// ---- colours: Flashpoint's (ARMFlash's launcher theme) in ARMSX2's menu ------------------
 
 private val Success = Color(0xFF5CB531) // Flashpoint's Play green
 private val Danger = Color(0xFFE0262B) // Flashpoint's red

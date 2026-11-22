@@ -31,7 +31,7 @@ pub unsafe fn renderer_with_driver(
     let extensions = wgpu_hal::vulkan::Instance::desired_extensions(&entry, api, flags).map_err(|e| format!("extensions: {e}"))?;
 
     let app = vk::ApplicationInfo::default()
-        .application_name(c"FlashARM")
+        .application_name(c"ARMFlash")
         .engine_name(c"Ruffle")
         .api_version(api);
     let names: Vec<*const std::ffi::c_char> = extensions.iter().map(|e| e.as_ptr()).collect();

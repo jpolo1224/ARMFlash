@@ -17,7 +17,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
 
     private val census = object : Runnable {
         override fun run() {
-            Thread { android.util.Log.i("FlashARM", "Maps: " + MapCensus.summary()) }.start()
+            Thread { android.util.Log.i("ARMFlash", "Maps: " + MapCensus.summary()) }.start()
             handler.postDelayed(this, 30_000)
         }
     }

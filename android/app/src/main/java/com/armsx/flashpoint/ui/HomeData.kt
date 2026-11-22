@@ -28,7 +28,7 @@ data class Gotd(
             val conn = (URL(URL_).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 10_000
                 readTimeout = 15_000
-                setRequestProperty("User-Agent", "FlashARM")
+                setRequestProperty("User-Agent", "ARMFlash")
             }
             return try {
                 val text = conn.inputStream.bufferedReader().readText()

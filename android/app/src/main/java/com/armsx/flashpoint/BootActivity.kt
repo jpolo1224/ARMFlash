@@ -21,7 +21,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import java.util.concurrent.ArrayBlockingQueue
 
 /**
- * FlashARM's boot animation, played the way an Android bootanimation.zip is (assets/boot/desc.txt:
+ * ARMFlash's boot animation, played the way an Android bootanimation.zip is (assets/boot/desc.txt:
  * part0 once, then part1 looping), with its sound, then a fade into the launcher. A tap skips it;
  * Config > Visuals turns it off.
  *
@@ -164,7 +164,7 @@ class BootActivity : Activity() {
         running = false
         // Config's Preview: just play it and go back.
         if (intent.getBooleanExtra(EXTRA_PREVIEW, false)) return finish()
-        // A frontend's launch (a game link, a .flasharm file) goes on to the launcher with it.
+        // A frontend's launch (a game link, a .armflash file) goes on to the launcher with it.
         val main = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         Frontend.gameId(this, intent)?.let { main.putExtra("gameId", it) }
         startActivity(main)

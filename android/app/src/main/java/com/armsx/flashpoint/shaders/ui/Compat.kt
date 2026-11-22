@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.armsx.flashpoint.ui.padFocus
 
 /*
- * FlashARM's stand-ins for the ARMSX2 settings helpers its shader picker (ShaderChainSection,
+ * ARMFlash's stand-ins for the ARMSX2 settings helpers its shader picker (ShaderChainSection,
  * ShaderParamsEditor) is written against, so those two files port with little change.
  */
 
@@ -68,13 +68,13 @@ object I18n { fun get(key: String): String = str(key) }
 
 val Success = Color(0xFF66BB6A)
 
-/** ARMSX2 moves its controller selection by id; FlashARM's focus follows the focused view. */
+/** ARMSX2 moves its controller selection by id; ARMFlash's focus follows the focused view. */
 object SettingsControllerNav {
     fun currentSelectedId(): String? = null
     fun selectById(@Suppress("UNUSED_PARAMETER") id: String) {}
 }
 
-/** A focusable row: FlashARM's pad focus ring, and A / Enter / D-pad centre confirms. */
+/** A focusable row: ARMFlash's pad focus ring, and A / Enter / D-pad centre confirms. */
 fun Modifier.controllerFocusable(
     @Suppress("UNUSED_PARAMETER") controllerId: String? = null,
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),

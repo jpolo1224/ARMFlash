@@ -412,7 +412,7 @@ pub async fn http_get(url: &str) -> io::Result<Bytes> {
     let uri: hyper::Uri = url.parse().map_err(io::Error::other)?;
     let req = Request::get(uri)
         .header(header::ACCEPT_ENCODING, "gzip")
-        .header(header::USER_AGENT, "FlashARM")
+        .header(header::USER_AGENT, "ARMFlash")
         .body(Empty::<Bytes>::new())
         .map_err(io::Error::other)?;
     let resp = client().request(req).await.map_err(io::Error::other)?;

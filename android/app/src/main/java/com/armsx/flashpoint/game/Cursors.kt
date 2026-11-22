@@ -20,11 +20,11 @@ import androidx.compose.ui.graphics.asImageBitmap
  *
  * Modern Mac is Capitaine Cursors' arrow (Keefer Rourke and others, LGPL-3.0, drawn from its SVG
  * paths); Linux is DMZ-White's arrow (Novell, CC BY-SA 3.0, assets/cursors/dmz_white.png). The
- * other styles are FlashARM's own drawings in the manner of each era's pointer.
+ * other styles are ARMFlash's own drawings in the manner of each era's pointer.
  */
 object Cursors {
     val styles = listOf(
-        "flasharm" to "FlashARM",
+        "armflash" to "ARMFlash",
         "modernWin" to "Modern Windows",
         "modernMac" to "Modern Mac",
         "linux" to "Linux",
@@ -33,7 +33,7 @@ object Cursors {
     )
     val sizes = listOf(0.8f to "Small", 1f to "Medium", 1.4f to "Large", 1.9f to "Huge")
 
-    val style = mutableStateOf("flasharm")
+    val style = mutableStateOf("armflash")
     val scale = mutableFloatStateOf(1f)
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -50,7 +50,7 @@ object Cursors {
         if (dmz == null) dmz = runCatching {
             ctx.assets.open("cursors/dmz_white.png").use { android.graphics.BitmapFactory.decodeStream(it) }
         }.getOrNull()?.asImageBitmap()
-        style.value = prefs(ctx).getString("cursor.style", "flasharm")!!
+        style.value = prefs(ctx).getString("cursor.style", "armflash")!!
         scale.floatValue = prefs(ctx).getFloat("cursor.size", 1f)
     }
 

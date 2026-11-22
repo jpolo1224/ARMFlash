@@ -149,7 +149,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 Image(painterResource(R.drawable.fp_logo), null, Modifier.size(56.dp))
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("FlashARM", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
+                    Text("ARMFlash", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
                     Text("${vm.dbGames} games and animations", color = Fp.TextDim, fontSize = 13.sp)
                 }
             }
@@ -309,7 +309,7 @@ private fun LogsPage() {
             runCatching {
                 val p = ProcessBuilder("logcat", "-d", "-v", "time", "-t", "2000").redirectErrorStream(true).start()
                 p.inputStream.bufferedReader().readLines().filter { l ->
-                    listOf("fpcore", "fpgame", "FlashARM", "AndroidRuntime", "chromium").any { it in l }
+                    listOf("fpcore", "fpgame", "ARMFlash", "AndroidRuntime", "chromium").any { it in l }
                 }.takeLast(1000)
             }.getOrDefault(listOf("Could not read logs"))
         }
@@ -322,7 +322,7 @@ private fun LogsPage() {
             val ctx = LocalContext.current
             Chip("Copy", on = false) {
                 val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("FlashARM logs", lines.joinToString("\n")))
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("ARMFlash logs", lines.joinToString("\n")))
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -344,7 +344,7 @@ fun ConfigRow(title: String, desc: String, control: @Composable () -> Unit) {
     }
 }
 
-/** News tab: FlashARM's GitHub releases with their pictures, as in ARMSX2/3. */
+/** News tab: ARMFlash's GitHub releases with their pictures, as in ARMSX2/3. */
 @Composable
 private fun NewsPage() {
     val ctx = LocalContext.current
@@ -367,7 +367,7 @@ private fun NewsPage() {
         val r = result
         when {
             loading && r == null -> Text("Loading release notes", color = Fp.TextDim)
-            r == null || r.items.isEmpty() -> Text("No release notes yet. They appear here once FlashARM has a GitHub release.", color = Fp.TextDim)
+            r == null || r.items.isEmpty() -> Text("No release notes yet. They appear here once ARMFlash has a GitHub release.", color = Fp.TextDim)
             else -> {
                 if (r.fromCache) Text("Offline: showing saved notes.", color = Fp.TextDim, fontSize = 12.sp)
                 r.items.forEach { item -> ReleaseCard(item) }

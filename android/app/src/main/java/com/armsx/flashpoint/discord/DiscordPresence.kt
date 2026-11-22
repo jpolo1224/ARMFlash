@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 import com.armsx.flashpoint.discord.DiscordIpc
 
 /**
- * Discord rich presence, and which friends are in FlashARM right now.
+ * Discord rich presence, and which friends are in ARMFlash right now.
  *
  * Discord carries the entire social graph — the friendships, the online status, and the "is this
  * person in the same game" grouping are all theirs. That is the whole point of doing it this way:
@@ -33,13 +33,13 @@ import com.armsx.flashpoint.discord.DiscordIpc
  * except an OAuth token in this app's own prefs.
  *
  * Foreground only, by construction. The SDK stops when the app does, so friend changes are seen
- * while FlashARM is open and not otherwise. Background delivery would mean push infrastructure, which
+ * while ARMFlash is open and not otherwise. Background delivery would mean push infrastructure, which
  * is exactly the cost this design exists to avoid.
  *
  * Opt-in and off by default: it is an account link, so nothing happens until the user asks.
  */
 /**
- * A Discord friend who has FlashARM open.
+ * A Discord friend who has ARMFlash open.
  *
  * [game] and [serial] come from the rich presence they are publishing — which this same object
  * wrote on their device — so "what are they playing" needs no lookup service. A friend sitting in
@@ -51,7 +51,7 @@ data class DiscordFriend(
     val serial: String,
     val avatarUrl: String,
 ) {
-    /** In FlashARM but not in a game. Distinct from being in a game we could not name. */
+    /** In ARMFlash but not in a game. Distinct from being in a game we could not name. */
     val inLibrary: Boolean get() = game.isBlank() && serial.isBlank()
 
     /**
@@ -65,7 +65,7 @@ data class DiscordFriend(
     val coverUrl: String? get() = null
 }
 
-/** The game FlashARM is running, for presence: its title, platform and Flashpoint logo. */
+/** The game ARMFlash is running, for presence: its title, platform and Flashpoint logo. */
 data class PlayingGame(val id: String, val title: String, val platform: String, val logoUrl: String)
 
 object DiscordPresence {
@@ -128,7 +128,7 @@ object DiscordPresence {
 
     // ---- helper-process link -------------------------------------------------------------
     //
-    // The Discord SDK runs in :discord, not here. That is a licensing boundary: FlashARM is GPL-3.0+
+    // The Discord SDK runs in :discord, not here. That is a licensing boundary: ARMFlash is GPL-3.0+
     // and the SDK is proprietary, so they are two programs exchanging messages rather than one
     // linked binary. Nothing in this file may reference a com.discord class or DiscordNative —
     // both would fail to resolve in this process, which is exactly the intended guarantee.
@@ -218,7 +218,7 @@ object DiscordPresence {
 
     /** Re-publish the current game; used on (re)connect and whenever the running game changes. */
     /**
-     * Where in FlashARM the player is, when it is neither a game nor the plain library:
+     * Where in ARMFlash the player is, when it is neither a game nor the plain library:
      * [PLACE_MUSEUM], [PLACE_ONLINE_ICONS]. Published as a game's title with no serial and no
      * cover, so any client version shows it where a game's name would be. The bridge captions the
      * image with the title when there is no serial, which a friend's client knows not to take for
@@ -289,7 +289,7 @@ object DiscordPresence {
             putString(DiscordIpc.DATA_COVER, game?.logoUrl.orEmpty())
             putString(DiscordIpc.DATA_RA, if (where != null) PLACE_STATE else lastRaPresence)
             putString(DiscordIpc.DATA_PARTY, party?.id.orEmpty())
-            // A place is published as a title too, but it isn't a game: it keeps "Playing FlashARM".
+            // A place is published as a title too, but it isn't a game: it keeps "Playing ARMFlash".
             putBoolean(DiscordIpc.DATA_SHOW_GAME, showGameName && game != null)
         })
     }
@@ -348,7 +348,7 @@ object DiscordPresence {
     /** Mirror of [notifyInGame] for Compose, which cannot observe SharedPreferences. */
     val notifyState = mutableStateOf(true)
 
-    /** Name the game in the Discord status ("Playing God of War II") instead of FlashARM. Default on.
+    /** Name the game in the Discord status ("Playing God of War II") instead of ARMFlash. Default on.
      *  Idea, the desktop version and this switch by bshar1865 (https://github.com/bshar1865). */
     var showGameName: Boolean
         get() = runCatching { prefs.getBoolean(PREF_SHOW_GAME, true) }.getOrDefault(true)
@@ -384,7 +384,7 @@ object DiscordPresence {
     /**
      * Kept for call-site compatibility; there is nothing to bind any more.
      *
-     * The SDK used to need FlashARM's Activity to launch sign-in. It now lives in :discord and uses
+     * The SDK used to need ARMFlash's Activity to launch sign-in. It now lives in :discord and uses
      * DiscordAuthActivity over there, so handing it an Activity from this process would be handing
      * it a reference from the wrong process. Deliberately a no-op rather than deleted: the callers
      * are lifecycle hooks, and a missing one would be silent.

@@ -41,7 +41,7 @@ import java.util.concurrent.Executors
 /**
  * A Windows plugin game (Shockwave, Unity and others): the desktop launcher's own program
  * (applicationPath + launchCommand) runs under Wine on a virtual X screen, and this screen shows
- * the game's window from it, scaled like every other game, with FlashARM's touch controls, pause
+ * the game's window from it, scaled like every other game, with ARMFlash's touch controls, pause
  * menu and controller mapping on top. Runs in the `:game` process like the other players.
  */
 class WinActivity : ComponentActivity(), SurfaceHolder.Callback {

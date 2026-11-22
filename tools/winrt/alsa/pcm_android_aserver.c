@@ -1,6 +1,6 @@
 /*
- * FlashARM's ALSA output for Windows players: an ALSA I/O plugin ("type android_aserver", the
- * name the base system's alsa config already uses) that streams PCM to FlashARM over a Unix
+ * ARMFlash's ALSA output for Windows players: an ALSA I/O plugin ("type android_aserver", the
+ * name the base system's alsa config already uses) that streams PCM to ARMFlash over a Unix
  * socket, where it plays through Android's AudioTrack (win/AudioServer.kt).
  *
  * Protocol (little-endian), one request = code (1 byte) + length (4 bytes) + body:
@@ -8,7 +8,7 @@
  *   4 PREPARE: channels (1), format (1: 0 U8, 1 S16_LE, 2 S32_LE, 3 FLOAT_LE), rate (4),
  *              buffer size in frames (4)
  *   5 WRITE:   PCM bytes; the server's blocking write paces the stream
- * The socket is the abstract-namespace name in FLASHARM_AUDIO (default "flasharm.audio").
+ * The socket is the abstract-namespace name in ARMFLASH_AUDIO (default "armflash.audio").
  *
  * Build: zig cc -target aarch64-linux-gnu.2.36 -shared -fPIC -DPIC -O2 -I<alsa headers> \
  *        -o libasound_module_pcm_android_aserver.so pcm_android_aserver.c -L<rootfs usr/lib> -lasound
@@ -46,8 +46,8 @@ static int request(aserver_t *a, uint8_t code, const void *body, uint32_t len) {
 }
 
 static int connect_server(void) {
-    const char *name = getenv("FLASHARM_AUDIO");
-    if (!name || !*name) name = "flasharm.audio";
+    const char *name = getenv("ARMFLASH_AUDIO");
+    if (!name || !*name) name = "armflash.audio";
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return -1;
     struct sockaddr_un sa;
@@ -147,7 +147,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(android_aserver) {
     a->fd = connect_server();
     if (a->fd < 0) { free(a); return -ECONNREFUSED; }
     a->io.version = SND_PCM_IOPLUG_VERSION;
-    a->io.name = "FlashARM audio";
+    a->io.name = "ARMFlash audio";
     a->io.callback = &callbacks;
     a->io.private_data = a;
     int err = snd_pcm_ioplug_create(&a->io, name, stream, mode);

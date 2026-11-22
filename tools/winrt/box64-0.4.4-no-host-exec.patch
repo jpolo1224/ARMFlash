@@ -6,7 +6,7 @@ index c995a0c..e778ccd 100644
      return !memcmp(magic, "PE\0\0", sizeof(magic));
  }
  
-+// FlashARM: Android (apps targeting API 29+) refuses PROT_EXEC on mappings of files the app
++// ARMFlash: Android (apps targeting API 29+) refuses PROT_EXEC on mappings of files the app
 +// wrote, which is where Wine's PE images live. Guest x86 pages are never executed by the host
 +// (the dynarec translates them into its own memory), so the host mapping does not need
 +// PROT_EXEC; Box64 still records the guest protection, which is what it acts on.

@@ -124,7 +124,7 @@ impl ShaderTarget {
         let fits = slot.as_ref().is_some_and(|(t, _)| t.width() == config.width && t.height() == config.height);
         if !fits {
             let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("FlashARM shader input"),
+                label: Some("ARMFlash shader input"),
                 size: wgpu::Extent3d { width: config.width.max(1), height: config.height.max(1), depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
@@ -198,7 +198,7 @@ impl RenderTarget for ShaderTarget {
                 let size = Size::new(config.width, config.height);
                 let output = WgpuOutputView::new_from_raw(&frame.surface_view, size, remove_srgb(config.format));
                 let viewport = librashader_common::Viewport { x: 0.0, y: 0.0, mvp: None, output, size };
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("FlashARM shader chain") });
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ARMFlash shader chain") });
                 let n = self.frames.fetch_add(1, Ordering::Relaxed);
                 if let Err(e) = chain.frame(&input, &viewport, &mut encoder, n, None) {
                     log::warn!("shader frame: {e}");

@@ -159,8 +159,8 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                     }
                 }
             }
-            Toggle("Boot Animation", "Play the FlashARM intro with its sound when the app starts. Tap it to skip.", p.bootAnimation)
-            CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.BOOT_INTRO, arrayOf("video/*"), "A video of your own in place of the FlashARM intro.", onPreview = {
+            Toggle("Boot Animation", "Play the ARMFlash intro with its sound when the app starts. Tap it to skip.", p.bootAnimation)
+            CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.BOOT_INTRO, arrayOf("video/*"), "A video of your own in place of the ARMFlash intro.", onPreview = {
                 ctx.startActivity(android.content.Intent(ctx, com.armsx.flashpoint.BootActivity::class.java).putExtra(com.armsx.flashpoint.BootActivity.EXTRA_PREVIEW, true))
             })
             CustomMediaRow(com.armsx.flashpoint.data.CustomMedia.Kind.UI_MUSIC, arrayOf("audio/*"), "A track of your own for the launcher.", onChanged = { UiMusic.reload(ctx) })
@@ -499,14 +499,14 @@ private fun DiscordSection() {
         dp.FAILED -> "Couldn't connect"
         else -> "Not connected"
     }
-    Text("Show friends on Discord what you are playing in FlashARM. Nothing is kept anywhere but a sign-in on this device.", color = Fp.TextDim, fontSize = 13.sp)
+    Text("Show friends on Discord what you are playing in ARMFlash. Nothing is kept anywhere but a sign-in on this device.", color = Fp.TextDim, fontSize = 13.sp)
     Spacer(Modifier.height(8.dp))
     ConfigRow("Status", statusText + (err?.let { ". $it" } ?: "")) {
         if (status == dp.CONNECTED || status == dp.CONNECTING) Chip("Disconnect", false) { dp.signOut() }
         else Chip("Connect Discord", true) { dp.authorize() }
     }
     var showGame by remember { mutableStateOf(dp.showGameName) }
-    ConfigRow("Show the game in my status", "Your status reads \u201cPlaying <game>\u201d instead of \u201cPlaying FlashARM\u201d.") {
+    ConfigRow("Show the game in my status", "Your status reads \u201cPlaying <game>\u201d instead of \u201cPlaying ARMFlash\u201d.") {
         Switch(showGame, { showGame = it; dp.showGameName = it })
     }
 }

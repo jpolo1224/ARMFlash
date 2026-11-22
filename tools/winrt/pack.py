@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pack FlashARM's Windows runtime: winrt.tar.zst, unpacked by the app into its data folder.
+"""Pack ARMFlash's Windows runtime: winrt.tar.zst, unpacked by the app into its data folder.
 
   r/  the relocated Linux base (glibc, Wine), from relocate.py's output tar
   x/  the X server: Xvfb, the libraries it loads (found by following DT_NEEDED) and xkb data

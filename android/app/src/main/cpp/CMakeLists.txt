@@ -13,7 +13,7 @@ target_link_options(fpdriver PRIVATE "-Wl,-z,max-page-size=16384")
 # Discord Rich Presence (ARMSX2's discord_bridge.cpp). The Discord Social SDK is a private, optional
 # build input (DISCORD_SDK_DIR: include/discordpp.h, <abi>/libdiscord_partner_sdk.so); Discord's terms
 # allow shipping it inside the app but not republishing it, so it is never in this repository.
-# Without it, or without FlashARM's application id, the feature compiles out.
+# Without it, or without ARMFlash's application id, the feature compiles out.
 set(DISCORD_SDK_SO "${DISCORD_SDK_DIR}/${ANDROID_ABI}/libdiscord_partner_sdk.so")
 if(DISCORD_SDK_DIR AND FLASHARM_DISCORD_APP_ID AND EXISTS "${DISCORD_SDK_SO}" AND EXISTS "${DISCORD_SDK_DIR}/include/discordpp.h")
     add_library(discord_partner_sdk SHARED IMPORTED)
