@@ -104,6 +104,22 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             Action("Import Database", "Replace the game database with a flashpoint.sqlite from a desktop install.", "Import", onImport)
         }
 
+        Section("Flash") {
+            ConfigRow("Flash Player", "Native runs Ruffle directly on the GPU (fastest). Browser runs Ruffle's web version, for the rare game that needs it.") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Chip("Native", p.flashPlayer.value == "native") { p.flashPlayer.value = "native" }
+                    Chip("Browser", p.flashPlayer.value == "web") { p.flashPlayer.value = "web" }
+                }
+            }
+            ConfigRow("Graphics", "What native Flash draws with. Auto uses Vulkan where it works and OpenGL ES otherwise.") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Auto", "vulkan" to "Vulkan", "gl" to "OpenGL ES").forEach { (v, label) ->
+                        Chip(label, p.flashBackend.value == v) { p.flashBackend.value = v }
+                    }
+                }
+            }
+        }
+
         Section("Visuals") {
             ConfigRow("Screenshot Preview", "Show a game's screenshot in the grid.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

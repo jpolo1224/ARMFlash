@@ -15,16 +15,32 @@ import com.armsx.flashpoint.core.FpCore
  * Web content (Ruffle, HTML5) sees ordinary keydown/keyup and mouse events, including hover,
  * which is what point-and-click games need.
  */
-class Injector(private val target: View) {
+/** What the overlay and controller mapping drive: keys, a cursor, mouse buttons. */
+interface GameInput {
+    val cursorX: Float
+    val cursorY: Float
+    fun key(code: Int, down: Boolean)
+    fun moveCursor(x: Float, y: Float)
+    fun mouseDown(button: Int = MotionEvent.BUTTON_PRIMARY)
+    fun mouseUp(button: Int = MotionEvent.BUTTON_PRIMARY)
+    fun click(button: Int = MotionEvent.BUTTON_PRIMARY) {
+        mouseDown(button)
+        mouseUp(button)
+    }
+    fun releaseAll()
+}
+
+/** GameInput for the WebView: real Android key and mouse events dispatched to the view. */
+class Injector(private val target: View) : GameInput {
     private val held = HashSet<Int>()
     private var buttons = 0
     private var downAt = 0L
-    var cursorX = 0f
+    override var cursorX = 0f
         private set
-    var cursorY = 0f
+    override var cursorY = 0f
         private set
 
-    fun key(code: Int, down: Boolean) {
+    override fun key(code: Int, down: Boolean) {
         if (down && !held.add(code)) return
         if (!down && !held.remove(code)) return
         val now = SystemClock.uptimeMillis()
@@ -34,23 +50,18 @@ class Injector(private val target: View) {
         )
     }
 
-    fun releaseAll() {
+    override fun releaseAll() {
         held.toList().forEach { key(it, false) }
         if (buttons != 0) mouseUp(buttons)
     }
 
-    fun moveCursor(x: Float, y: Float) {
+    override fun moveCursor(x: Float, y: Float) {
         cursorX = x.coerceIn(0f, target.width.toFloat().coerceAtLeast(1f) - 1)
         cursorY = y.coerceIn(0f, target.height.toFloat().coerceAtLeast(1f) - 1)
         if (buttons != 0) mouse(MotionEvent.ACTION_MOVE, buttons) else hover()
     }
 
-    fun click(button: Int = MotionEvent.BUTTON_PRIMARY) {
-        mouseDown(button)
-        mouseUp(button)
-    }
-
-    fun mouseDown(button: Int = MotionEvent.BUTTON_PRIMARY) {
+    override fun mouseDown(button: Int) {
         if (buttons and button != 0) return
         if (buttons == 0) downAt = SystemClock.uptimeMillis()
         buttons = buttons or button
@@ -60,7 +71,7 @@ class Injector(private val target: View) {
         send(MotionEvent.ACTION_BUTTON_PRESS, buttons, button, touch = false)
     }
 
-    fun mouseUp(button: Int = MotionEvent.BUTTON_PRIMARY) {
+    override fun mouseUp(button: Int) {
         if (buttons and button == 0) return
         buttons = buttons and button.inv()
         if (!canSetActionButton) return finger(MotionEvent.ACTION_UP)

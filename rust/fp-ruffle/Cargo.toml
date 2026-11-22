@@ -1,0 +1,41 @@
+[package]
+name = "fp_ruffle"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "FlashARM's native Flash player: Ruffle (wgpu, AAudio) on Android, adapted from ruffle-android"
+
+[lib]
+name = "fpruffle"
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
+
+[dependencies]
+android-activity = { version = "0.6.1", features = ["game-activity"] }
+android_logger = "0.15.1"
+jni = "0.22.4"
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+ndk = { version = "0.9.0", features = ["audio"] }
+wgpu = "30.0.1"
+ruffle_common = { git = "https://github.com/ruffle-rs/ruffle.git", branch = "master" }
+ruffle_core = { git = "https://github.com/ruffle-rs/ruffle.git", branch = "master", features = [
+    "audio", "symphonia", "mp3", "nellymoser", "lzma", "default_compatibility_rules", "default_font",
+] }
+ruffle_render_wgpu = { git = "https://github.com/ruffle-rs/ruffle.git", branch = "master" }
+ruffle_video_software = { git = "https://github.com/ruffle-rs/ruffle.git", branch = "master" }
+ruffle_frontend_utils = { git = "https://github.com/ruffle-rs/ruffle.git", branch = "master", default-features = false, features = ["fs", "navigator", "rustls-tls"] }
+log = "0.4.32"
+tracing = { version = "0.1.44", features = ["log", "log-always"] }
+backtrace = "0.3.76"
+async-task = "4.7.1"
+url = "2.5.2"
+indexmap = "2"
+async-channel = "2.5.0"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
+
+[workspace]

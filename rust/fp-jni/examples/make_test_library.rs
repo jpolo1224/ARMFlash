@@ -231,6 +231,15 @@ fn main() {
         ),
     ];
 
+    // Optional: Ruffle's own input-test SWF (ruffle-android, MIT OR Apache-2.0), traces keys and clicks.
+    let mut entries = entries;
+    if let Ok(path) = std::env::var("FP_INPUT_SWF") {
+        entries.push((
+            "66666666-aaaa-4bbb-8ccc-000000000006", "Flash Input Test", "Flash", r"FPSoftware\Flash\flashplayer_32_sa.exe",
+            "http://www.fp-test.example/flash/input_test.swf",
+            vec![("content/www.fp-test.example/flash/input_test.swf".into(), std::fs::read(path).unwrap())],
+        ));
+    }
     for (id, title, platform, app, cmd, files) in entries {
         let mut g: PartialGame = serde_json::from_value(json!({ "id": id })).unwrap();
         g.title = Some(title.into());

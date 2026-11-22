@@ -38,7 +38,9 @@ val buildNative by tasks.registering(Exec::class) {
     commandLine(script.absolutePath, "release")
     inputs.dir(rootProject.file("../rust/fp-proxy/src"))
     inputs.dir(rootProject.file("../rust/fp-jni/src"))
+    inputs.dir(rootProject.file("../rust/fp-ruffle/src"))
     outputs.file(file("src/main/jniLibs/arm64-v8a/libfpcore.so"))
+    outputs.file(file("src/main/jniLibs/arm64-v8a/libfpruffle.so"))
 }
 tasks.named("preBuild") { dependsOn(buildNative) }
 
@@ -55,4 +57,6 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.games.activity)
+    implementation(libs.androidx.appcompat)
 }

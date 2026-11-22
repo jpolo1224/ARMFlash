@@ -89,12 +89,12 @@ private fun App(vm: BrowseVm) {
                 onPlay = { game ->
                     vm.prepare(game) { ready ->
                         UiMusic.pause()
-                        playLauncher.launch(
-                            GameActivity.intent(
-                                ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
-                                vm.library.htdocs.path, vm.library.legacyBase,
-                            ),
+                        val web = GameActivity.intent(
+                            ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
+                            vm.library.htdocs.path, vm.library.legacyBase,
                         )
+                        val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && vm.prefs2.flashPlayer.value == "native"
+                        playLauncher.launch(if (native) com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web) else web)
                     }
                 },
                 configPage = { ConfigPage(vm, onImport = { pickDb.launch(arrayOf("*/*")) }) },

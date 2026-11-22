@@ -20,10 +20,24 @@ export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C target-cpu=cortex-a76"
 
 FLAGS=(); [[ "$PROFILE" == release ]] && FLAGS=(--release)
+
+# Ruffle's build compiles its ActionScript runtime (playerglobal) with a Java tool.
+if ! java -version >/dev/null 2>&1; then
+  export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
 cd "$ROOT/rust"
 cargo build -p fp-jni --target aarch64-linux-android "${FLAGS[@]}"
 
 OUT="$ROOT/android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$OUT"
 cp "target/aarch64-linux-android/$PROFILE/libfpcore.so" "$OUT/"
-ls -l "$OUT/libfpcore.so"
+
+# libfpruffle.so: native Ruffle. Its own workspace and toolchain (rust-toolchain.toml there),
+# pinned to the Ruffle revision ruffle-android tested (its Cargo.lock).
+if [[ "${SKIP_RUFFLE:-0}" != 1 ]]; then
+  cd "$ROOT/rust/fp-ruffle"
+  cargo build --target aarch64-linux-android "${FLAGS[@]}"
+  cp "target/aarch64-linux-android/$PROFILE/libfpruffle.so" "$OUT/"
+fi
+ls -l "$OUT"

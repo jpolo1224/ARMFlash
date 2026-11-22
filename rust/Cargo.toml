@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["fp-proxy", "fp-jni"]
+exclude = ["fp-ruffle"]
 
 [workspace.package]
 edition = "2021"

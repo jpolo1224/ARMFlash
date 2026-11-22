@@ -75,7 +75,7 @@ class OverlayState(layout: TouchLayout) {
 private val Accent = Color(0xFF5CB531)
 
 @Composable
-fun GameOverlay(st: OverlayState, inj: Injector, onSave: (asDefault: Boolean) -> Unit, onKeyboard: () -> Unit, onExit: () -> Unit) {
+fun GameOverlay(st: OverlayState, inj: GameInput, onSave: (asDefault: Boolean) -> Unit, onKeyboard: () -> Unit, onExit: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
@@ -119,7 +119,7 @@ fun GameOverlay(st: OverlayState, inj: Injector, onSave: (asDefault: Boolean) ->
 }
 
 /** Touchpad and point-and-click: turn finger gestures into mouse movement and clicks. */
-private fun mouseInput(mode: String, inj: Injector, show: (Offset) -> Unit): Modifier = Modifier.pointerInput(mode) {
+private fun mouseInput(mode: String, inj: GameInput, show: (Offset) -> Unit): Modifier = Modifier.pointerInput(mode) {
     var lastTapUp = 0L
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -170,7 +170,7 @@ private fun mouseInput(mode: String, inj: Injector, show: (Offset) -> Unit): Mod
 }
 
 @Composable
-private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: OverlayState, index: Int, inj: Injector) {
+private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: OverlayState, index: Int, inj: GameInput) {
     val density = LocalDensity.current
     val wide = b.kind == "key" && isWideKey(b.code)
     val heightPx = with(density) { b.size.dp.toPx() }
@@ -318,7 +318,7 @@ private fun Keycap(label: String, pressed: Boolean, @Suppress("UNUSED_PARAMETER"
 }
 
 /** The left stick as a direction pad: 8 directions, same keys as the D-pad. */
-private fun stickInput(codes: IntArray, sizePx: Float, inj: Injector, thumb: (Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
+private fun stickInput(codes: IntArray, sizePx: Float, inj: GameInput, thumb: (Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
     val radius = sizePx * 0.30f
     awaitEachGesture {
         var mask = 0
@@ -357,14 +357,14 @@ private fun stickInput(codes: IntArray, sizePx: Float, inj: Injector, thumb: (Of
     }
 }
 
-private fun press(inj: Injector, code: Int, down: Boolean) = when (code) {
+private fun press(inj: GameInput, code: Int, down: Boolean) = when (code) {
     Keys.MOUSE_LEFT -> if (down) inj.mouseDown(MotionEvent.BUTTON_PRIMARY) else inj.mouseUp(MotionEvent.BUTTON_PRIMARY)
     Keys.MOUSE_RIGHT -> if (down) inj.mouseDown(MotionEvent.BUTTON_SECONDARY) else inj.mouseUp(MotionEvent.BUTTON_SECONDARY)
     else -> inj.key(code, down)
 }
 
 /** Arrow cluster: slide between directions, diagonals included. Bits: 1 up, 2 down, 4 left, 8 right. */
-private fun dpadInput(codes: IntArray, sizePx: Float, inj: Injector, lit: (Int) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
+private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
     awaitEachGesture {
         var mask = 0
         fun apply(p: Offset?) {

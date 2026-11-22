@@ -9,3 +9,4 @@ android/app/src/main/assets/ruffle/
 .DS_Store
 *.iml
 .idea/
+rust/fp-ruffle/target/

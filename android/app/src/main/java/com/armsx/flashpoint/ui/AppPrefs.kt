@@ -35,6 +35,11 @@ class AppPrefs(ctx: Context) {
     // Flashpoint
     val randomLibraries = strs("randomLibraries", setOf("arcade"))
 
+    // Flash: "native" (Ruffle in Rust, Vulkan / OpenGL ES) or "web" (Ruffle's web build in the browser).
+    val flashPlayer = str("flashPlayer", "native")
+    // Graphics for native Flash: "auto", "vulkan", "gl".
+    val flashBackend = str("flashBackend", "auto")
+
     // Visuals: 0 = Off, 1 = On (long press), 2 = Always
     val screenshotPreviewMode = str("screenshotPreviewMode", "0")
 

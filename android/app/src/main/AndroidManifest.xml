@@ -32,5 +32,16 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.Fp.Game" />
+
+        <!-- Native Flash (Ruffle). GameActivity loads libfpruffle.so and runs its android_main. -->
+        <activity
+            android:name=".game.RuffleActivity"
+            android:exported="false"
+            android:process=":game"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Fp.Ruffle">
+            <meta-data android:name="android.app.lib_name" android:value="fpruffle" />
+        </activity>
     </application>
 </manifest>
