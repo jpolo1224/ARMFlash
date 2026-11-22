@@ -8,10 +8,37 @@ use std::sync::{Arc, Mutex, Weak};
 type PoolInner<T> = Mutex<Vec<T>>;
 type Constructor<Type, Description> = Box<dyn Fn(&Descriptors, &Description) -> Type>;
 
+/// ARMFlash patch: how many texture sizes and viewport sizes the pool keeps.
+///
+/// Upstream keeps one pool per exact texture size and one `Globals` per exact viewport size,
+/// forever. A game whose filtered or cached content comes in ever-new sizes (Ninja Painter's
+/// paint) then piles up GPU textures and uniform buffers until Android's memory-mapping limit
+/// kills it. Past these limits, the sizes used least recently are dropped (textures in use stay
+/// alive until their entries are dropped; they simply don't return to a pool).
+const MAX_TEXTURE_KEYS: usize = 48;
+const MAX_GLOBALS: usize = 32;
+
 #[derive(Debug, Default)]
 pub struct TexturePool {
     pools: FnvHashMap<TextureKey, BufferPool<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>>,
     globals_cache: FnvHashMap<GlobalsKey, Arc<Globals>>,
+    /// ARMFlash patch: when each key was last used (a counter, not time).
+    texture_used: FnvHashMap<TextureKey, u64>,
+    globals_used: FnvHashMap<GlobalsKey, u64>,
+    tick: u64,
+}
+
+/// Remove the least recently used half of `map`'s keys when it is over `max`.
+fn evict<K: Copy + Eq + std::hash::Hash, V>(map: &mut FnvHashMap<K, V>, used: &mut FnvHashMap<K, u64>, max: usize) {
+    if map.len() <= max {
+        return;
+    }
+    let mut keys: Vec<(u64, K)> = map.keys().map(|k| (used.get(k).copied().unwrap_or(0), *k)).collect();
+    keys.sort_unstable_by_key(|(t, _)| *t);
+    for (_, k) in keys.into_iter().take(map.len() - max / 2) {
+        map.remove(&k);
+        used.remove(&k);
+    }
 }
 
 impl TexturePool {
@@ -33,6 +60,12 @@ impl TexturePool {
             format,
             sample_count,
         };
+        self.tick += 1;
+        self.texture_used.insert(key, self.tick);
+        if !self.pools.contains_key(&key) {
+            evict(&mut self.pools, &mut self.texture_used, MAX_TEXTURE_KEYS);
+            self.texture_used.insert(key, self.tick);
+        }
         let pool = self.pools.entry(key).or_insert_with(|| {
             let label = if cfg!(feature = "render_debug_labels") {
                 use std::sync::atomic::{AtomicU32, Ordering};
@@ -66,11 +99,17 @@ impl TexturePool {
         viewport_width: u32,
         viewport_height: u32,
     ) -> Arc<Globals> {
+        let key = GlobalsKey {
+            viewport_width,
+            viewport_height,
+        };
+        self.tick += 1;
+        if !self.globals_cache.contains_key(&key) {
+            evict(&mut self.globals_cache, &mut self.globals_used, MAX_GLOBALS);
+        }
+        self.globals_used.insert(key, self.tick);
         self.globals_cache
-            .entry(GlobalsKey {
-                viewport_width,
-                viewport_height,
-            })
+            .entry(key)
             .or_insert_with(|| {
                 Arc::new(Globals::new(
                     &descriptors.device,
