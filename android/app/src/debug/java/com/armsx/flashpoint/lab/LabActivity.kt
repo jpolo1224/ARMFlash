@@ -16,6 +16,16 @@ import java.io.File
 class LabActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        run(intent)
+    }
+
+    // Another step while the lab is open (Xvfb keeps running in the first one).
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        run(intent)
+    }
+
+    private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
         val lib = applicationInfo.nativeLibraryDir
         val root = File(dataDir, "r").path
@@ -28,12 +38,21 @@ class LabActivity : Activity() {
             "GCONV_PATH" to "$root/usr/lib/gconv",
             "BOX64_LOG" to "1",
             "WINEPREFIX" to "$root/home/.wine",
-            "WINEDEBUG" to "err+all,warn+module",
+            "WINEDEBUG" to "err+all,warn+module,warn+x11drv,warn+seh",
+            "BOX64_SHOWSEGV" to "1",
+            "BOX64_SHOWBT" to "1",
             "DISPLAY" to ":1",
+            // No Wine Mono or Gecko: their first-run download prompt blocks every later process.
+            "WINEDLLOVERRIDES" to "mscoree,mshtml=",
+            // This glibc's System V shared memory asks a helper socket named here; with nothing
+            // listening it fails cleanly and Wine uses plain X images (unset, it crashes).
+            "ANDROID_SYSVSHM_SERVER" to "$root/tmp/.sysvshm",
         )
         // The X server: Termux's Android-native Xvfb, relocated to <data>/x, started through the
         // system linker (allowed). It runs xkbcomp through x/bin/sh (a link to the system shell)
         // and x/bin/xkbcomp (a link to the copy in the APK).
+        // MIT-SHM is off: Android has no System V shared memory, and Wine crashes in XShmCreateImage
+        // when the server offers it.
         val x = File(dataDir, "x").path
         val xenv = mapOf("LD_LIBRARY_PATH" to "$x/lib", "TMPDIR" to "$x/tmp", "HOME" to "$x/home")
         // Box64 ships in the APK as libbox64.so with its interpreter set to <data>/r/ld, a link to
@@ -47,7 +66,7 @@ class LabActivity : Activity() {
             "wine" -> listOf(bx, wine, "--version")
             "boot" -> listOf(bx, wine, "wineboot", "-i")
             "cmd" -> listOf(bx, wine, "cmd", "/c", "ver")
-            "xvfb" -> listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac")
+            "xvfb" -> listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac", "-extension", "MIT-SHM")
             "notepad" -> listOf(bx, wine, "notepad")
             else -> return finish()
         }
@@ -72,6 +91,18 @@ class LabActivity : Activity() {
             Log.i(TAG, "step $step: ${argv.joinToString(" ")}")
             runCatching {
                 File("$root/tmp").mkdirs(); File("$root/home").mkdirs()
+                // Wine steps need the X server: start it first unless it is already up.
+                // Track the server this process started: a socket file left by a killed one says nothing.
+                if (step in setOf("boot", "notepad", "cmd") && xServer?.isAlive != true) {
+                    File("$x/tmp/.X1-lock").delete(); File("$x/tmp/.X11-unix/X1").delete()
+                    val xp = ProcessBuilder(listOf("/system/bin/linker64", "$x/bin/Xvfb", ":1", "-screen", "0", "1024x768x24", "-fbdir", "$x/tmp", "-nolisten", "tcp", "-ac", "-extension", "MIT-SHM"))
+                        .redirectErrorStream(true)
+                    xp.environment().putAll(xenv)
+                    val proc = xp.start(); xServer = proc
+                    Thread { proc.inputStream.bufferedReader().forEachLine { Log.i(TAG, "Xvfb: $it") } }.start()
+                    repeat(50) { if (!File("$x/tmp/.X11-unix/X1").exists()) Thread.sleep(200) }
+                    Log.i(TAG, "X server up: ${File("$x/tmp/.X11-unix/X1").exists()}")
+                }
                 val pb = ProcessBuilder(argv).redirectErrorStream(true)
                 pb.environment().putAll(if (step == "xvfb") xenv else env)
                 val p = pb.start()
@@ -79,8 +110,12 @@ class LabActivity : Activity() {
                 Log.i(TAG, "exit ${p.waitFor()}")
             }.onFailure { Log.e(TAG, "failed", it) }
         }.start()
-        finish()
+        // Stay on screen: in the background Android's app freezer would freeze Wine's processes.
+        setContentView(android.widget.TextView(this).apply { text = "FlashARM lab: $step"; setPadding(40, 80, 40, 40) })
     }
 
-    companion object { const val TAG = "FlashARMLab" }
+    companion object {
+        const val TAG = "FlashARMLab"
+        @Volatile var xServer: Process? = null
+    }
 }
