@@ -1,0 +1,25 @@
+[package]
+name = "fp-jni"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "JNI bridge: the Flashpoint database (flashpoint-archive) and game server for the Android app"
+
+[lib]
+name = "fpcore"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fp-proxy = { path = "../fp-proxy" }
+flashpoint-archive = "0.13.7"
+jni = "0.21.1"
+tokio = { version = "1.54", features = ["rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.15"
+
+[dev-dependencies]
+zip = { version = "9.8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

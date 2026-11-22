@@ -1,0 +1,11 @@
+rust/target/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+android/app/src/main/jniLibs/
+android/app/src/main/assets/ruffle/
+.DS_Store
+*.iml
+.idea/
