@@ -29,6 +29,7 @@ object FpCore {
     @JvmStatic private external fun findGame(id: String): String
     @JvmStatic private external fun platforms(): String
     @JvmStatic private external fun markDataOnDisk(path: String, gameDataId: Long): String
+    @JvmStatic private external fun markDataOffDisk(gameDataId: Long): String
     @JvmStatic private external fun addPlaytime(id: String, seconds: Long): String
 
     @JvmStatic private external fun addSeconds(id: String, seconds: Long): String
@@ -70,6 +71,10 @@ object FpCore {
 
     fun markOnDisk(gameDataId: Long, path: String) {
         check(markDataOnDisk(path, gameDataId))
+    }
+
+    fun markOffDisk(gameDataId: Long) {
+        check(markDataOffDisk(gameDataId))
     }
 
     fun playtime(id: String, seconds: Long) {

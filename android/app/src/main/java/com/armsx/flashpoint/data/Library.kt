@@ -153,6 +153,15 @@ class Library(private val ctx: Context) {
         return File(games, fileName(gd))
     }
 
+    /** Delete [game]'s data pack and record it as gone. True when nothing is left on disk. */
+    fun uninstall(game: Game): Boolean {
+        val gd = game.activeData ?: return false
+        val zip = zipFor(gd)
+        if (zip.exists() && !zip.delete()) return false
+        runCatching { FpCore.markOffDisk(gd.id) }
+        return true
+    }
+
     fun isInstalled(game: Game): Boolean {
         val gd = game.activeData ?: return false
         return zipFor(gd).isFile

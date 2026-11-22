@@ -1,5 +1,9 @@
 package com.armsx.flashpoint.ui
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -91,6 +95,38 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             Box(Modifier.fillMaxWidth().height(4.dp).background(Fp.Field)) {
                 Box(Modifier.fillMaxWidth(dl.done.toFloat() / dl.total).height(4.dp).background(Fp.Play))
             }
+        }
+
+        // Uninstall: only data packs FlashARM downloaded (legacy games have nothing to remove).
+        val pack = full?.activeData
+        if (installed && pack != null && dl == null) {
+            var confirm by remember { mutableStateOf(false) }
+            val mb = (pack.size + (1 shl 19)) / (1 shl 20)
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier.fillMaxWidth().height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable { confirm = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Uninstall  ($mb MB)", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            if (confirm) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { confirm = false },
+                title = { Text("Uninstall ${g.title}?") },
+                text = { Text("This frees $mb MB. Your play history stays, and you can download it again any time.") },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { confirm = false; vm.uninstall(full) },
+                        modifier = Modifier.padFocus(RoundedCornerShape(20.dp)),
+                    ) { Text("Uninstall") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { confirm = false },
+                        modifier = Modifier.padFocus(RoundedCornerShape(20.dp)),
+                    ) { Text("Cancel") }
+                },
+            )
         }
 
         Spacer(Modifier.height(10.dp))

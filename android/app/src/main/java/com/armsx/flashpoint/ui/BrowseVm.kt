@@ -357,6 +357,15 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
 
     fun isInstalled(g: Game) = library.isInstalled(g)
 
+    /** Remove an installed game or animation's data pack; it can be downloaded again any time. */
+    fun uninstall(game: Game) = viewModelScope.launch {
+        val ok = withContext(Dispatchers.IO) { library.uninstall(game) }
+        status = if (ok) "Uninstalled ${game.title}" else "Could not remove ${game.title}"
+        if (selected?.id == game.id) select(game)
+        recentTick++
+        if (shelf == Shelf.INSTALLED) refresh(immediate = true)
+    }
+
     /** Download the active data pack if needed, then hand back everything the game needs. */
     fun prepare(game: Game, onReady: (Ready) -> Unit) = viewModelScope.launch {
         val plan = Launch.plan(game)

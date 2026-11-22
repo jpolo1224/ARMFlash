@@ -122,6 +122,8 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
+    // Switch to the game's tab first: switching libraries clears the selection.
+    fun open(g: Game) { go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES); vm.select(g) }
     LaunchedEffect(Unit) { if (vm.randomPicks.isEmpty()) vm.rerollPicks() }
     BoxWithConstraints(Modifier.fillMaxSize().background(Fp.Browse)) {
         val wide = maxWidth >= 840.dp
@@ -167,17 +169,17 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
             LaunchedEffect(vm.recentTick) { vm.loadHomeRows() }
             val rows: @Composable () -> Unit = {
                 if (vm.recent.isNotEmpty()) GameRow(vm, "Recently Played", vm.recent, onAll = { vm.pickShelf(Shelf.HISTORY); go(Tab.GAMES) }) { g ->
-                    vm.select(g); go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES)
+                    open(g)
                 }
                 if (vm.installedGames.isNotEmpty()) GameRow(vm, "Installed", vm.installedGames, onAll = { vm.pickShelf(Shelf.INSTALLED); go(Tab.GAMES) }) { g ->
-                    vm.select(g); go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES)
+                    open(g)
                 }
             }
             val right: @Composable () -> Unit = {
                 vm.gotd?.let { g -> GotdBox(vm, g, onPlay) }
                 HomeBox("Random Picks", action = "Re-Roll Picks" to { vm.rerollPicks() }) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        vm.randomPicks.forEach { g -> MiniCard(vm, g) { vm.select(g); go(if (g.library == "theatre") Tab.ANIMATIONS else Tab.GAMES) } }
+                        vm.randomPicks.forEach { g -> MiniCard(vm, g) { open(g) } }
                     }
                 }
             }

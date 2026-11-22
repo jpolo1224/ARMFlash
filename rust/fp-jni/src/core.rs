@@ -209,6 +209,19 @@ pub fn mark_data_on_disk(game_data_id: i64, path: &str) -> Res {
     })
 }
 
+/// Record that a data pack was deleted (uninstall): the game no longer counts as installed.
+pub fn mark_data_off_disk(game_data_id: i64) -> Res {
+    with_db(|fp| {
+        let Some(gd) = rt().block_on(fp.find_game_data_by_id(game_data_id)).map_err(e)? else {
+            return Err(format!("no game data {game_data_id}"));
+        };
+        let mut p: PartialGameData = gd.into();
+        p.present_on_disk = Some(false);
+        let saved = rt().block_on(fp.save_game_data(&p)).map_err(e)?;
+        serde_json::to_string(&saved).map_err(e)
+    })
+}
+
 pub fn optimize() -> Res {
     with_db(|fp| rt().block_on(fp.optimize_database()).map(|_| "{}".to_string()).map_err(e))
 }

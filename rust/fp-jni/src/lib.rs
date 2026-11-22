@@ -64,6 +64,8 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_findGame(id: JString) => core::find_g
 jfn!(Java_com_armsx_flashpoint_core_FpCore_platforms() => core::platforms());
 jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOnDisk(path: JString), game_data_id: jlong
     => core::mark_data_on_disk(game_data_id, &path));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOffDisk(), game_data_id: jlong
+    => core::mark_data_off_disk(game_data_id));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addPlaytime(id: JString), seconds: jlong
     => core::add_playtime(&id, seconds));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_addSeconds(id: JString), seconds: jlong
