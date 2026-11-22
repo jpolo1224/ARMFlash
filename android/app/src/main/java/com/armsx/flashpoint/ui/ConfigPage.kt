@@ -88,6 +88,10 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             }
         }
 
+        Section("RetroArch Shaders") {
+            ConfigShaders()
+        }
+
         Section("Preferences") {
             Toggle("Show Extreme Filters", "Allows Extreme tag filters to be toggled, to control content unsuitable for children.", p.extremeGames) { vm.refreshAll() }
             Toggle("Hide Extreme Screenshots", "Hides screenshots of Extreme tagged content.", p.hideExtremeScreenshots)
@@ -496,5 +500,61 @@ private fun DiscordSection() {
     var showGame by remember { mutableStateOf(dp.showGameName) }
     ConfigRow("Show the game in my status", "Your status reads \u201cPlaying <game>\u201d instead of \u201cPlaying FlashARM\u201d.") {
         Switch(showGame, { showGame = it; dp.showGameName = it })
+    }
+}
+
+
+/**
+ * ARMSX2's RetroArch shader picker (ShaderChainSection and its parameter editor) for every game
+ * that follows Config, with a row to download RetroArch's shader pack. Native Flash only.
+ */
+@Composable
+private fun ConfigShaders() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sp = com.armsx.flashpoint.shaders.ShaderPrefs
+    var enabled by remember { mutableStateOf(sp.globalEnabled(ctx)) }
+    var preset by remember { mutableStateOf(sp.globalPresetPath(ctx)) }
+    var params by remember { mutableStateOf(sp.allOverrides(ctx)) }
+    Text("Runs on native Flash. A game can pick its own preset in its pause menu.", color = Fp.TextDim, fontSize = 12.sp)
+    com.armsx.flashpoint.shaders.ui.ShaderChainSection(
+        enabled = enabled,
+        preset = preset,
+        params = params,
+        onEnabledChange = { enabled = it; sp.setGlobalEnabled(ctx, it) },
+        onPresetChange = { preset = it; sp.setGlobalPresetPath(ctx, it) },
+        onParamsChange = { params = it; sp.setAllOverrides(ctx, it) },
+    )
+    ShaderPackRow()
+    com.armsx.flashpoint.shaders.ui.ShaderParamsEditorHost()
+    com.armsx.flashpoint.shaders.ui.LibraryKeyboardHost()
+}
+
+/** Download RetroArch's slang shader pack (ARMSX2's ShaderRepo), or show that it is installed. */
+@Composable
+private fun ShaderPackRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val repo = com.armsx.flashpoint.shaders.ShaderRepo
+    var packs by remember { mutableStateOf<List<String>?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        packs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.listInstalled(ctx).map { it.name } }
+    }
+    val src = repo.baseSources().first()
+    ConfigRow("Shader Packs", packs?.takeIf { it.isNotEmpty() }?.joinToString() ?: "RetroArch's slang shaders, downloaded once (about 50 MB).") {
+        if (packs?.isEmpty() == true) Chip(busy ?: "Download", on = true) {
+            if (busy != null) return@Chip
+            busy = "Starting…"
+            scope.launch {
+                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    repo.download(ctx, src,
+                        onDownload = { d, t -> busy = if (t > 0) "${d * 100 / t}%" else "${d shr 20} MB" },
+                        onExtract = { d, t -> busy = "Unpacking ${if (t > 0) d * 100 / t else 0}%" },
+                    )
+                } != null
+                busy = if (ok) null else "Failed, try again"
+                packs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { repo.listInstalled(ctx).map { it.name } }
+            }
+        }
     }
 }
