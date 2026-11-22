@@ -1,6 +1,7 @@
 package com.armsx.flashpoint.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -196,83 +197,150 @@ private fun TextSetting(title: String, desc: String, initial: String, save: (Str
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 /**
- * Custom Vulkan drivers (Turnip and other adrenotools packs) for native Flash, as in ARMSX3:
- * the same driver sources, installs and packs. Used when Flash Player is Native and Graphics is
- * Auto or Vulkan; the browser runner always uses the phone's own driver.
+ * GPU driver for native Flash: ARMSX2's driver manager (DriverManagerSection) with its wording,
+ * in the launcher's style. The GPU card and recommendation, system or installed drivers, the
+ * download list grouped by source and filtered to this GPU, import, and Turnip options.
+ * Used when Flash Player is Native and Graphics is Auto or Vulkan; the browser runner always
+ * uses the phone's own driver.
  */
 @Composable
 private fun DriverSection(vm: BrowseVm) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var installed by remember { mutableStateOf(com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)) }
-    var selected by remember { mutableStateOf(com.armsx.flashpoint.data.CustomDriver.selected(ctx)?.id) }
+    val cd = com.armsx.flashpoint.data.CustomDriver
+    var installed by remember { mutableStateOf(cd.listInstalled(ctx)) }
+    var selected by remember { mutableStateOf(cd.globalId().ifEmpty { null }) }
     var remote by remember { mutableStateOf<List<com.armsx.flashpoint.data.CustomDriver.RemoteDriver>?>(null) }
-    var busy by remember { mutableStateOf<String?>(null) }
-    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+    var showRemote by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var busyId by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val expanded = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    val gpu = remember { com.armsx.flashpoint.data.GpuInfo.rendererName() }
+    val rec = remember(gpu) { com.armsx.flashpoint.data.GpuInfo.recommendation(gpu) }
+
+    fun use(id: String?) { selected = id; cd.select(id) }
+    fun refresh() { installed = cd.listInstalled(ctx) }
+
+    val importer = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
-            busy = "Installing"
-            val d = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.installFromUri(ctx, uri) }.getOrNull() }
-            busy = null
-            installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
-            vm.status = if (d != null) "Installed ${d.name}" else "That file is not a driver pack"
+            busyId = "import"; message = null
+            val d = withContext(Dispatchers.IO) { runCatching { cd.installFromUri(ctx, uri) }.getOrNull() }
+            busyId = null
+            if (d != null) { refresh(); use(d.id); message = "Installed ${d.name}" } else message = "Couldn't import that file. It needs an AdrenoToolsDrivers-style .zip (meta.json + libvulkan_freedreno.so at the root)."
         }
     }
+
     Text(
-        "For native Flash on Vulkan. Turnip and other custom drivers can run faster or fix glitches on Adreno GPUs. " +
-            "If a driver cannot load, the phone's own driver is used.",
+        "Replace the system Vulkan driver with Mesa Turnip or another Adreno driver, for native Flash. " +
+            "If a driver cannot load, the system driver is used.",
         color = Fp.TextDim, fontSize = 13.sp,
     )
     Spacer(Modifier.height(8.dp))
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip("System driver", selected == null) { selected = null; com.armsx.flashpoint.data.CustomDriver.select(null) }
-        installed.forEach { d ->
-            Chip(d.name, selected == d.id) { selected = d.id; com.armsx.flashpoint.data.CustomDriver.select(d.id) }
-        }
+    Column(Modifier.fillMaxWidth().background(Fp.Field, androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).padding(10.dp)) {
+        Row { Text("GPU  ", color = Fp.TextDim, fontSize = 14.sp); Text(gpu ?: "Unknown", color = Fp.Play, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        Row { Text("Recommended  ", color = Fp.TextDim, fontSize = 14.sp); Text(rec?.sourceLabel ?: "System driver (built-in)", color = Fp.Play, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        rec?.reason?.let { Text(it, color = Fp.TextDim, fontSize = 12.sp) }
+    }
+    Spacer(Modifier.height(8.dp))
+    DriverRow("System Vulkan driver", "Built into the device", selected == null, onUse = { use(null) })
+    installed.forEach { d ->
+        DriverRow(
+            d.name, listOf(d.vendor, d.version).filter(String::isNotBlank).joinToString(" \u00B7 ").ifBlank { "Installed" },
+            selected == d.id, onUse = { use(d.id) },
+            onDelete = { cd.delete(d); if (selected == d.id) use(null); refresh() },
+        )
     }
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip("Install from file", false) { picker.launch(arrayOf("application/zip", "*/*")) }
-        Chip("Download drivers", false) {
-            scope.launch {
-                busy = "Fetching driver list"
-                remote = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.fetchRemote() }.getOrDefault(emptyList()) }
-                busy = null
+        Chip(if (showRemote) "Hide downloads" else "Download", false) {
+            showRemote = !showRemote
+            if (showRemote && remote == null && !loading) {
+                loading = true
+                scope.launch {
+                    remote = withContext(Dispatchers.IO) { runCatching { cd.fetchRemote(gpu) }.getOrDefault(emptyList()) }
+                    loading = false
+                }
             }
         }
-        val sel = installed.firstOrNull { it.id == selected }
-        if (sel != null) Chip("Delete ${sel.name}", false) {
-            com.armsx.flashpoint.data.CustomDriver.delete(sel)
-            com.armsx.flashpoint.data.CustomDriver.select(null)
-            selected = null
-            installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
-        }
+        Chip("Import", false) { importer.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
     }
-    busy?.let { Text(it, color = Fp.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
-    remote?.let { list ->
-        Spacer(Modifier.height(8.dp))
-        if (list.isEmpty()) Text("No drivers found (offline, or GitHub's rate limit).", color = Fp.TextDim, fontSize = 13.sp)
-        list.take(40).forEach { r ->
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(r.title, color = Color.White, fontSize = 14.sp)
-                    Text("${r.source}  |  ${r.publishedAt.take(10)}  |  ${r.sizeBytes / (1 shl 20)} MB", color = Fp.TextDim, fontSize = 12.sp)
+    if (showRemote) {
+        Spacer(Modifier.height(6.dp))
+        when {
+            loading -> Text("Fetching\u2026", color = Fp.TextDim)
+            remote.isNullOrEmpty() -> Text("No drivers found", color = Fp.TextDim)
+            else -> remote!!.groupBy { it.source }.forEach { (source, drivers) ->
+                val open = expanded[source] ?: false
+                Row(
+                    Modifier.fillMaxWidth().clickable { expanded[source] = !open }.padding(vertical = 8.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(if (open) "\u25BE " else "\u25B8 ", color = Fp.TextDim)
+                    Text(source, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text("${drivers.size}", color = Fp.TextDim, fontSize = 13.sp)
                 }
-                Chip("Get", false) {
-                    scope.launch {
-                        busy = "Downloading ${r.title}"
-                        val d = withContext(Dispatchers.IO) { runCatching { com.armsx.flashpoint.data.CustomDriver.download(ctx, r) }.getOrNull() }
-                        busy = null
-                        installed = com.armsx.flashpoint.data.CustomDriver.listInstalled(ctx)
-                        if (d != null) { selected = d.id; com.armsx.flashpoint.data.CustomDriver.select(d.id) }
-                        vm.status = if (d != null) "Installed ${d.name}" else "Download failed"
+                if (open) drivers.forEach { rd ->
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(rd.title.ifBlank { rd.assetName }, color = Fp.Text, fontSize = 14.sp)
+                            Text(listOf(rd.source, rd.tagName).filter(String::isNotBlank).joinToString(" \u00B7 "), color = Fp.TextDim, fontSize = 12.sp)
+                        }
+                        Chip(if (busyId == rd.id) "Installing\u2026" else "Get", false) {
+                            if (busyId == null) scope.launch {
+                                busyId = rd.id; message = null
+                                val d = withContext(Dispatchers.IO) { runCatching { cd.download(ctx, rd) }.getOrNull() }
+                                busyId = null
+                                if (d != null) { refresh(); use(d.id); message = "Installed ${d.name}" } else message = "Download failed"
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    if (busyId == "import") Text("Installing\u2026", color = Fp.TextDim)
+    message?.let { Text(it, color = Fp.Play, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+    if (installed.isNotEmpty()) TurnipOptions()
+}
+
+@Composable
+private fun DriverRow(title: String, subtitle: String, active: Boolean, onUse: () -> Unit, onDelete: (() -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+            .background(if (active) Fp.Play.copy(alpha = 0.15f) else Fp.Field, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .clickable(onClick = onUse).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(subtitle, color = Fp.TextDim, fontSize = 12.sp)
+        }
+        if (active) Text("Active", color = Fp.Play, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
+        if (onDelete != null) Chip("Delete", false, onDelete)
+    }
+}
+
+/** ARMSX2's Turnip options: the UBWC flag hint and free driver variables. Global; read at the next game start. */
+@Composable
+private fun TurnipOptions() {
+    val cd = com.armsx.flashpoint.data.CustomDriver
+    var ubwc by remember { mutableStateOf(cd.ubwcFlagHint()) }
+    var env by remember { mutableStateOf(cd.driverEnvText()) }
+    Spacer(Modifier.height(10.dp))
+    Text("Turnip options", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    Text("Tuning read by Turnip drivers. The system driver ignores it. Changes apply at the next game start.", color = Fp.TextDim, fontSize = 13.sp)
+    ConfigRow(
+        "UBWC flag hint",
+        "Can fix rendering glitches some recent Turnip builds show on certain Adreno GPUs. Leave it off unless you see them (FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1).",
+    ) { Switch(ubwc, { ubwc = it; cd.setUbwcFlagHint(it) }) }
+    OutlinedTextField(
+        env, { env = it; cd.setDriverEnvText(it) },
+        label = { Text("Driver variables") },
+        placeholder = { Text("TU_DEBUG=sysmem") },
+        supportingText = { Text("One NAME=value per line. FD_, TU_, IR3_ and MESA_ variables only. TU_DEBUG is read once, so restart the app after changing it.") },
+        minLines = 2,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }

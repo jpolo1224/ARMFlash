@@ -38,6 +38,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     private val host = object : OverlayHost {
         override val title get() = intent.getStringExtra(GameActivity.EXTRA_TITLE).orEmpty()
         override val logoUrl get() = intent.getStringExtra(GameActivity.EXTRA_LOGO).orEmpty()
+        override val gameId get() = intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()
+        override val usesDriver = true
         override val runner: String
             get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } +
                 (if (driverName.isNotEmpty()) ", $driverName" else "") + ")"
@@ -83,7 +85,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         }
         // A custom Vulkan driver, if one is chosen and Flash may use Vulkan.
         if (getString("backend") != "gl") {
-            com.armsx.flashpoint.data.CustomDriver.selected(this)?.let { d ->
+            com.armsx.flashpoint.data.CustomDriver.selected(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())?.let { d ->
                 vkGipa = com.armsx.flashpoint.data.CustomDriver.open(this, d)
                 driverName = if (vkGipa != 0L) d.name else ""
                 if (vkGipa == 0L) Toast.makeText(this, com.armsx.flashpoint.data.FpDriver.lastError(), Toast.LENGTH_LONG).show()

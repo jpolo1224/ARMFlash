@@ -335,6 +335,29 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
         st.layout.scale,
     ) { set(scale = it) }
     HorizontalOptions("Quality", listOf("low" to "Low", "medium" to "Medium", "high" to "High", "best" to "Best"), st.layout.quality) { set(quality = it) }
+    if (host.usesDriver) DriverCard(host)
+}
+
+/** This game's GPU driver (ARMSX2's per-game pick): its own choice, or the global one. Applies on restart. */
+@Composable
+private fun DriverCard(host: OverlayHost) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val cd = com.armsx.flashpoint.data.CustomDriver
+    val installed = remember { cd.listInstalled(ctx) }
+    var pick by remember { mutableStateOf(cd.gameId(host.gameId)) }
+    SectionCard("GPU driver") {
+        Text("For this game. Takes effect when the game restarts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth().bleedHorizontal(13.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            OptionChip("Default", pick.isEmpty()) { pick = ""; cd.selectForGame(host.gameId, null) }
+            installed.forEach { d -> OptionChip(d.name, pick == d.id) { pick = d.id; cd.selectForGame(host.gameId, d.id) } }
+        }
+        Spacer(Modifier.height(6.dp))
+        MenuCycleRow("Restart with this driver", "Restart") { host.restart() }
+    }
 }
 
 @Composable

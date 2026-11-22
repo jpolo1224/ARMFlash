@@ -52,6 +52,8 @@ class GameActivity : ComponentActivity() {
     private val host = object : OverlayHost {
         override val title get() = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         override val logoUrl get() = intent.getStringExtra(EXTRA_LOGO).orEmpty()
+        override val gameId get() = intent.getStringExtra(EXTRA_GAME_ID).orEmpty()
+        override val usesDriver = false
         override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() = showKeyboard()

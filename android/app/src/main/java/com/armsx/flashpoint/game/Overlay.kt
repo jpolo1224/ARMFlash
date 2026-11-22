@@ -68,6 +68,9 @@ interface OverlayHost {
     val title: String
     val runner: String
     val logoUrl: String
+    val gameId: String
+    /** Whether this screen can use a custom Vulkan driver (native Flash). */
+    val usesDriver: Boolean
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()
