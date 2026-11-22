@@ -37,7 +37,10 @@ pub struct Config {
     /// Last resort for a file in neither the game's data nor Legacy: the original site, if it
     /// still serves it (the desktop game server's live-internet fallback). Some curations rely
     /// on it, such as Disney's HTML5 games, whose start-up script was never archived.
-    pub live_web: bool,
+    /// Only for these sites (the game's own domain, e.g. "dolimg.com", with its subdomains):
+    /// third-party ad and tracking hosts must keep failing as they do on desktop, or a game
+    /// waits forever on an ad loader that comes back to life (Hidden Room Escape). Empty: off.
+    pub live_domains: Vec<String>,
 }
 
 /// Where a request was found.

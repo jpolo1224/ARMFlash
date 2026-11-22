@@ -37,21 +37,38 @@ object OsdPrefs {
         "Cyan" to Color(0xFF52E0F0), "Orange" to Color(0xFFF0A030), "Pink" to Color(0xFFFF7AC8),
     )
 
-    val enabled = mutableStateOf(false)
+    /** ARMSX2's overlay modes: Minimal is the frame rate alone, Full every stat, Custom the picks below. */
+    enum class Mode(val label: String) { OFF("Off"), MINIMAL("Minimal"), FULL("Full"), CUSTOM("Custom") }
+    enum class Corner(val label: String) { TOP_LEFT("Top left"), TOP_RIGHT("Top right"), BOTTOM_LEFT("Bottom left"), BOTTOM_RIGHT("Bottom right") }
+
+    val mode = mutableStateOf(Mode.OFF)
+    val corner = mutableStateOf(Corner.TOP_LEFT)
     val color = mutableStateOf(0)
+    /** The Custom mode's stats. */
     val stats = mutableStateOf(setOf(Stat.FPS))
+
+    /** What is on screen now, by mode. */
+    val shown: Set<Stat> get() = when (mode.value) {
+        Mode.OFF -> emptySet()
+        Mode.MINIMAL -> setOf(Stat.FPS)
+        Mode.FULL -> Stat.entries.toSet()
+        Mode.CUSTOM -> stats.value
+    }
     private var prefs: android.content.SharedPreferences? = null
 
     fun load(ctx: Context) {
         if (prefs != null) return
         val p = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
         prefs = p
-        enabled.value = p.getBoolean("osd", false)
+        mode.value = runCatching { Mode.valueOf(p.getString("osd.mode", null)!!) }.getOrElse { if (p.getBoolean("osd", false)) Mode.CUSTOM else Mode.OFF }
+        corner.value = runCatching { Corner.valueOf(p.getString("osd.corner", null)!!) }.getOrDefault(Corner.TOP_LEFT)
         color.value = p.getInt("osd.color", 0).coerceIn(0, Colors.lastIndex)
         stats.value = p.getStringSet("osd.stats", null)?.mapNotNull { n -> Stat.entries.firstOrNull { it.name == n } }?.toSet() ?: setOf(Stat.FPS)
     }
 
-    fun setEnabled(on: Boolean) { enabled.value = on; prefs?.edit()?.putBoolean("osd", on)?.apply() }
+    fun cycleMode() { mode.value = Mode.entries[(mode.value.ordinal + 1) % Mode.entries.size]; prefs?.edit()?.putString("osd.mode", mode.value.name)?.apply() }
+    fun cycleCorner() { corner.value = Corner.entries[(corner.value.ordinal + 1) % Corner.entries.size]; prefs?.edit()?.putString("osd.corner", corner.value.name)?.apply() }
+    fun cycleColor() = setColor((color.value + 1) % Colors.size)
     fun setColor(i: Int) { color.value = i; prefs?.edit()?.putInt("osd.color", i)?.apply() }
     fun toggle(s: Stat) {
         stats.value = if (s in stats.value) stats.value - s else stats.value + s
@@ -81,7 +98,7 @@ private data class Reading(
  */
 @Composable
 fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
-    if (!OsdPrefs.enabled.value) return
+    if (OsdPrefs.mode.value == OsdPrefs.Mode.OFF) return
     val ctx = LocalContext.current
     var r by remember { mutableStateOf(Reading()) }
     LaunchedEffect(Unit) {
@@ -105,16 +122,16 @@ fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
                 fps = fps,
                 cpu = cpu,
                 ramMb = withContext(Dispatchers.IO) { rssMb() },
-                gpu = if (OsdPrefs.Stat.GPU in OsdPrefs.stats.value) withContext(Dispatchers.IO) { Gpu.busy() } else null,
-                gpuMhz = if (OsdPrefs.Stat.GPU in OsdPrefs.stats.value) withContext(Dispatchers.IO) { Gpu.mhz() } else null,
-                maps = if (OsdPrefs.Stat.MAPS in OsdPrefs.stats.value) withContext(Dispatchers.IO) { MapCensus.count() } else null,
+                gpu = if (OsdPrefs.Stat.GPU in OsdPrefs.shown) withContext(Dispatchers.IO) { Gpu.busy() } else null,
+                gpuMhz = if (OsdPrefs.Stat.GPU in OsdPrefs.shown) withContext(Dispatchers.IO) { Gpu.mhz() } else null,
+                maps = if (OsdPrefs.Stat.MAPS in OsdPrefs.shown) withContext(Dispatchers.IO) { MapCensus.count() } else null,
                 battery = bat?.let { b -> val l = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1); val s = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100); if (l >= 0) l * 100 / s else null },
                 tempC = bat?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)?.takeIf { it != Int.MIN_VALUE }?.div(10.0),
                 charging = bat?.getIntExtra(BatteryManager.EXTRA_STATUS, 0) == BatteryManager.BATTERY_STATUS_CHARGING,
             )
         }
     }
-    val stats = OsdPrefs.stats.value
+    val stats = OsdPrefs.shown
     val lines = buildList {
         if (OsdPrefs.Stat.FPS in stats) add("FPS " + (r.fps?.let { "%.0f".format(it) } ?: "--"))
         if (OsdPrefs.Stat.FRAME in stats) add("Frame " + (r.fps?.takeIf { it > 0.5 }?.let { "%.1f ms".format(1000 / it) } ?: "--"))

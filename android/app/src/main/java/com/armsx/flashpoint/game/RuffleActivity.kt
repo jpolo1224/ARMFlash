@@ -83,7 +83,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(GameActivity.EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
-                liveWeb = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true),
+                liveDomains = if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true))
+                    listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) else emptyList(),
             )
             intent.getStringArrayExtra(GameActivity.EXTRA_ZIPS).orEmpty().forEach { FpCore.mount(it) }
             proxyUrl = "http://127.0.0.1:$port"

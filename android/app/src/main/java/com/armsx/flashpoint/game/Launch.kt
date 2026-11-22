@@ -18,6 +18,19 @@ enum class Runner(val label: String, val ready: Boolean) {
 data class LaunchPlan(val runner: Runner, val url: String)
 
 object Launch {
+    /**
+     * The site a game URL belongs to, for the live-web fallback: its last two labels
+     * ("img.lum.dolimg.com" -> "dolimg.com"), three for country domains like "bbc.co.uk".
+     */
+    fun siteOf(url: String): String? {
+        val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase()?.trimEnd('.') ?: return null
+        val labels = host.split('.')
+        if (labels.size <= 2) return host
+        val sld = labels[labels.size - 2]
+        val n = if (sld.length <= 3 && labels.last().length == 2) 3 else 2
+        return labels.takeLast(n).joinToString(".")
+    }
+
     private val urlRe = Regex("""https?://[^\s"']+""", RegexOption.IGNORE_CASE)
 
     fun plan(game: Game): LaunchPlan {

@@ -111,7 +111,8 @@ class GameActivity : ComponentActivity() {
                 htdocs = intent.getStringExtra(EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
-                liveWeb = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true),
+                liveDomains = if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true))
+                    listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) else emptyList(),
             )
             zips.forEach { FpCore.mount(it) }
             p
@@ -141,7 +142,7 @@ class GameActivity : ComponentActivity() {
                 // Google Chrome", Ninja Painter 2 and other Spil/Silvergames titles).
                 userAgentString = userAgentString.replace("; wv", "").replace(Regex("""Version/\d+(\.\d+)* """), "")
             }
-            webViewClient = Client(this@GameActivity)
+            webViewClient = Client(this@GameActivity).apply { site = Launch.siteOf(url) }
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                     android.util.Log.i("fpgame", "${m.messageLevel()} ${m.message()} @${m.sourceId()}:${m.lineNumber()}")
@@ -264,9 +265,16 @@ class GameActivity : ComponentActivity() {
             handler.proceed()
         }
 
+        /** The game's own site; the page may move around inside it (menus, next level pages). */
+        var site: String? = null
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            // Games that try to open new pages (sponsor links, "more games") stay put.
-            return !request.isForMainFrame || request.url.scheme !in setOf("http", "https")
+            if (request.url.scheme !in setOf("http", "https")) return true
+            // Games that try to leave for another site (sponsor links, "more games", a logo
+            // linking home) stay put: those sites were never archived and would only show a
+            // "not found" page in place of the game.
+            val to = Launch.siteOf(request.url.toString())
+            return site != null && to != site
         }
     }
 

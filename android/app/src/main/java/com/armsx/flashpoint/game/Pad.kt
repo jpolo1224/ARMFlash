@@ -110,10 +110,21 @@ class PadMapper(
         if (holders.isNotEmpty()) reset()
         val first = down && event.repeatCount == 0
         return when (code) {
-            // Focus moves: let the menu have the D-pad as it is.
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> false
+            // Focus moves go straight to the menu (see OverlayState.menuInput); held keys repeat.
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (down) {
+                    val dir = when (code) {
+                        KeyEvent.KEYCODE_DPAD_UP -> androidx.compose.ui.focus.FocusDirection.Up
+                        KeyEvent.KEYCODE_DPAD_DOWN -> androidx.compose.ui.focus.FocusDirection.Down
+                        KeyEvent.KEYCODE_DPAD_LEFT -> androidx.compose.ui.focus.FocusDirection.Left
+                        else -> androidx.compose.ui.focus.FocusDirection.Right
+                    }
+                    overlay.menuInput.trySend(MenuInput.Move(dir))
+                }
+                true
+            }
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                ui(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount, 0, event.deviceId, 0, 0, InputDevice.SOURCE_DPAD))
+                overlay.menuInput.trySend(MenuInput.Key(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount, 0, event.deviceId, 0, 0, InputDevice.SOURCE_DPAD)))
                 true
             }
             KeyEvent.KEYCODE_BUTTON_B -> { if (event.action == KeyEvent.ACTION_UP) closeMenuLayer(); true }

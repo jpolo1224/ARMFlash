@@ -101,8 +101,21 @@ class OverlayState(layout: TouchLayout) {
     var cursor by mutableStateOf<Offset?>(null)
     /** Bumped on every touch so the auto-hide timer starts over. */
     var touchTick by mutableStateOf(0)
+    /** Where the pad was in the quick menu, per tab, so reopening it lands there (as ARMSX2 does). */
+    val menuMemory = MenuMemory()
+    /**
+     * The pad's moves and presses while the quick menu is open, delivered to the menu itself
+     * rather than through Android's window focus, which a touch on the menu (touch mode) or
+     * the game view behind it can take away, leaving the D-pad driving the game instead.
+     */
+    val menuInput = kotlinx.coroutines.channels.Channel<MenuInput>(16)
     /** A controller is attached (kept current by the game screen). */
     var padConnected by mutableStateOf(false)
+}
+
+sealed interface MenuInput {
+    data class Move(val dir: androidx.compose.ui.focus.FocusDirection) : MenuInput
+    data class Key(val event: android.view.KeyEvent) : MenuInput
 }
 
 /** Whether a real controller is attached: what "Auto" hides the touch keys and menu button for. */
@@ -192,7 +205,14 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
             }
         }
 
-        OsdOverlay(host::frames, Modifier.align(Alignment.TopStart))
+        val osdAt = when (OsdPrefs.corner.value) {
+            OsdPrefs.Corner.TOP_LEFT -> Alignment.TopStart
+            OsdPrefs.Corner.TOP_RIGHT -> Alignment.TopEnd
+            OsdPrefs.Corner.BOTTOM_LEFT -> Alignment.BottomStart
+            OsdPrefs.Corner.BOTTOM_RIGHT -> Alignment.BottomEnd
+        }
+        // Top right sits under the menu button.
+        OsdOverlay(host::frames, Modifier.align(osdAt).padding(top = if (OsdPrefs.corner.value == OsdPrefs.Corner.TOP_RIGHT) 56.dp else 0.dp))
         if (st.menu) QuickMenu(st, host)
         WelcomeBannerOverlay(this)
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))

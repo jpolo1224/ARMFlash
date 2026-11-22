@@ -238,7 +238,7 @@ async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Byt
         let url = format!("{}{}{q}", if base.ends_with('/') { base.to_string() } else { format!("{base}/") }, rel);
         found = fetch(&url, "legacy").await;
     }
-    if found.is_none() && cfg.live_web && !tracker(&rel) {
+    if found.is_none() && live_allowed(&cfg.live_domains, &rel) && !tracker(&rel) {
         found = fetch(&format!("http://{rel}{q}"), "live").await;
     }
     let (bytes, ct) = found?;
@@ -258,6 +258,26 @@ async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Byt
         }
     }
     Some((bytes, ct))
+}
+
+/// Script library CDNs pages load their code from (CreateJS, jQuery, ...): as needed as the
+/// game's own files, and never ad loaders.
+const LIBRARY_CDNS: &[&str] = &[
+    "code.createjs.com", "ajax.googleapis.com", "cdnjs.cloudflare.com", "code.jquery.com",
+    "cdn.jsdelivr.net", "unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com",
+    "ajax.aspnetcdn.com", "maxcdn.bootstrapcdn.com", "stackpath.bootstrapcdn.com",
+    "netdna.bootstrapcdn.com", "use.fontawesome.com", "yui.yahooapis.com", "cdn.rawgit.com",
+    "ajax.cdnjs.com", "d3js.org", "threejs.org", "pixijs.download", "cdn.phaser.io",
+];
+
+/// Whether the live web may be asked for `rel` (`<host>/<path>`): the game's own domains and
+/// the script library CDNs, nothing else (ad networks above all).
+fn live_allowed(domains: &[String], rel: &str) -> bool {
+    if domains.is_empty() {
+        return false;
+    }
+    let host = rel.split('/').next().unwrap_or("").to_ascii_lowercase();
+    domains.iter().any(|d| host == *d || host.ends_with(&format!(".{d}"))) || LIBRARY_CDNS.contains(&host.as_str())
 }
 
 /// Analytics and ad beacons old games still call: never sent to the live web.
@@ -408,4 +428,27 @@ pub async fn http_get(url: &str) -> io::Result<Bytes> {
         return Ok(out.into());
     }
     Ok(body)
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::{live_allowed, tracker};
+
+    #[test]
+    fn live_web_only_for_the_games_own_site() {
+        // Hidden Room Escape: its own site may be asked, the ad network it calls may not.
+        let hre = vec!["mirchigames.com".to_string()];
+        assert!(live_allowed(&hre, "www.mirchigames.com/games/x.swf"));
+        assert!(!live_allowed(&hre, "cdn.intergi.com/AdLoader.swf"));
+        // Phineas and Ferb: the game is on img.lum.dolimg.com, its start-up script on a.dolimg.com.
+        let pf = vec!["dolimg.com".to_string()];
+        assert!(live_allowed(&pf, "a.dolimg.com/media/en-US/games/html5/gameConfig/isl.js"));
+        assert!(!live_allowed(&pf, "notdolimg.com/x.js"));
+        assert!(!live_allowed(&[], "a.dolimg.com/x.js"));
+        // Elsa Preparing Anna's Wedding loads CreateJS from its CDN.
+        let elsa = vec!["playdora.com".to_string()];
+        assert!(live_allowed(&elsa, "code.createjs.com/createjs-2015.11.26.min.js"));
+        assert!(tracker("b.scorecardresearch.com/b"));
+        assert!(!tracker("a.dolimg.com/x.js"));
+    }
 }

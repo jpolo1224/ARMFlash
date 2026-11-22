@@ -57,6 +57,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -142,7 +145,12 @@ fun QuickMenu(st: OverlayState, host: OverlayHost) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 700.dp
             AnimatedVisibility(shown, enter = fadeIn(tween(190, easing = EaseOut)), exit = fadeOut(tween(190, easing = EaseIn))) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable(onClick = close))
+                // A tap outside closes the menu; the scrim is never a focus stop for the pad.
+                Box(
+                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f))
+                        .focusProperties { canFocus = false }
+                        .clickable(onClick = close),
+                )
             }
             val slideFrom: (Int) -> Int = if (left) { w -> -w } else { w -> w }
             AnimatedVisibility(
@@ -199,6 +207,30 @@ private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left
     // With a pad, focus lands on the pane's first control when the menu opens or the tab changes.
     val first = remember { androidx.compose.ui.focus.FocusRequester() }
     val view = androidx.compose.ui.platform.LocalView.current
+    st.menuMemory.tab = st.tab
+    // The pad's menu input (OverlayState.menuInput): move Compose focus directly, and if nothing
+    // in the menu has focus (after a touch), land on the control last used instead.
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(Unit) {
+        for (input in st.menuInput) {
+            when (input) {
+                is MenuInput.Move -> if (!focusManager.moveFocus(input.dir)) {
+                    view.requestFocus()
+                    runCatching { (st.menuMemory.restore(st.tab) ?: first).requestFocus() }
+                }
+                is MenuInput.Key -> view.dispatchKeyEvent(input.event)
+            }
+        }
+    }
+    // After a touch, Android uses the pad's first press to leave touch mode and never passes it
+    // on; when that happens, put focus back on the control last used so the ring shows there.
+    androidx.compose.runtime.DisposableEffect(view) {
+        val l = android.view.ViewTreeObserver.OnTouchModeChangeListener { inTouch ->
+            if (!inTouch) view.post { runCatching { (st.menuMemory.restore(st.tab) ?: first).requestFocus() } }
+        }
+        view.viewTreeObserver.addOnTouchModeChangeListener(l)
+        onDispose { view.viewTreeObserver.removeOnTouchModeChangeListener(l) }
+    }
     LaunchedEffect(st.tab) {
         if (!com.armsx.flashpoint.ui.PadInput.active.value) return@LaunchedEffect
         // The game view (a WebView after Resume) may hold Android focus; the menu's own view
@@ -206,15 +238,20 @@ private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left
         view.requestFocus()
         repeat(3) {
             delay(60)
-            if (runCatching { first.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            // Back to the control last used on this tab, else the tab's first one.
+            val target = st.menuMemory.restore(st.tab) ?: first
+            if (runCatching { target.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
         }
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalFirstFocus provides first) { MenuPageBody(st, host, compact, left, onLeft, close) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalFirstFocus provides first, LocalMenuMemory provides st.menuMemory) {
+        MenuPageBody(st, host, compact, left, onLeft, close)
+    }
 }
 
 @Composable
 private fun MenuPageBody(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 18.dp)) {
+    val scroll = st.menuMemory.scroll.getOrPut(st.tab) { androidx.compose.foundation.ScrollState(0) }
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 18.dp)) {
         if (compact) CompactMenuTabs(st.tab) { st.tab = it }
         MenuHeader(host, compact)
         HorizontalDivider(Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f))
@@ -345,20 +382,19 @@ private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) 
         st.layout = st.layout.copy(pauseTapToReveal = it); host.save(false)
     }
     SectionCard("Performance overlay") {
-        MenuSwitchRow("Show performance overlay", OsdPrefs.enabled.value) { OsdPrefs.setEnabled(it) }
-        Spacer(Modifier.height(8.dp))
-        Text("Shows", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OsdPrefs.Stat.entries.forEach { s -> OptionChip(s.label, s in OsdPrefs.stats.value) { OsdPrefs.toggle(s) } }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("Colour", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OsdPrefs.Colors.forEachIndexed { i, (name, c) ->
-                OptionChip(name, OsdPrefs.color.value == i, dot = c) { OsdPrefs.setColor(i) }
+        // ARMSX2's overlay rows: the mode (Full / Minimal / Custom / Off), its colour and its corner.
+        MenuCycleRow("Overlay", OsdPrefs.mode.value.label) { OsdPrefs.cycleMode() }
+        if (OsdPrefs.mode.value == OsdPrefs.Mode.CUSTOM) {
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OsdPrefs.Stat.entries.forEach { s -> OptionChip(s.label, s in OsdPrefs.stats.value) { OsdPrefs.toggle(s) } }
             }
+        }
+        if (OsdPrefs.mode.value != OsdPrefs.Mode.OFF) {
+            Spacer(Modifier.height(6.dp))
+            MenuCycleRow("Overlay colour", OsdPrefs.Colors[OsdPrefs.color.value].first) { OsdPrefs.cycleColor() }
+            Spacer(Modifier.height(6.dp))
+            MenuCycleRow("Overlay position", OsdPrefs.corner.value.label) { OsdPrefs.cycleCorner() }
         }
     }
 }
@@ -370,13 +406,15 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
         host.save(false)
         host.display(scale, quality)
     }
+    // The GPU driver first, as in Config.
+    if (host.usesDriver) DriverCard(host)
     HorizontalOptions(
         "Scale",
         listOf("default" to "Game default", "fit" to "Fit", "stretch" to "Stretch", "fill" to "Fill", "original" to "Original size"),
         st.layout.scale,
         description = "How the game fills the screen. Fit keeps its shape with bars, Stretch fills the screen and " +
             "changes its shape, Fill keeps its shape and crops the edges.",
-        first = true,
+        first = !host.usesDriver,
     ) { set(scale = it) }
     HorizontalOptions(
         "Edge smoothing",
@@ -385,7 +423,6 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
         description = "Flash's quality setting: how much the edges of shapes and lines are smoothed. Off is the " +
             "fastest and looks jagged. Lower it if a game runs slowly.",
     ) { set(quality = it) }
-    if (host.usesDriver) DriverCard(host)
 }
 
 /**
@@ -446,7 +483,7 @@ private fun DriverCard(host: OverlayHost) {
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val globalName = installed.firstOrNull { it.id == cd.globalId() }?.name ?: "System driver"
-            DriverRow("Same as Config", globalName, selected = pick.isEmpty() || (pick != cd.SYSTEM_FOR_GAME && installed.none { it.id == pick })) { select("") }
+            DriverRow("Same as Config", globalName, first = true, selected = pick.isEmpty() || (pick != cd.SYSTEM_FOR_GAME && installed.none { it.id == pick })) { select("") }
             DriverRow("System driver", "The device's own Vulkan driver", selected = pick == cd.SYSTEM_FOR_GAME) { select(cd.SYSTEM_FOR_GAME) }
             installed.forEach { d ->
                 DriverRow(
@@ -501,10 +538,11 @@ private fun DriverCard(host: OverlayHost) {
 
 /** ARMSX2's driver row: name and detail, Active when it is the pick, Delete for installed ones. */
 @Composable
-private fun DriverRow(title: String, subtitle: String, selected: Boolean, onDelete: (() -> Unit)? = null, onClick: () -> Unit) {
+private fun DriverRow(title: String, subtitle: String, selected: Boolean, first: Boolean = false, onDelete: (() -> Unit)? = null, onClick: () -> Unit) {
+    val firstReq = if (first) LocalFirstFocus.current else null
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().menuFocus(RoundedCornerShape(16.dp)),
+        modifier = Modifier.fillMaxWidth().then(if (firstReq != null) Modifier.focusRequester(firstReq) else Modifier).menuFocus(RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
@@ -642,10 +680,46 @@ private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> U
 // ---- ARMSX2's building blocks ----------------------------------------------------------------
 
 /** The launcher's controller ring (ARMSX2's), on a menu control. */
-private fun Modifier.menuFocus(shape: androidx.compose.ui.graphics.Shape): Modifier = this
-    // ARMSX2's soft tick as the pad's highlight moves.
-    .onFocusChanged { if (it.isFocused && com.armsx.flashpoint.ui.PadInput.active.value) MenuSfx.play(MenuSfx.Event.NAV) }
-    .then(com.armsx.flashpoint.ui.padFocusModifier(shape))
+@Composable
+private fun Modifier.menuFocus(shape: androidx.compose.ui.graphics.Shape): Modifier {
+    // Each control registers where it sits, so the menu can come back to the one last used.
+    val mem = LocalMenuMemory.current
+    val req = remember { androidx.compose.ui.focus.FocusRequester() }
+    val spot = remember { floatArrayOf(0f, 0f) }
+    if (mem != null) androidx.compose.runtime.DisposableEffect(req) {
+        mem.live[req] = spot
+        onDispose { mem.live.remove(req) }
+    }
+    return this
+        .focusRequester(req)
+        .onGloballyPositioned { val p = it.positionInRoot(); spot[0] = p.x; spot[1] = p.y + (mem?.scroll?.get(mem.tab)?.value ?: 0) }
+        .onFocusChanged {
+            if (!it.isFocused) return@onFocusChanged
+            mem?.last?.set(mem.tab, spot[0] to spot[1])
+            // ARMSX2's soft tick as the pad's highlight moves.
+            if (com.armsx.flashpoint.ui.PadInput.active.value) MenuSfx.play(MenuSfx.Event.NAV)
+        }
+        .then(com.armsx.flashpoint.ui.padFocusModifier(shape))
+}
+
+/**
+ * Where the pad was in the quick menu: the control last focused on each tab (by its place on the
+ * page, which survives the menu closing) and each tab's scroll. Kept in the game's OverlayState.
+ */
+class MenuMemory {
+    var tab: MenuTab = MenuTab.SESSION
+    val last = HashMap<MenuTab, Pair<Float, Float>>()
+    val scroll = HashMap<MenuTab, androidx.compose.foundation.ScrollState>()
+    internal val live = HashMap<androidx.compose.ui.focus.FocusRequester, FloatArray>()
+
+    /** The control nearest the one last used on [tab], if any. */
+    fun restore(tab: MenuTab): androidx.compose.ui.focus.FocusRequester? {
+        val (x, y) = last[tab] ?: return null
+        return live.minByOrNull { (_, p) -> kotlin.math.abs(p[1] - y) * 4 + kotlin.math.abs(p[0] - x) }?.key
+    }
+}
+
+internal val LocalMenuMemory = androidx.compose.runtime.staticCompositionLocalOf<MenuMemory?> { null }
 
 /** First control of the open pane: where the pad lands when the menu opens or the tab changes. */
 internal val LocalFirstFocus = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.ui.focus.FocusRequester?> { null }
