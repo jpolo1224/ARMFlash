@@ -176,6 +176,10 @@ async fn run(app: AndroidApp) {
         )
     };
 
+    let mut last_mem_check = Instant::now();
+    let mut last_mem_log = Instant::now();
+    let mut gc_maps = map_count();
+
     while !quit {
         let mut needs_redraw = false;
         app.poll_events(
@@ -437,6 +441,31 @@ async fn run(app: AndroidApp) {
                 }
             }
         }
+
+        // Memory guard: when the process's memory mappings have grown by 3,000 since the last
+        // full collection, collect everything unreachable now (dropped bitmaps and their GPU
+        // textures), and log maps and live bitmaps around it.
+        if last_mem_check.elapsed() >= Duration::from_secs(5) {
+            last_mem_check = Instant::now();
+            let maps = map_count();
+            let live = ruffle_core::bitmap::bitmap_data::LIVE_BITMAPS.load(std::sync::atomic::Ordering::Relaxed);
+            if maps > gc_maps + 3000 {
+                if let Some(player) = playerbox.as_ref() {
+                    if let Ok(mut player) = player.player.lock() {
+                        player.collect_all_garbage();
+                    }
+                }
+                let after = ruffle_core::bitmap::bitmap_data::LIVE_BITMAPS.load(std::sync::atomic::Ordering::Relaxed);
+                log::info!("memory: full collection at {maps} maps, live bitmaps {live} -> {after}");
+                gc_maps = maps;
+            } else if maps + 3000 < gc_maps {
+                gc_maps = maps; // memory went back down: measure from here
+            }
+            if last_mem_log.elapsed() >= Duration::from_secs(30) {
+                last_mem_log = Instant::now();
+                log::info!("memory: {maps} maps, {live} live bitmaps");
+            }
+        }
     }
 
     let _ = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -553,6 +582,11 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFra
     _this: JObject<'local>,
 ) -> jni::sys::jlong {
     FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
+}
+
+/// Lines in /proc/self/maps: the process's memory mappings (Android caps them at 65,530).
+fn map_count() -> usize {
+    std::fs::read("/proc/self/maps").map(|b| b.iter().filter(|&&c| c == b'\n').count()).unwrap_or(0)
 }
 
 /// The pause menu (or the touch layout editor) has the game paused; a new window after the app

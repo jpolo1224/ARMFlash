@@ -2390,6 +2390,12 @@ impl Player {
         rval
     }
 
+    /// ARMFlash patch: run the collector to the end of a full cycle now, freeing everything
+    /// unreachable (dropped bitmaps and their GPU textures included).
+    pub fn collect_all_garbage(&mut self) {
+        self.gc_arena.borrow_mut().finish_cycle();
+    }
+
     pub fn flush_shared_objects(&mut self) {
         self.update(|context| {
             if let Some(mut avm1_activation) =

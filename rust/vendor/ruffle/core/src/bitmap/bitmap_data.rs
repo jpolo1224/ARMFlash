@@ -225,6 +225,25 @@ bitflags! {
 #[collect(no_drop)]
 pub struct BitmapData<'gc>(BitmapRawDataWrapper<'gc>);
 
+/// ARMFlash patch: live BitmapData count, for ARMFlash's memory log.
+pub static LIVE_BITMAPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Counts one live bitmap for as long as its BitmapRawData exists.
+pub struct LiveBitmap;
+
+impl LiveBitmap {
+    fn new() -> Self {
+        LIVE_BITMAPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        LiveBitmap
+    }
+}
+
+impl Drop for LiveBitmap {
+    fn drop(&mut self) {
+        LIVE_BITMAPS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// ARMFlash patch: collector debt for a bitmap's pixels.
 ///
 /// gc-arena paces collection by the number of objects allocated, not their size. A BitmapData
@@ -412,6 +431,10 @@ pub struct BitmapRawData<'gc> {
     #[collect(require_static)]
     dirty_state: DirtyState,
 
+    /// ARMFlash patch: counted in LIVE_BITMAPS while alive.
+    #[collect(require_static)]
+    live: LiveBitmap,
+
     /// Holds an egui texture handle, used for rendering this Bitmap in the debug ui.
     /// This is automatically set to `None` when the texture is updated (either from
     /// marking the CPU side dirty, or from performing a GPU -> CPU sync).
@@ -499,6 +522,7 @@ mod wrapper {
                     avm2_object: None,
                     display_objects: vec![],
                     dirty_state: DirtyState::Clean,
+                    live: super::LiveBitmap::new(),
                     #[cfg(feature = "egui")]
                     egui_texture: Default::default(),
                 }
@@ -523,6 +547,7 @@ mod wrapper {
                 display_objects: vec![],
                 // We have no GPU texture, so there's no need to mark as dirty
                 dirty_state: DirtyState::Clean,
+                live: super::LiveBitmap::new(),
                 #[cfg(feature = "egui")]
                 egui_texture: Default::default(),
             }
@@ -758,6 +783,7 @@ impl<'gc> BitmapRawData<'gc> {
             avm2_object: None,
             display_objects: vec![],
             dirty_state: DirtyState::Clean,
+            live: LiveBitmap::new(),
             #[cfg(feature = "egui")]
             egui_texture: Default::default(),
         }
@@ -778,6 +804,7 @@ impl<'gc> BitmapRawData<'gc> {
             avm2_object: None,
             disposed: false,
             dirty_state: DirtyState::Clean,
+            live: LiveBitmap::new(),
             display_objects: vec![],
             #[cfg(feature = "egui")]
             egui_texture: Default::default(),
