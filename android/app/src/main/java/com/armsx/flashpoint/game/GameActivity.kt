@@ -51,6 +51,7 @@ class GameActivity : ComponentActivity() {
 
     private val host = object : OverlayHost {
         override val title get() = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        override val logoUrl get() = intent.getStringExtra(EXTRA_LOGO).orEmpty()
         override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() = showKeyboard()
@@ -244,11 +245,13 @@ class GameActivity : ComponentActivity() {
         const val EXTRA_GAME_ID = "gameId"
         const val EXTRA_SECONDS = "seconds"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_LOGO = "logo"
 
-        fun intent(ctx: Context, gameId: String, runner: Runner, url: String, zips: List<String>, htdocs: String, legacy: String, title: String = "") =
+        fun intent(ctx: Context, gameId: String, runner: Runner, url: String, zips: List<String>, htdocs: String, legacy: String, title: String = "", logo: String = "") =
             Intent(ctx, GameActivity::class.java)
                 .putExtra(EXTRA_GAME_ID, gameId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_LOGO, logo)
                 .putExtra(EXTRA_RUNNER, runner.name)
                 .putExtra(EXTRA_URL, url)
                 .putExtra(EXTRA_ZIPS, zips.toTypedArray())

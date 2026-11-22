@@ -35,6 +35,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
 
     private val host = object : OverlayHost {
         override val title get() = intent.getStringExtra(GameActivity.EXTRA_TITLE).orEmpty()
+        override val logoUrl get() = intent.getStringExtra(GameActivity.EXTRA_LOGO).orEmpty()
         override val runner: String
             get() = "Flash: native Ruffle (" + when (getString("backend")) { "vulkan" -> "Vulkan"; "gl" -> "OpenGL ES"; else -> "Auto" } + ")"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)

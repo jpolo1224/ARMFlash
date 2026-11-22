@@ -1,10 +1,18 @@
 package com.armsx.flashpoint.game
 
 import android.view.KeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.EaseIn
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,98 +22,231 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-/**
- * The in-game quick menu, laid out like ARMSX2's: a panel docked to one edge, a rail of tabs,
- * a header naming the game, and section cards. Tailored to Flashpoint: no save states or
- * achievements; display (scale mode, quality), touch and controller setup instead.
+/*
+ * The in-game quick menu: ARMSX2's pause menu (EmulationMenuScreen, ARMSX2 team), ported.
+ *
+ * Same look and behaviour as ARMSX2's: its Night colour scheme and type scale, the content
+ * sheet and the separate tab rail as two floating 28 dp panels sliding in from the docked
+ * edge over a 62% scrim, the compact single-sheet layout under 700 dp, and its header, action
+ * grid, section cards, option chips, switch rows and cycle rows. What changed is what is in
+ * it: Flashpoint's session actions, display modes, touch keys and controller mapping.
  */
+
 enum class MenuTab(val label: String, val glyph: String) {
-    SESSION("Session", "▶"),
-    DISPLAY("Display", "▣"),
-    CONTROLS("Controls", "✚"),
+    SESSION("Session", "☰"),
+    DISPLAY("Display", "🖥️"),
+    CONTROLS("Controls", "🎮"),
     OPTIONS("Options", "⚙"),
 }
 
-private val Green = Color(0xFF5CB531)
-private val PanelBg = Color(0xF2161618)
-private val CardBg = Color(0xFF222225)
-private val Outline = Color(0x33FFFFFF)
-private val TextDim = Color(0xFFA0A0A6)
+// ---- ARMSX2's theme ------------------------------------------------------------------------
+
+private val ArmsBlueBright = Color(0xFF73A8FF)
+private val ArmsCyan = Color(0xFF48D7F0)
+private val ArmsViolet = Color(0xFF8B7CFF)
+private val Success = Color(0xFF51D79A)
+private val Danger = Color(0xFFFF6B7A)
+
+private val NightScheme = darkColorScheme(
+    primary = ArmsBlueBright,
+    onPrimary = Color(0xFF07101F),
+    primaryContainer = Color(0xFF183B73),
+    onPrimaryContainer = Color(0xFFD9E7FF),
+    secondary = ArmsCyan,
+    onSecondary = Color(0xFF001F25),
+    secondaryContainer = Color(0xFF123944),
+    onSecondaryContainer = Color(0xFFB9F3FF),
+    tertiary = ArmsViolet,
+    background = Color(0xFF0A1C36),
+    onBackground = Color(0xFFF2F6FF),
+    surface = Color(0xFF13284A),
+    onSurface = Color(0xFFF2F6FF),
+    surfaceVariant = Color(0xFF1A3357),
+    onSurfaceVariant = Color(0xFF9BAAC0),
+    outline = Color(0xFF2F4E76),
+    outlineVariant = Color(0xFF2F4E76),
+    error = Danger,
+    scrim = Color.Black,
+    surfaceTint = Color.Transparent,
+)
+
+private val ArmsTypography = Typography(
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    bodySmall = TextStyle(fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Normal),
+    labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold),
+)
+
+// ---- the menu ------------------------------------------------------------------------------
 
 @Composable
 fun QuickMenu(st: OverlayState, host: OverlayHost) {
-    var left by remember { mutableStateOf(host.menuLeft) }
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0x66000000)).clickable(indication = null, interactionSource = null) { st.menu = false }) {
-        val width = if (maxWidth < 600.dp) maxWidth * 0.9f else 420.dp
-        Row(
-            Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd).fillMaxHeight().width(width)
-                .background(PanelBg).border(BorderStroke(1.dp, Outline))
-                .clickable(indication = null, interactionSource = null) {},
-        ) {
-            if (!left) Rail(st)
-            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 12.dp)) {
-                Header(host, onClose = { st.menu = false })
-                Spacer(Modifier.height(10.dp))
-                when (st.tab) {
-                    MenuTab.SESSION -> SessionPane(st, host)
-                    MenuTab.DISPLAY -> DisplayPane(st, host)
-                    MenuTab.CONTROLS -> ControlsPane(st, host)
-                    MenuTab.OPTIONS -> OptionsPane(left) { left = it; host.menuLeft = it }
+    MaterialTheme(colorScheme = NightScheme, typography = ArmsTypography) {
+        val scope = rememberCoroutineScope()
+        var shown by remember { mutableStateOf(false) }
+        var left by remember { mutableStateOf(host.menuLeft) }
+        LaunchedEffect(Unit) { shown = true }
+        val close: () -> Unit = {
+            shown = false
+            scope.launch { delay(220); st.menu = false }
+        }
+        androidx.activity.compose.BackHandler(onBack = close)
+
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val compact = maxWidth < 700.dp
+            AnimatedVisibility(shown, enter = fadeIn(tween(190, easing = EaseOut)), exit = fadeOut(tween(190, easing = EaseIn))) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable(onClick = close))
+            }
+            val slideFrom: (Int) -> Int = if (left) { w -> -w } else { w -> w }
+            AnimatedVisibility(
+                shown,
+                enter = slideInHorizontally(tween(320, easing = EaseOut), slideFrom),
+                exit = slideOutHorizontally(tween(220, easing = EaseIn), slideFrom),
+                modifier = Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd),
+            ) {
+                if (compact) {
+                    Surface(
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth(0.96f)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
+                        shape = if (left) RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp) else RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        shadowElevation = 22.dp,
+                    ) { MenuPage(st, host, compact = true, left = left, onLeft = { left = it; host.menuLeft = it }, close = close) }
+                } else {
+                    Row(
+                        Modifier.fillMaxHeight().fillMaxWidth(0.64f).widthIn(max = 900.dp)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                            .padding(top = 14.dp, start = if (left) 12.dp else 0.dp, end = if (left) 0.dp else 12.dp, bottom = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        if (left) Rail(st)
+                        Surface(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            shape = RoundedCornerShape(28.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                            shadowElevation = 22.dp,
+                        ) { MenuPage(st, host, compact = false, left = left, onLeft = { left = it; host.menuLeft = it }, close = close) }
+                        if (!left) Rail(st)
+                    }
                 }
             }
-            if (left) Rail(st)
         }
     }
 }
 
 @Composable
 private fun Rail(st: OverlayState) {
+    Surface(
+        modifier = Modifier.width(76.dp).fillMaxHeight(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        shadowElevation = 18.dp,
+    ) { MenuRail(st.tab) { st.tab = it } }
+}
+
+@Composable
+private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 18.dp)) {
+        if (compact) CompactMenuTabs(st.tab) { st.tab = it }
+        MenuHeader(host, compact)
+        HorizontalDivider(Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f))
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            when (st.tab) {
+                MenuTab.SESSION -> SessionPane(st, host, close)
+                MenuTab.DISPLAY -> DisplayPane(st, host)
+                MenuTab.CONTROLS -> ControlsPane(st, host)
+                MenuTab.OPTIONS -> OptionsPane(left, onLeft)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactMenuTabs(selected: MenuTab, onSelect: (MenuTab) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) { MenuTab.entries.forEach { MenuTabChip(it, it == selected, onSelect) } }
+}
+
+@Composable
+private fun MenuRail(selected: MenuTab, onSelect: (MenuTab) -> Unit) {
     Column(
-        Modifier.fillMaxHeight().padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
     ) {
-        MenuTab.entries.forEach { t ->
-            val on = st.tab == t
+        MenuTab.entries.forEach { tab ->
+            val active = tab == selected
             Surface(
-                onClick = { st.tab = t },
+                onClick = { onSelect(tab) },
                 modifier = Modifier.size(56.dp),
                 shape = RoundedCornerShape(18.dp),
-                color = if (on) Green.copy(alpha = 0.16f) else Color(0x80222225),
-                border = BorderStroke(if (on) 2.dp else 1.dp, if (on) Green else Outline),
+                color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                border = BorderStroke(
+                    if (active) 2.dp else 1.dp,
+                    if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.34f),
+                ),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(t.glyph, color = if (on) Green else TextDim, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        tab.glyph, fontSize = 23.sp, fontWeight = FontWeight.Bold,
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -113,71 +254,75 @@ private fun Rail(st: OverlayState) {
 }
 
 @Composable
-private fun Header(host: OverlayHost, onClose: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun MenuTabChip(tab: MenuTab, active: Boolean, onSelect: (MenuTab) -> Unit) {
+    Surface(
+        onClick = { onSelect(tab) },
+        modifier = Modifier.widthIn(min = 132.dp, max = 210.dp).padding(vertical = 3.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
+        border = BorderStroke(
+            if (active) 1.5.dp else 1.dp,
+            if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.72f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.32f),
+        ),
+    ) {
+        Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(
+                modifier = Modifier.size(30.dp),
+                shape = RoundedCornerShape(9.dp),
+                color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(tab.glyph, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(tab.label, style = MaterialTheme.typography.labelLarge, color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+private fun MenuHeader(host: OverlayHost, compact: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = if (compact) 12.dp else 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        var logoOk by remember(host.logoUrl) { mutableStateOf(host.logoUrl.isNotBlank()) }
+        if (logoOk) {
+            AsyncImage(
+                host.logoUrl, null, contentScale = ContentScale.Fit,
+                onError = { logoOk = false },
+                modifier = Modifier.size(if (compact) 46.dp else 54.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(Modifier.width(11.dp))
+        }
         Column(Modifier.weight(1f)) {
-            Text(host.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(host.runner, color = TextDim, fontSize = 12.sp)
-        }
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(CardBg).clickable(onClick = onClose),
-            contentAlignment = Alignment.Center,
-        ) { Text("✕", color = Color.White, fontSize = 16.sp) }
-    }
-}
-
-@Composable
-private fun Card(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(16.dp)).background(CardBg)
-            .border(1.dp, Outline, RoundedCornerShape(16.dp)).padding(12.dp),
-    ) {
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Spacer(Modifier.height(8.dp))
-        content()
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun Choices(options: List<Pair<String, String>>, selected: String, onPick: (String) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { (v, label) ->
-            val on = v == selected
-            Box(
-                Modifier.clip(RoundedCornerShape(10.dp)).background(if (on) Green.copy(alpha = 0.18f) else Color(0xFF2E2E32))
-                    .border(1.dp, if (on) Green else Outline, RoundedCornerShape(10.dp))
-                    .clickable { onPick(v) }.padding(horizontal = 12.dp, vertical = 8.dp),
-            ) { Text(label, color = if (on) Color.White else Color(0xFFD0D0D4), fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+            Text(
+                host.title.ifBlank { "Flashpoint" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(host.runner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-@Composable
-private fun Tile(glyph: String, label: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(
-        modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xFF2A2A2E)).border(1.dp, Outline, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick).padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(glyph, color = Green, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
+// ---- panes ---------------------------------------------------------------------------------
+
+private data class MenuAction(val title: String, val detail: String, val glyph: String, val accent: Color?, val action: () -> Unit)
 
 @Composable
-private fun SessionPane(st: OverlayState, host: OverlayHost) {
-    Card("Game") {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Tile("▶", "Resume", Modifier.weight(1f)) { st.menu = false }
-            Tile("↻", "Restart", Modifier.weight(1f)) { st.menu = false; host.restart() }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Tile("Aa", "Keyboard", Modifier.weight(1f)) { st.menu = false; host.keyboard() }
-            Tile("✕", "Exit game", Modifier.weight(1f)) { host.exit() }
-        }
-    }
+private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) {
+    ActionGrid(
+        listOf(
+            MenuAction("Resume", "Back to the game", "▶", Success, close),
+            MenuAction("Restart", "Start the game over", "↻", null) { st.menu = false; host.restart() },
+            MenuAction("Keyboard", "Type into the game", "⌨", null) { st.menu = false; host.keyboard() },
+            MenuAction("Edit touch layout", "Move, resize, add or remove keys", "✎", null) {
+                st.menu = false; st.editing = true; st.selected = null
+            },
+            MenuAction("Close", host.title, "■", Danger) { host.exit() },
+        ),
+    )
 }
 
 @Composable
@@ -187,80 +332,163 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
         host.save(false)
         host.display(scale, quality)
     }
-    Card("Scale") {
-        Text("How the game fits the screen.", color = TextDim, fontSize = 12.sp)
-        Spacer(Modifier.height(6.dp))
-        Choices(
-            listOf("default" to "Game default", "fit" to "Fit", "stretch" to "Stretch", "fill" to "Fill (crop)", "original" to "Original size"),
-            st.layout.scale,
-        ) { set(scale = it) }
-    }
-    Card("Quality") {
-        Text("Lower quality draws faster on slower phones.", color = TextDim, fontSize = 12.sp)
-        Spacer(Modifier.height(6.dp))
-        Choices(listOf("low" to "Low", "medium" to "Medium", "high" to "High", "best" to "Best"), st.layout.quality) { set(quality = it) }
-    }
+    HorizontalOptions(
+        "Scale",
+        listOf("default" to "Game default", "fit" to "Fit", "stretch" to "Stretch", "fill" to "Fill", "original" to "Original size"),
+        st.layout.scale,
+    ) { set(scale = it) }
+    HorizontalOptions("Quality", listOf("low" to "Low", "medium" to "Medium", "high" to "High", "best" to "Best"), st.layout.quality) { set(quality = it) }
 }
 
 @Composable
 private fun ControlsPane(st: OverlayState, host: OverlayHost) {
-    Card("Pointer") {
-        Choices(listOf("direct" to "Direct touch", "touchpad" to "Touchpad", "point" to "Point & click"), st.layout.mode) {
-            st.layout = st.layout.copy(mode = it)
-            if (it == "direct") st.cursor = null
-            host.save(false)
-        }
+    HorizontalOptions("Pointer", listOf("direct" to "Direct touch", "touchpad" to "Touchpad", "point" to "Point & click"), st.layout.mode) {
+        st.layout = st.layout.copy(mode = it)
+        if (it == "direct") st.cursor = null
+        host.save(false)
     }
-    Card("Touch keys") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Show keys", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Switch(st.layout.visible, { st.layout = st.layout.copy(visible = it); host.save(false) })
-        }
-        Text("Opacity", color = TextDim, fontSize = 12.sp)
+    SectionCard("Touch keys") {
+        MenuSwitchRow("Show touch keys", st.layout.visible) { st.layout = st.layout.copy(visible = it); host.save(false) }
+        Spacer(Modifier.height(6.dp))
         var op by remember { mutableFloatStateOf(st.layout.opacity) }
+        Text("Opacity  ${(op * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         Slider(op, { op = it; st.layout = st.layout.copy(opacity = it) }, valueRange = 0.15f..1f, onValueChangeFinished = { host.save(false) })
-        Tile("✎", "Edit layout", Modifier.fillMaxWidth()) {
-            st.menu = false
-            st.editing = true
-            st.selected = null
-        }
+        Spacer(Modifier.height(2.dp))
+        MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
     }
-    Card("Controller") {
-        Text("Left stick", color = TextDim, fontSize = 12.sp)
-        Spacer(Modifier.height(4.dp))
-        Choices(listOf("arrows" to "Arrow keys", "cursor" to "Mouse cursor"), if (st.layout.stickMovesCursor) "cursor" else "arrows") {
-            st.layout = st.layout.copy(stickMovesCursor = it == "cursor")
-            host.save(false)
-        }
-        Spacer(Modifier.height(10.dp))
-        Text("Buttons", color = TextDim, fontSize = 12.sp)
-        PAD_BUTTONS.forEach { (code, name) ->
-            val mapped = st.layout.pad[code]
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(10.dp)).clickable { st.padPick = code }
-                    .padding(horizontal = 6.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(name, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text(keyName(mapped), color = Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            }
+    SectionCard("Controller") {
+        MenuCycleRow("Left stick", if (st.layout.stickMovesCursor) "Mouse cursor" else "Arrow keys") {
+            st.layout = st.layout.copy(stickMovesCursor = !st.layout.stickMovesCursor); host.save(false)
         }
         Spacer(Modifier.height(6.dp))
-        Choices(listOf("reset" to "Reset buttons"), "") {
-            st.layout = st.layout.copy(pad = TouchLayout.DEFAULT_PAD)
-            host.save(false)
+        PAD_BUTTONS.forEach { (code, name) ->
+            MenuCycleRow(name, keyName(st.layout.pad[code])) { st.padPick = code }
+            Spacer(Modifier.height(6.dp))
+        }
+        MenuCycleRow("Reset buttons", "Defaults") { st.layout = st.layout.copy(pad = TouchLayout.DEFAULT_PAD); host.save(false) }
+    }
+}
+
+@Composable
+private fun OptionsPane(left: Boolean, onLeft: (Boolean) -> Unit) {
+    HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, onLeft)
+}
+
+// ---- ARMSX2's building blocks ----------------------------------------------------------------
+
+@Composable
+private fun ActionGrid(actions: List<MenuAction>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        actions.forEach { item ->
+            Surface(
+                onClick = item.action,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+            ) {
+                Row(Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(item.glyph, color = item.accent ?: MaterialTheme.colorScheme.primary, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(30.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        if (item.detail.isNotBlank()) {
+                            Text(item.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun OptionsPane(left: Boolean, onSide: (Boolean) -> Unit) {
-    Card("Menu side") {
-        Text("Which edge this menu opens on.", color = TextDim, fontSize = 12.sp)
-        Spacer(Modifier.height(6.dp))
-        Choices(listOf("left" to "Left", "right" to "Right"), if (left) "left" else "right") { onSide(it == "left") }
+private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+    ) {
+        Column(Modifier.padding(13.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(8.dp))
+            content()
+        }
     }
 }
+
+@Composable
+private fun <T> HorizontalOptions(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    SectionCard(title) {
+        Row(
+            Modifier.fillMaxWidth().bleedHorizontal(13.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) { options.forEach { (value, label) -> OptionChip(label, selected == value) { onSelect(value) } } }
+    }
+}
+
+@Composable
+private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.38f)),
+    ) {
+        Text(
+            label, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun MenuSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Surface(
+        onClick = { onCheckedChange(!checked) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+    ) {
+        Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 2)
+            Spacer(Modifier.width(10.dp))
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+    }
+}
+
+@Composable
+private fun MenuCycleRow(title: String, valueLabel: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+    ) {
+        Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 2)
+            Spacer(Modifier.width(10.dp))
+            Text(valueLabel, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+private fun Modifier.bleedHorizontal(edge: Dp): Modifier = layout { measurable, constraints ->
+    val edgePx = edge.roundToPx()
+    val placeable = measurable.measure(
+        constraints.copy(
+            minWidth = (constraints.minWidth + edgePx * 2).coerceAtMost(constraints.maxWidth + edgePx * 2),
+            maxWidth = constraints.maxWidth + edgePx * 2,
+        ),
+    )
+    layout(constraints.maxWidth, placeable.height) { placeable.placeRelative(-edgePx, 0) }
+}
+
+// ---- controller button picker --------------------------------------------------------------
 
 private val PAD_BUTTONS = listOf(
     KeyEvent.KEYCODE_BUTTON_A to "A", KeyEvent.KEYCODE_BUTTON_B to "B",
@@ -279,7 +507,7 @@ private fun keyName(code: Int?): String = when (code) {
     else -> Keys.label(code)
 }
 
-/** Pick what a controller button sends. */
+/** Pick what a controller button sends, in the same sheet style. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
@@ -288,15 +516,31 @@ fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
         host.save(false)
         st.padPick = null
     }
-    Box(Modifier.fillMaxSize().background(Color(0xAA000000)).clickable { st.padPick = null }, contentAlignment = Alignment.Center) {
-        Panel(Modifier.widthIn(max = 600.dp)) {
-            Text("${PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"} sends", color = Color.White, fontWeight = FontWeight.Black)
-            Column(Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
-                FlowRow {
-                    Pill("None") { pick(null) }
-                    Pill("Left click") { pick(Keys.MOUSE_LEFT) }
-                    Pill("Right click") { pick(Keys.MOUSE_RIGHT) }
-                    Keys.ALL.forEach { k -> Pill(k.label) { pick(k.code) } }
+    MaterialTheme(colorScheme = NightScheme, typography = ArmsTypography) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable { st.padPick = null }, contentAlignment = Alignment.Center) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(0.8f).widthIn(max = 620.dp).fillMaxHeight(0.86f).clickable(enabled = false) {},
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                shadowElevation = 24.dp,
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "${PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"} sends",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        Modifier.verticalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val current = st.layout.pad[button]
+                        OptionChip("None", current == null) { pick(null) }
+                        OptionChip("Left click", current == Keys.MOUSE_LEFT) { pick(Keys.MOUSE_LEFT) }
+                        OptionChip("Right click", current == Keys.MOUSE_RIGHT) { pick(Keys.MOUSE_RIGHT) }
+                        Keys.ALL.forEach { k -> OptionChip(k.label, current == k.code) { pick(k.code) } }
+                    }
                 }
             }
         }

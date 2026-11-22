@@ -67,6 +67,7 @@ import kotlin.math.roundToInt
 interface OverlayHost {
     val title: String
     val runner: String
+    val logoUrl: String
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()
@@ -423,15 +424,32 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
 
 @Composable
 internal fun Panel(modifier: Modifier, content: @Composable () -> Unit) {
-    Column(modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xEE1C1C1E)).padding(12.dp)) { content() }
+    // ARMSX2's sheet: Night surface, 24 dp corners, outline, shadow.
+    androidx.compose.material3.Surface(
+        modifier = modifier.widthIn(max = 560.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF13284A),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2F4E76).copy(alpha = 0.5f)),
+        shadowElevation = 22.dp,
+    ) { Column(Modifier.padding(14.dp)) { content() } }
 }
 
 @Composable
 internal fun Pill(label: String, on: Boolean = false, onClick: () -> Unit) {
-    Box(
-        Modifier.padding(3.dp).clip(RoundedCornerShape(6.dp)).background(if (on) Accent else Color(0xFF3A3A3E))
-            .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp),
-    ) { Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+    // ARMSX2's option chip.
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        modifier = Modifier.padding(3.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (on) Color(0xFF73A8FF).copy(alpha = 0.17f) else Color(0xFF13284A),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (on) Color(0xFF73A8FF) else Color(0xFF2F4E76).copy(alpha = 0.38f)),
+    ) {
+        Text(
+            label, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
+            color = if (on) Color(0xFF73A8FF) else Color(0xFF9BAAC0), fontSize = 15.sp,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+        )
+    }
 }
 
 @Composable
