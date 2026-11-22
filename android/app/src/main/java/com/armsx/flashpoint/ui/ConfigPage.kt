@@ -314,7 +314,9 @@ private fun TextSetting(title: String, desc: String, initial: String, save: (Str
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(title, color = Fp.Strong, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Text(desc, color = Fp.TextDim, fontSize = 13.sp)
-        OutlinedTextField(v, { v = it; save(it) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        PadTextBox(Modifier.fillMaxWidth().padding(top = 4.dp)) { m ->
+            OutlinedTextField(v, { v = it; save(it) }, singleLine = true, modifier = m.fillMaxWidth())
+        }
     }
 }
 
@@ -456,14 +458,16 @@ private fun TurnipOptions() {
         "UBWC flag hint",
         "Can fix rendering glitches some recent Turnip builds show on certain Adreno GPUs. Leave it off unless you see them (FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1).",
     ) { Switch(ubwc, { ubwc = it; cd.setUbwcFlagHint(it) }) }
-    OutlinedTextField(
-        env, { env = it; cd.setDriverEnvText(it) },
-        label = { Text("Driver variables") },
-        placeholder = { Text("TU_DEBUG=sysmem") },
-        supportingText = { Text("One NAME=value per line. FD_, TU_, IR3_ and MESA_ variables only. TU_DEBUG is read once, so restart the app after changing it.") },
-        minLines = 2,
-        modifier = Modifier.fillMaxWidth(),
-    )
+    PadTextBox(Modifier.fillMaxWidth()) { m ->
+        OutlinedTextField(
+            env, { env = it; cd.setDriverEnvText(it) },
+            label = { Text("Driver variables") },
+            placeholder = { Text("TU_DEBUG=sysmem") },
+            supportingText = { Text("One NAME=value per line. FD_, TU_, IR3_ and MESA_ variables only. TU_DEBUG is read once, so restart the app after changing it.") },
+            minLines = 2,
+            modifier = m.fillMaxWidth(),
+        )
+    }
 }
 
 /** Discord Rich Presence, as in ARMSX2: connect once, then friends see what you are playing. */

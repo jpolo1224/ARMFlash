@@ -4,6 +4,9 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.getValue
@@ -121,4 +124,32 @@ fun Modifier.padVerticalScroll(): Modifier {
         }
         .then(padScrollTop(state))
         .then(Modifier.verticalScroll(state))
+}
+
+/**
+ * A text box the controller can pass over: with a pad, landing on it only shows the selection
+ * ring, A starts typing (focus and keyboard), and moving off ends it. Without that, focus moving
+ * onto a text field opens the keyboard and holds the D-pad (the search bar, the driver variables
+ * box). Touch taps straight into the field as usual. [field] gets the modifier for its text field.
+ */
+@androidx.compose.runtime.Composable
+fun PadTextBox(modifier: Modifier = Modifier, field: @androidx.compose.runtime.Composable (Modifier) -> Unit) {
+    var typing by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+    val req = remember { androidx.compose.ui.focus.FocusRequester() }
+    val pad = PadInput.active.value
+    androidx.compose.runtime.LaunchedEffect(typing) { if (typing) runCatching { req.requestFocus() } }
+    androidx.compose.foundation.layout.Box(
+        modifier.padFocus()
+            .then(if (pad && !typing) Modifier.clickable { typing = true } else Modifier),
+    ) {
+        field(
+            Modifier.focusRequester(req)
+                .focusProperties { canFocus = !pad || typing }
+                .onFocusChanged {
+                    if (it.isFocused) fieldFocused = true
+                    else if (fieldFocused) { fieldFocused = false; typing = false }
+                },
+        )
+    }
 }
