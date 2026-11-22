@@ -1,6 +1,7 @@
 package com.armsx.flashpoint.lab
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import java.io.File
@@ -27,6 +28,16 @@ class LabActivity : Activity() {
 
     private fun run(intent: android.content.Intent) {
         val step = intent.getStringExtra("step") ?: return finish()
+        // The real game screen on the test game (Lava Lamp, the support pack in drive_c).
+        if (step == "game") {
+            val r = File(dataDir, "r").path
+            val base = Intent().putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_GAME_ID, "lab")
+                .putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_TITLE, "Lab")
+                .putExtra(com.armsx.flashpoint.game.GameActivity.EXTRA_ZIPS, arrayOf("$r/home/games/test.zip"))
+            startActivity(com.armsx.flashpoint.win.WinActivity.intent(this, base, "FPSoftware\\Shockwave\\PJ101\\SPR.exe",
+                intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr", "$r/home/.wine/drive_c"))
+            return finish()
+        }
         val lib = applicationInfo.nativeLibraryDir
         val root = File(dataDir, "r").path
         val loader = "$lib/libldlinux.so"

@@ -44,6 +44,14 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
             android:theme="@style/Theme.Fp.Game" />
 
+        <!-- Windows plugin games (Shockwave, Unity and others) under Wine on a virtual screen. -->
+        <activity
+            android:name=".win.WinActivity"
+            android:exported="false"
+            android:process=":game"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
+            android:theme="@style/Theme.Fp.Game" />
+
         <!-- Native Flash (Ruffle). GameActivity loads libfpruffle.so and runs its android_main. -->
         <activity
             android:name=".game.RuffleActivity"
