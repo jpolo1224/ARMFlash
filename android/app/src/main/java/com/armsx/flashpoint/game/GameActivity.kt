@@ -469,7 +469,10 @@ object RufflePage {
           function hold(e) {
             if (pinned === e) return;
             unpin();
-            pinned = e; saved = {};
+            // Its own size, from before it was pinned: pinned at the screen's size it would
+            // always look the largest, and a game that turns up later could never take over.
+            var nw = e.offsetWidth, nh = e.offsetHeight;
+            pinned = e; saved = { __w: nw, __h: nh };
             for (var i = 0; i < PROPS.length; i++) saved[PROPS[i]] = [e.style.getPropertyValue(PROPS[i]), e.style.getPropertyPriority(PROPS[i])];
             var root = document.documentElement, body = document.body;
             root.style.background = '#000'; body.style.background = '#000';
@@ -480,13 +483,21 @@ object RufflePage {
             var t = e.tagName;
             return t === 'IFRAME' || t === 'FRAME' || t === 'EMBED' || t === 'OBJECT' || t.indexOf('RUFFLE-') === 0;
           }
+          // Social and ad widgets are never the game (Facebook's start out 1000 px wide).
+          var WIDGET = /(^|\.)(facebook\.com|facebook\.net|fbcdn\.net|twitter\.com|x\.com|google\.com|googlesyndication\.com|doubleclick\.net|googleadservices\.com|amazon-adsystem\.com|adnxs\.com|addthis\.com|sharethis\.com|disqus\.com|criteo\.com|taboola\.com|outbrain\.com)$/i;
+          function widget(e) {
+            if (e.tagName !== 'IFRAME' || !e.src) return false;
+            try { return WIDGET.test(new URL(e.src, location.href).hostname); } catch (x) { return false; }
+          }
           function pick() {
             var best = null, area = 0;
             var all = document.querySelectorAll('canvas, video, iframe, frame, embed, object, ruffle-player, ruffle-embed, ruffle-object');
             for (var i = 0; i < all.length; i++) {
-              var w = all[i].offsetWidth, h = all[i].offsetHeight;
+              var el = all[i];
+              if (widget(el)) continue;
+              var w = el === pinned ? saved.__w : el.offsetWidth, h = el === pinned ? saved.__h : el.offsetHeight;
               if (w < 160 || h < 120) continue;
-              if (w * h > area) { area = w * h; best = all[i]; }
+              if (w * h > area) { area = w * h; best = el; }
             }
             return best;
           }
