@@ -153,3 +153,21 @@ fun PadTextBox(modifier: Modifier = Modifier, field: @androidx.compose.runtime.C
         )
     }
 }
+
+/**
+ * A slider under the pad: Material's Slider takes D-pad up and down as "change the value", so
+ * the highlight could never leave it that way. Up and down move between controls; left and
+ * right still change the value.
+ */
+fun Modifier.sliderPadKeys(): Modifier = composed {
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
+    onPreviewKeyEvent { e ->
+        val dir = when (e.key) {
+            Key.DirectionUp -> FocusDirection.Up
+            Key.DirectionDown -> FocusDirection.Down
+            else -> return@onPreviewKeyEvent false
+        }
+        if (e.type == KeyEventType.KeyDown) fm.moveFocus(dir)
+        true
+    }
+}

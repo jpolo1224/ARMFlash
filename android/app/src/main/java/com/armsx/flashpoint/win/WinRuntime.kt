@@ -121,7 +121,15 @@ class WinRuntime(private val ctx: Context) {
         if (File(prefix, "system.reg").isFile && File(prefix, "drive_c/windows/syswow64").isDirectory) return true
         log("Setting up Windows support (first time only)…")
         val code = run(listOf("wineboot", "-i"), null).waitFor()
-        return code == 0 && File(prefix, "system.reg").isFile
+        Log.i(TAG, "wineboot -i exited with $code")
+        // Wine writes the registry files later than wineboot returns: when its server goes idle,
+        // or on its periodic save (every 30 s) while Windows' own services keep it running.
+        val done = { File(prefix, "system.reg").isFile && File(prefix, "user.reg").isFile }
+        if (!done()) log("Finishing Windows setup…")
+        val deadline = System.currentTimeMillis() + 75_000
+        while (!done() && System.currentTimeMillis() < deadline) Thread.sleep(500)
+        if (!done()) Log.w(TAG, "no registry after wineboot (exit $code)")
+        return done()
     }
 
     /**

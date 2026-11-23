@@ -175,7 +175,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             }
             Slider(
                 value = vol, onValueChange = { vol = it; UiMusic.volume.floatValue = it; UiMusic.applyVolume() },
-                onValueChangeFinished = { UiMusic.save(ctx) }, enabled = music, modifier = Modifier.widthIn(max = 420.dp),
+                onValueChangeFinished = { UiMusic.save(ctx) }, enabled = music, modifier = Modifier.widthIn(max = 420.dp).sliderPadKeys(),
             )
         }
 

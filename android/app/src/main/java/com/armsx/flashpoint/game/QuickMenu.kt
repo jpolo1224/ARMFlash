@@ -1,6 +1,7 @@
 package com.armsx.flashpoint.game
 
 import android.view.KeyEvent
+import com.armsx.flashpoint.ui.sliderPadKeys
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseIn
 import androidx.compose.animation.core.EaseOut
@@ -699,7 +700,7 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         Slider(
             op, { op = it; st.layout = st.layout.copy(opacity = it) }, valueRange = 0.15f..1f,
             onValueChangeFinished = { host.save(false) },
-            modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
+            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
         )
         Spacer(Modifier.height(2.dp))
         MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
@@ -736,7 +737,7 @@ private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> U
         Slider(
             v, { v = it; host.setVolume(it) }, valueRange = 0f..1f,
             onValueChangeFinished = { GamePrefs.setVolume(v) },
-            modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
+            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
         )
     }
     HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, onSelect = onLeft)
@@ -1101,7 +1102,7 @@ private fun ShaderCard(host: OverlayHost) {
                                 sp.setOverrides(ctx, current.path, values)
                                 host.shaderChanged(false)
                             },
-                            modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
+                            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
                         )
                     }
                     MenuCycleRow("Reset parameters", "") {
