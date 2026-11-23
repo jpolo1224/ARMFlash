@@ -126,7 +126,7 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
     }
     let (method, uri) = (req.method().clone(), req.uri().clone());
     let mut r = serve(srv, port, req, https).await;
-    // TEST (back to debug once Silverlight runs): every request, to see what a player asked for.
+    // TEST (back to debug before release): every request, to see what a player asked for.
     log::info!("{method} {uri} -> {}", r.status().as_u16());
     allow_origin(&mut r, origin);
     r
@@ -192,13 +192,6 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
     let Some(key) = Key::new(&host, &path) else {
         return text(StatusCode::BAD_REQUEST, "fp-proxy: bad request");
     };
-    // TEST (remove once Silverlight runs): an error a Silverlight page reported (see
-    // silverlight_reporter), logged here and never passed on to any server.
-    if path == "/__armflash/silverlight-error" {
-        let what = uri.query().map(|q| percent_encoding::percent_decode_str(q).decode_utf8_lossy().into_owned());
-        log::warn!("Silverlight error on {host}: {}", what.unwrap_or_default());
-        return text(StatusCode::NO_CONTENT, "");
-    }
     let head = req.method() == Method::HEAD;
     let query = uri.query();
     // Games' server calls (POSTs to level servers and the like) are few and worth seeing.
@@ -252,18 +245,15 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
         }
     }
     match resolved {
-        Resolved::Zip { mount, index, mut size, name } => {
+        Resolved::Zip { mount, index, size, name } => {
             let mut ct = content_type(&name);
             let body = if head {
                 empty()
             } else if size <= SMALL {
                 match tokio::task::spawn_blocking(move || mount.read_all(index, size)).await {
-                    Ok(Ok(mut v)) => {
+                    Ok(Ok(v)) => {
                         if ct == "application/octet-stream" {
                             if let Some(t) = crate::sniff(&v[..v.len().min(512)]) { ct = t.to_string(); }
-                        }
-                        if ct.starts_with("text/html") && silverlight_reporter(&mut v) {
-                            size = v.len() as u64;
                         }
                         full(v.into())
                     }
@@ -502,20 +492,6 @@ fn ask_again_when_empty(rel: &str, body: &[u8]) -> bool {
     rel.ends_with("get_level.hw") && String::from_utf8_lossy(body).split('&').any(|kv| kv.starts_with("action=get_"))
 }
 
-/// TEST (remove once Silverlight runs): a page with a Silverlight object gets an error handler
-/// (kept only while the page defines none of its own, as the Xbox Avatar Editor's archived page
-/// names one it lacks) that sends each error to /__armflash/silverlight-error for the log.
-fn silverlight_reporter(page: &mut Vec<u8>) -> bool {
-    const HOOK: &[u8] = br#"<script>if(!window.onSilverlightError)window.onSilverlightError=function(s,a){try{new Image().src="/__armflash/silverlight-error?"+encodeURIComponent(a.ErrorType+" "+a.ErrorCode+" "+a.ErrorMessage+(a.methodName?" in "+a.methodName:""))}catch(e){}};</script>"#;
-    let has = |what: &[u8]| page.windows(what.len()).position(|w| w.eq_ignore_ascii_case(what));
-    if has(b"x-silverlight").is_none() {
-        return false;
-    }
-    let Some(at) = has(b"<head>") else { return false };
-    page.splice(at + 6..at + 6, HOOK.iter().copied());
-    true
-}
-
 /// Fetch from the remote Legacy server, then (if allowed) the original site, and cache into htdocs.
 async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Bytes, Option<HeaderValue>)> {
     let cfg = srv.config();
@@ -650,7 +626,7 @@ where
                 log::warn!("file stream failed after {sent} of {size} bytes: {e}");
                 let _ = tx.blocking_send(Err(e));
             }
-            // TEST (back to debug once Silverlight runs): a player that stops reading a file.
+            // TEST (back to debug before release): a player that stops reading a file.
             Ok(()) if left => log::info!("file stream: the reader left after {sent} of {size} bytes"),
             Ok(()) => {}
         }

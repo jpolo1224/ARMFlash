@@ -64,7 +64,7 @@ data class GameData(
 )
 
 /** The platforms ARMFlash offers: games on any other platform stay out of every list. */
-val OFFERED_PLATFORMS = listOf("Flash", "HTML5", "Java", "Shockwave", "Silverlight", "PopCap Plugin")
+val OFFERED_PLATFORMS = listOf("Flash", "HTML5", "Java", "Shockwave", "PopCap Plugin")
 
 @Serializable
 data class SearchOpts(

@@ -191,7 +191,6 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
-        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) rt.ensureVerdana()
         rt.ensureMfc42(::say)
         if (SupportPacks.needsBrowser(this, packs) && !rt.ensureGecko(::say)) return
         val fp = drive
@@ -214,23 +213,12 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     /**
-     * This game's settings on top of the usual ones: Box64's JIT settings for Silverlight's .NET
-     * runtime, then wine_env.txt in the Flashpoint folder (KEY=VALUE lines, "#" for comments), a
-     * debugging aid like ARMSX3's driver_env.txt that overrides anything.
+     * This game's settings on top of the usual ones: wine_env.txt in the Flashpoint folder
+     * (KEY=VALUE lines, "#" for comments), a debugging aid like ARMSX3's driver_env.txt that
+     * overrides anything.
      */
     private fun gameEnv(fpRoot: File): Map<String, String> {
         val env = LinkedHashMap<String, String>()
-        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
-            env += WinRuntime.JIT_SAFE
-            // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction Box64
-            // cannot translate (reported at log level 1 only).
-            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,warn+seh")
-            // TEST: Box64's call/return shortcut off. With it on, Silverlight's .NET code now and
-            // then reads its own resources wrong: the Xbox Avatar Editor stops with "currently
-            // experiencing problems" and draws noise for the floor, other apps crash at start. The
-            // one run that worked had it off (Box64's instruction checker turns it off everywhere).
-            env += mapOf("BOX64_DYNAREC_CALLRET" to "0")
-        }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
             val eq = t.indexOf('=')

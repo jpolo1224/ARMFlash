@@ -197,32 +197,6 @@ class WinRuntime(private val ctx: Context) {
     }
 
     /**
-     * A Verdana for Silverlight. Its default text font draws Latin letters with Verdana, Arial,
-     * Arial Unicode MS, Lucida Sans Unicode or Lucida Grande, and with none of them installed (never
-     * the case on Windows, always here) every Silverlight app stops with error 1001 before it
-     * starts: the Xbox Avatar Editor stayed blank. Wine's own Tahoma (Verdana's narrower sibling,
-     * by the same designer) goes into Windows' Fonts folder under the name Verdana, listed in the
-     * registry, which is where Silverlight looks for font files. The value names are ARMFlash's
-     * own, so Wine's start-up refresh of the fonts it found itself never removes them.
-     */
-    fun ensureVerdana() {
-        val mark = File(prefix, ".armflash-verdana-1")
-        if (mark.isFile) return
-        val fonts = File(prefix, "drive_c/windows/Fonts").apply { mkdirs() }
-        val key = "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"
-        val ok = listOf("Regular" to "tahoma.ttf", "Bold" to "tahomabd.ttf").all { (style, from) ->
-            val name = if (style == "Regular") "armflash-verdana.ttf" else "armflash-verdanab.ttf"
-            runCatching {
-                val src = File(root, "opt/wine/share/wine/fonts/$from").readBytes()
-                File(fonts, name).writeBytes(FontRename.rename(src, "Verdana", style))
-            }.onFailure { Log.w(TAG, "verdana: ${it.message}") }.isSuccess &&
-                run(listOf("reg", "add", key, "/v", "ARMFlash Verdana${if (style == "Regular") "" else " Bold"} (TrueType)",
-                    "/t", "REG_SZ", "/d", "C:\\windows\\Fonts\\$name", "/f"), null).waitFor() == 0
-        }
-        if (ok) mark.writeText("")
-    }
-
-    /**
      * MFC 4.2 (mfc42.dll), which Windows always had and Wine does not: Netscape 4 needs it, and
      * with it every plugin platform that runs in Netscape (Cult3D, Live Picture, MapGuide and the
      * like). From Microsoft's Visual C++ 6 runtime, as winetricks gets it: the installer and the
@@ -356,13 +330,6 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
-        /**
-         * Box64's translation for a program that compiles its own code as it runs (a JIT): what
-         * Box64 switches to by itself when it sees Mono or Java's libjvm load
-         * (src/librarian/library.c). It only looks at Linux libraries, so a Windows runtime under
-         * Wine never gets it: Silverlight's .NET runtime.
-         */
-        val JIT_SAFE = mapOf("BOX64_DYNAREC_BIGBLOCK" to "0", "BOX64_DYNAREC_STRONGMEM" to "1")
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"

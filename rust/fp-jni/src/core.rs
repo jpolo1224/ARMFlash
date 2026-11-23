@@ -464,14 +464,14 @@ mod tests {
         let arcade: Vec<String> = r.ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         eprintln!("all {} platforms; not in arcade: {:?}", all.len(), all.iter().filter(|p| !arcade.contains(p)).collect::<Vec<_>>());
 
-        // The app's six platforms: the list, the whole tab, and a typed search.
-        let opts = r#"{"library":"arcade","platforms":["Flash","HTML5","Java","Shockwave","Silverlight","PopCap Plugin"]}"#;
+        // The app's five platforms: the list, the whole tab, and a typed search.
+        let opts = r#"{"library":"arcade","platforms":["Flash","HTML5","Java","Shockwave","PopCap Plugin"]}"#;
         let t = std::time::Instant::now();
-        eprintln!("six: {:?} in {:?}", platforms_with_games(opts), t.elapsed());
+        eprintln!("five: {:?} in {:?}", platforms_with_games(opts), t.elapsed());
         for q in ["", "mario"] {
             let t = std::time::Instant::now();
             let idx: serde_json::Value = serde_json::from_str(&search_index(q, opts, 120).unwrap()).unwrap();
-            eprintln!("six-platform index {q:?}: {} games in {:?}", idx["total"], t.elapsed());
+            eprintln!("five-platform index {q:?}: {} games in {:?}", idx["total"], t.elapsed());
         }
     }
 }

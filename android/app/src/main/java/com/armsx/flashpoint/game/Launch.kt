@@ -63,8 +63,11 @@ object Launch {
             ("basilisk" in app || "fpnavigator" in app || "firefox" in app) && platform == "flash" -> Runner.WEB
             else -> Runner.OTHER
         }
-        // Everything ARMFlash has no native player for runs the desktop's own Windows player.
-        val windows = !runner.ready && com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
+        // Everything ARMFlash has no native player for runs the desktop's own Windows player, except
+        // Silverlight: its .NET runtime reads its own data wrong now and then under Box64 (a timing
+        // race), so its games stay unsupported rather than half-working.
+        val windows = !runner.ready && runner != Runner.SILVERLIGHT &&
+            com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
         return LaunchPlan(if (windows) Runner.WINDOWS else runner, url)
     }
 }
