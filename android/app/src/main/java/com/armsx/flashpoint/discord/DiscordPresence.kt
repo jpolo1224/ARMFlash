@@ -224,6 +224,22 @@ object DiscordPresence {
     }
 
     /**
+     * The game's Flashpoint logo for Discord's large image, padded to a square (transparent) so
+     * all of it shows: Discord crops that image to a square, and most logos are wide (Plants vs.
+     * Zombies' is 493 x 85). Made by wsrv.nl, a free open-source image service Discord's media
+     * proxy fetches it through; the logo URL is public and nothing else is sent. The game id stays
+     * in it, so a friend's ARMFlash still finds the game (see [artFor]).
+     */
+    private fun squareArt(game: PlayingGame): String {
+        val id = game.id.lowercase()
+        if (id.length < 4) return game.logoUrl
+        val logo = game.logoUrl.substringBefore('?').substringAfter("://").ifBlank {
+            "infinity.unstable.life/images/Logos/${id.substring(0, 2)}/${id.substring(2, 4)}/$id.png"
+        }
+        return "https://wsrv.nl/?url=$logo&w=512&h=512&fit=contain&cbg=00000000&output=png"
+    }
+
+    /**
      * A friend's game art from their presence's large image: the Flashpoint logo of the game, which
      * Discord may hand back proxied ("mp:external/<hash>/https/host/path"). The game id in it gives
      * this device's own logo URL for that game.
@@ -408,7 +424,7 @@ object DiscordPresence {
             // Second line: the platform (Flash, HTML5, ...). Large image: the game's Flashpoint logo.
             putString(DiscordIpc.DATA_SERIAL, game?.platform.orEmpty())
             putString(DiscordIpc.DATA_TITLE, game?.title ?: where.orEmpty())
-            putString(DiscordIpc.DATA_COVER, game?.logoUrl.orEmpty())
+            putString(DiscordIpc.DATA_COVER, game?.let { squareArt(it) }.orEmpty())
             putString(DiscordIpc.DATA_RA, if (where != null) PLACE_STATE else lastRaPresence)
             putString(DiscordIpc.DATA_PARTY, party?.id.orEmpty())
             // A place is published as a title too, but it isn't a game: it keeps "Playing ARMFlash".
