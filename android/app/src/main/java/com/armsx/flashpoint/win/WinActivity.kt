@@ -191,7 +191,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         // TEST (remove once Silverlight runs): the calls +relay traces for it.
         if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) rt.relayOnly(listOf(
             "LoadLibraryW", "LoadLibraryExW", "LoadLibraryA", "LoadLibraryExA", "CreateFileW", "GlobalMemoryStatusEx", "CreateProcessW",
-        ).flatMap { listOf("KERNEL32.$it", "KERNELBASE.$it") } + listOf("USER32.LoadStringW", "USER32.MessageBoxW", "USER32.MessageBoxIndirectW"))
+        ).flatMap { listOf("KERNEL32.$it", "KERNELBASE.$it") } + listOf("USER32.LoadStringW", "USER32.MessageBoxW", "USER32.MessageBoxIndirectW", "USER32.PostMessageW"))
         rt.ensureMfc42(::say)
         if (SupportPacks.needsBrowser(this, packs) && !rt.ensureGecko(::say)) return
         val fp = drive

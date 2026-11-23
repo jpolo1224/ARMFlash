@@ -299,7 +299,11 @@ class WinRuntime(private val ctx: Context) {
 
     private fun drain(p: Process, tag: String) = Thread {
         // TEST (remove once Silverlight runs): a +relay trace's window and hook callbacks stay out of the log.
-        runCatching { p.inputStream.bufferedReader().forEachLine { if (RELAY_NOISE.none { n -> n in it }) Log.i(TAG, "$tag: $it") } }
+        runCatching {
+            p.inputStream.bufferedReader().forEachLine {
+                if (RELAY_NOISE.none { n -> n in it } || SILVERLIGHT_CODE.containsMatchIn(it)) Log.i(TAG, "$tag: $it")
+            }
+        }
     }.apply { isDaemon = true }.start()
 
     /** Every process this app started under Wine or X (they outlive their parents). */
@@ -333,7 +337,9 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
-        private val RELAY_NOISE = listOf("window proc ", "hook proc ", "winevent hook", "PE DLL (", "GlobalMemoryStatusEx() retval")
+        private val RELAY_NOISE = listOf("window proc ", "hook proc ", "winevent hook", "PE DLL (", "GlobalMemoryStatusEx() retval", "USER32.PostMessageW")
+        /** TEST: window procedures in, and calls from, agcore.dll and npctrl.dll (0x76E50000 to 0x77670000 here). */
+        private val SILVERLIGHT_CODE = Regex("""(window proc |ret=)7(6[eEfF]|7[0-6])[0-9a-fA-F]{5}\b""")
         /**
          * Box64's translation for a program that compiles its own code as it runs (a JIT): what
          * Box64 switches to by itself when it sees Mono or Java's libjvm load
