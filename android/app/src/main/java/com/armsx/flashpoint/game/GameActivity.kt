@@ -122,7 +122,9 @@ class GameActivity : ComponentActivity() {
         }
 
         val runner = Runner.valueOf(intent.getStringExtra(EXTRA_RUNNER) ?: Runner.WEB.name)
-        val url = intent.getStringExtra(EXTRA_URL) ?: return finish()
+        val live = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true)
+        val launchUrl = intent.getStringExtra(EXTRA_URL) ?: return finish()
+        val url = if (live) LiveSites.startUrl(intent.getStringExtra(EXTRA_GAME_ID).orEmpty(), launchUrl) else launchUrl
         val zips = intent.getStringArrayExtra(EXTRA_ZIPS).orEmpty()
 
         // PHP pages (unpacked by the launcher before the game started; here it is only pointed to).
@@ -132,9 +134,8 @@ class GameActivity : ComponentActivity() {
                 htdocs = intent.getStringExtra(EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
-                liveDomains = if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true))
-                    listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) +
-                        LiveSites.firstFor(intent.getStringExtra(EXTRA_GAME_ID).orEmpty())
+                liveDomains = if (live)
+                    listOfNotNull(Launch.siteOf(launchUrl)) + LiveSites.firstFor(intent.getStringExtra(EXTRA_GAME_ID).orEmpty())
                 else emptyList(),
             )
             zips.forEach { FpCore.mount(it) }

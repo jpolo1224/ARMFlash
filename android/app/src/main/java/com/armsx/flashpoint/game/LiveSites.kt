@@ -13,4 +13,12 @@ object LiveSites {
 
     /** The sites [gameId] runs from, marked for the game server ("!site": live before the pack). */
     fun firstFor(gameId: String): List<String> = FIRST[gameId].orEmpty().map { "!$it" }
+
+    /**
+     * Where [gameId] starts: over https when it runs from its live site, as the site itself does
+     * today. Happy Wheels' current code only runs from an https://totaljerkface.com address and
+     * otherwise loops forever (a blue page); desktop Chrome hid that by upgrading http on its own.
+     */
+    fun startUrl(gameId: String, url: String): String =
+        if (gameId in FIRST && url.startsWith("http://", ignoreCase = true)) "https://" + url.substring(7) else url
 }
