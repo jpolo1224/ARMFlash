@@ -183,7 +183,7 @@ private fun App(vm: BrowseVm) {
 
     Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
         if (!vm.dbReady) {
-            Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
+            if (vm.opening) Opening() else Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
         } else {
             BackHandler(enabled = vm.selected != null) { vm.clearSelection() }
             Shell(
@@ -219,6 +219,22 @@ private fun App(vm: BrowseVm) {
                 Modifier.align(Alignment.BottomCenter).padding(16.dp).background(Color(0xEE111111)).padding(12.dp),
             ) { Text(vm.status, color = Color.White) }
         }
+    }
+}
+
+/** Start-up while the game database opens (the first-run screen used to flash by meanwhile). */
+@Composable
+private fun Opening() {
+    Column(
+        Modifier.fillMaxSize().background(Fp.Browse).padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Image(painterResource(R.drawable.fp_logo), contentDescription = null, modifier = Modifier.height(120.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(stringResource(R.string.app_name), color = Color.White, fontWeight = FontWeight.Black, fontSize = 34.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("Opening the game database…", color = Fp.TextDim, fontSize = 14.sp)
     }
 }
 

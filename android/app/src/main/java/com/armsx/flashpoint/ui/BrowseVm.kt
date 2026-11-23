@@ -119,25 +119,33 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         if (library.hasDatabase()) openDatabase()
     }
 
-    fun openDatabase() = viewModelScope.launch {
-        status = "Opening database"
-        try {
-            dbGames = withContext(Dispatchers.IO) {
-                val all = FpCore.open(library.database.path)
-                // Home's count: the games ARMFlash offers, not every entry in the database.
-                runCatching { FpCore.total(SearchOpts(library = "arcade", platforms = OFFERED_PLATFORMS)) }.getOrDefault(all)
+    /** The database is opening: start-up shows a loading screen then, not the first-run one. */
+    var opening by mutableStateOf(false)
+        private set
+
+    fun openDatabase(): kotlinx.coroutines.Job {
+        opening = true
+        return viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { FpCore.open(library.database.path) }
+                loadPlatforms()
+                loadFeatured()
+                dbReady = true
+                refresh(immediate = true)
+                rerollPicks()
+                loadHomeRows()
+                loadGotd()
+                loadPlaylists()
+                // Home's count: the games ARMFlash offers, not every entry in the database. Last,
+                // so the screen does not wait for it.
+                dbGames = withContext(Dispatchers.IO) {
+                    runCatching { FpCore.total(SearchOpts(library = "arcade", platforms = OFFERED_PLATFORMS)) }.getOrDefault(0)
+                }
+            } catch (e: Exception) {
+                status = "Could not open the database: ${e.message}"
+            } finally {
+                opening = false
             }
-            loadPlatforms()
-            loadFeatured()
-            dbReady = true
-            status = ""
-            refresh(immediate = true)
-            rerollPicks()
-            loadHomeRows()
-            loadGotd()
-            loadPlaylists()
-        } catch (e: Exception) {
-            status = "Could not open the database: ${e.message}"
         }
     }
 

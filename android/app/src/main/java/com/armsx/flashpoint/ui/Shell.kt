@@ -168,7 +168,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("ARMFlash", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
-                    Text("${"%,d".format(vm.dbGames)} games", color = Fp.TextDim, fontSize = 13.sp)
+                    if (vm.dbGames > 0) Text("${"%,d".format(vm.dbGames)} games", color = Fp.TextDim, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
