@@ -150,10 +150,14 @@ private fun App(vm: BrowseVm) {
                             ctx, ready.game.id, ready.plan.runner, ready.plan.url, ready.zips,
                             vm.library.htdocs.path, vm.library.legacyBase, ready.game.title, vm.library.logoUrl(ready.game.id),
                         )
+                        // A Flash game desktop Flashpoint runs in its browser (Flashpoint Navigator):
+                        // remember that program, so Flash Player can take over from the pause menu.
+                        if (vm.isFlashPage(ready.game, ready.plan)) web.putExtra(com.armsx.flashpoint.win.WinActivity.EXTRA_APP, ready.game.applicationPath)
+                            .putExtra(com.armsx.flashpoint.win.WinActivity.EXTRA_PLATFORM, ready.game.primaryPlatform)
                         val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && com.armsx.flashpoint.game.FlashPrefs.player(ctx, ready.game.id) == "native"
                         playLauncher.launch(
                             when {
-                                ready.winApp != null -> com.armsx.flashpoint.win.WinActivity.intent(ctx, web, ready.winApp, ready.winArgs, vm.library.root.path)
+                                ready.winApp != null -> com.armsx.flashpoint.win.WinActivity.intent(ctx, web, ready.winApp, ready.winArgs, vm.library.root.path, ready.game.primaryPlatform)
                                 native -> com.armsx.flashpoint.game.RuffleActivity.intent(ctx, web)
                                 else -> web
                             },

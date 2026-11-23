@@ -158,14 +158,15 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val fpRoot = File(intent.getStringExtra(EXTRA_ROOT) ?: (application as com.armsx.flashpoint.FpApp).library.root.path)
         if (File(fpRoot, "FPSoftware").isDirectory) say("Moving the Windows players…")
         val drive = SupportPacks.drive(this, fpRoot)
-        SupportPacks.idFor(program())?.let { id ->
-            if (!SupportPacks.installed(drive, id)) {
-                say("Downloading the $id player…")
-                try {
-                    SupportPacks.install(drive, id) { d, t -> if (t > 0) say("Downloading the $id player… ${d * 100 / t}%") }
-                } catch (e: Exception) { say("Could not get the $id player: ${e.message}"); return }
-            }
+        for (id in SupportPacks.needed(this, program(), intent.getStringExtra(EXTRA_PLATFORM).orEmpty())) {
+            if (SupportPacks.installed(drive, id)) continue
+            val name = id.removePrefix("supportpack-").removePrefix("common-")
+            say("Downloading $name…")
+            try {
+                SupportPacks.install(drive, id) { d, t -> if (t > 0) say("Downloading $name… ${d * 100 / t}%") }
+            } catch (e: Exception) { say("Could not get $name: ${e.message}"); return }
         }
+        runCatching { SupportPacks.placeSecurePlayer(this, drive) }.onFailure { android.util.Log.w(WinRuntime.TAG, "secure player: ${it.message}") }
         try {
             FpCore.startServer(
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),
@@ -190,7 +191,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val args = WinRuntime.splitArgs(intent.getStringExtra(EXTRA_ARGS) ?: intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())
         val cwd = File(fp, app.replace('\\', '/').substringBeforeLast('/', ""))
         say("Starting the game…")
-        val p = rt.run(listOf("F:\\$app") + args, cwd.takeIf { it.isDirectory })
+        // A start script (startUnity.bat and the like) runs in Wine's cmd, as Windows would.
+        val command = if (app.endsWith(".bat", ignoreCase = true)) listOf("cmd", "/c", "F:\\$app") else listOf("F:\\$app")
+        val p = rt.run(command + args, cwd.takeIf { it.isDirectory })
         xq.execute {
             runCatching { x = XClient.connect(rt.socket.path) }.onFailure { say("Could not reach the virtual screen: ${it.message}") }
         }
@@ -453,13 +456,14 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_APP = "winApp"
         const val EXTRA_ARGS = "winArgs"
         const val EXTRA_ROOT = "fpRoot"
+        const val EXTRA_PLATFORM = "winPlatform"
         const val GAME_SERVER_PORT = 22500
         const val SCREEN_W = 1600
         const val SCREEN_H = 1200
 
-        fun intent(ctx: Context, base: Intent, app: String, args: String, fpRoot: String): Intent =
+        fun intent(ctx: Context, base: Intent, app: String, args: String, fpRoot: String, platform: String): Intent =
             Intent(base).setClass(ctx, WinActivity::class.java)
-                .putExtra(EXTRA_APP, app).putExtra(EXTRA_ARGS, args).putExtra(EXTRA_ROOT, fpRoot)
+                .putExtra(EXTRA_APP, app).putExtra(EXTRA_ARGS, args).putExtra(EXTRA_ROOT, fpRoot).putExtra(EXTRA_PLATFORM, platform)
     }
 }
 

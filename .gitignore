@@ -13,3 +13,5 @@ rust/fp-ruffle/target/
 android/app/.cxx/
 symbols/
 rust/tools/leakprobe/target/
+tools/winrt/fsp/*.exe
+tools/winrt/fsp/*.pdb

@@ -74,6 +74,8 @@ interface OverlayHost {
     val usesDriver: Boolean
     /** A Flash game: the pause menu offers the player and graphics choice. */
     val isFlash: Boolean get() = false
+    /** A Flash game that runs as a page (no native player; Flash Player means its own browser). */
+    val isFlashPage: Boolean get() = false
     /** Whether this player runs RetroArch shaders (native Flash), and how to tell it they changed. */
     val hasShaders: Boolean get() = false
     /** Errors Ruffle reported running this game (0 when it never struggled, or not Ruffle). */

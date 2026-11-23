@@ -55,14 +55,23 @@ class GameActivity : ComponentActivity() {
         override val logoUrl get() = intent.getStringExtra(EXTRA_LOGO).orEmpty()
         override val gameId get() = intent.getStringExtra(EXTRA_GAME_ID).orEmpty()
         override val usesDriver = false
-        override val isFlash get() = intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name
+        override val isFlash get() = intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name || isFlashPage
+        override val isFlashPage get() = intent.hasExtra(com.armsx.flashpoint.win.WinActivity.EXTRA_APP)
         override fun flashTrouble(): Long = consoleErrors
         override val runner get() = if (intent.getStringExtra(EXTRA_RUNNER) == Runner.FLASH.name) "Flash: Ruffle in the browser" else "Browser"
         override fun save(asDefault: Boolean) = layouts.save(gameId, overlay.layout, asDefault)
         override fun keyboard() = showKeyboard()
         override fun restart() {
             // A Flash game switched to the native player starts over there.
-            if (isFlash && FlashPrefs.player(this@GameActivity, gameId) == "native") {
+            val player = FlashPrefs.player(this@GameActivity, gameId)
+            if (isFlash && player == "flashplayer") {
+                // Flash Player under Wine: the standalone player for a SWF, the game's own browser
+                // with the plugin for a page (its program came along in the intent).
+                restarting = true
+                startActivity(Intent(intent).setClass(this@GameActivity, com.armsx.flashpoint.win.WinActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
+                finish()
+            } else if (isFlash && !isFlashPage && player == "native") {
                 restarting = true
                 startActivity(Intent(intent).setClass(this@GameActivity, RuffleActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))

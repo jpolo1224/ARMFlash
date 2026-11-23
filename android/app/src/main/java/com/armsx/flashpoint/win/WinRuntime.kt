@@ -75,6 +75,12 @@ class WinRuntime(private val ctx: Context) {
             "DISPLAY" to ":$DISPLAY_NO",
             // No Wine Mono or Gecko: their first-run download prompt blocks every later process.
             "WINEDLLOVERRIDES" to "mscoree,mshtml=",
+            // Every Java player (AppletViewer, Java in the browser, Web Start): a heap a 32-bit
+            // process can reserve here (the default asked for 620 MB and failed), Java2D's
+            // software pipeline (Wine has no Direct3D without OpenGL), and Windows' own random
+            // numbers first (see SupportPacks.JAVA_SECURITY).
+            "_JAVA_OPTIONS" to "-Xmx256m -Dsun.java2d.d3d=false -Dsun.java2d.noddraw=true " +
+                "-Djava.security.properties=F:\\FPSoftware\\.armflash\\java.security",
             // This glibc's System V shared memory asks a helper socket named here; with nothing
             // listening, shmget fails cleanly and Wine uses plain X images (unset, it crashes).
             "ANDROID_SYSVSHM_SERVER" to "${root.path}/tmp/.sysvshm",

@@ -412,6 +412,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     /** Download the active data pack if needed, then hand back everything the game needs. */
+    /** A Flash game desktop Flashpoint runs in a page in its browser (Flashpoint Navigator, Basilisk). */
+    fun isFlashPage(game: Game, plan: com.armsx.flashpoint.game.LaunchPlan) =
+        plan.runner == com.armsx.flashpoint.game.Runner.WEB && game.primaryPlatform.equals("Flash", ignoreCase = true) &&
+            com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
+
     fun prepare(game: Game, onReady: (Ready) -> Unit) = viewModelScope.launch {
         val plan = Launch.plan(game)
         if (!plan.runner.ready) {
@@ -441,10 +446,13 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         // Windows players (and Flash Player for a Flash game set to it): the runtime, then the
         // game's support pack, downloaded the first time.
         val ctx = getApplication<Application>()
-        val flashPlayer = plan.runner == com.armsx.flashpoint.game.Runner.FLASH &&
+        val flashPage = isFlashPage(game, plan)
+        val flashPlayer = (plan.runner == com.armsx.flashpoint.game.Runner.FLASH || flashPage) &&
             com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id) == "flashplayer"
         val winApp = when {
             plan.runner == com.armsx.flashpoint.game.Runner.WINDOWS -> game.applicationPath
+            // Its own browser with the Flash plugin, as on the desktop.
+            flashPlayer && flashPage -> game.applicationPath
             flashPlayer -> game.applicationPath.takeIf { "flashplayer" in it.lowercase() } ?: DEFAULT_FLASH_PLAYER
             else -> null
         }
@@ -453,16 +461,15 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 status = "This game needs Windows support: install it in Config, under Windows Players."
                 return@launch
             }
-            val id = com.armsx.flashpoint.win.SupportPacks.idFor(winApp)
-            val drive = withContext(Dispatchers.IO) { com.armsx.flashpoint.win.SupportPacks.drive(ctx, library.root) }
-            if (id != null && !com.armsx.flashpoint.win.SupportPacks.installed(drive, id)) {
+            val packs = com.armsx.flashpoint.win.SupportPacks
+            val drive = withContext(Dispatchers.IO) { packs.drive(ctx, library.root) }
+            val missing = withContext(Dispatchers.IO) { packs.needed(ctx, winApp, game.primaryPlatform).filterNot { packs.installed(drive, it) } }
+            for (id in missing) {
                 downloads[game.id] = Download(0, 0)
                 try {
-                    withContext(Dispatchers.IO) {
-                        com.armsx.flashpoint.win.SupportPacks.install(drive, id) { d, t -> downloads[game.id] = Download(d, t) }
-                    }
+                    withContext(Dispatchers.IO) { packs.install(drive, id) { d, t -> downloads[game.id] = Download(d, t) } }
                 } catch (e: Exception) {
-                    status = "Could not get the $id player: ${e.message}"
+                    status = "Could not get ${id.removePrefix("supportpack-")}: ${e.message}"
                     return@launch
                 } finally {
                     downloads.remove(game.id)

@@ -486,8 +486,9 @@ private fun RendererCard(host: OverlayHost) {
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        HorizontalOptions("Player", FlashPrefs.players, player, onSelect = { player = it; FlashPrefs.setGamePlayer(ctx, host.gameId, it) })
-        if (FlashPrefs.player(ctx, host.gameId) == "native") {
+        val players = if (host.isFlashPage) FlashPrefs.players.filter { it.first != "native" } else FlashPrefs.players
+        HorizontalOptions("Player", players, player, onSelect = { player = it; FlashPrefs.setGamePlayer(ctx, host.gameId, it) })
+        if (!host.isFlashPage && FlashPrefs.player(ctx, host.gameId) == "native") {
             Spacer(Modifier.height(6.dp))
             HorizontalOptions("Graphics", FlashPrefs.backends, backend, onSelect = { backend = it; FlashPrefs.setGameBackend(ctx, host.gameId, it) })
         }
