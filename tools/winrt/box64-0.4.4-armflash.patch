@@ -54,6 +54,132 @@ index 2745893..749c1f3 100644
                  sigcontext->uc_mcontext.gregs[X64_ERR] |= 2;
          }
          if(info->si_code == SEGV_ACCERR && old_code)
+diff --git a/src/wrapped/generated/functions_list.txt b/src/wrapped/generated/functions_list.txt
+index 47f4c0d..3132fa6 100644
+--- a/src/wrapped/generated/functions_list.txt
++++ b/src/wrapped/generated/functions_list.txt
+@@ -688,7 +688,6 @@
+ #() iFppp
+ #() iFppH
+ #() iFpOi
+-#() iFpOu
+ #() iFpON
+ #() iFpSi
+ #() iFpSu
+@@ -5497,6 +5496,7 @@ wrappedlibc:
+   - register_printf_type
+   - setcontext
+   - setjmp
++  - shm_unlink
+   - stime
+   - uname
+ - CFp:
+@@ -5652,6 +5652,8 @@ wrappedlibc:
+   - dprintf
+ - iFipA:
+   - vdprintf
++- iFpii:
++  - shm_open
+ - iFpLi:
+   - mprotect
+ - iFpLp:
+@@ -6434,10 +6436,13 @@ wrappedlibrt:
+   - aio_read64
+   - aio_write
+   - aio_write64
++  - shm_unlink
+ - iFip:
+   - aio_cancel
+ - iFipp:
+   - timer_create
++- iFpii:
++  - shm_open
+ - iFipip:
+   - lio_listio
+ wrappedlibsm:
+diff --git a/src/wrapped/generated/wrappedlibctypes.h b/src/wrapped/generated/wrappedlibctypes.h
+index d01566c..5d9e6c2 100644
+--- a/src/wrapped/generated/wrappedlibctypes.h
++++ b/src/wrapped/generated/wrappedlibctypes.h
+@@ -60,6 +60,7 @@ typedef int32_t (*iFipu_t)(int32_t, void*, uint32_t);
+ typedef int32_t (*iFipp_t)(int32_t, void*, void*);
+ typedef int32_t (*iFipV_t)(int32_t, void*, ...);
+ typedef int32_t (*iFipA_t)(int32_t, void*, va_list);
++typedef int32_t (*iFpii_t)(void*, int32_t, int32_t);
+ typedef int32_t (*iFpLi_t)(void*, uintptr_t, int32_t);
+ typedef int32_t (*iFpLp_t)(void*, uintptr_t, void*);
+ typedef int32_t (*iFppi_t)(void*, void*, int32_t);
+@@ -150,6 +151,7 @@ typedef int32_t (*iFppipppp_t)(void*, void*, int32_t, void*, void*, void*, void*
+ 	GO(register_printf_type, iFp_t) \
+ 	GO(setcontext, iFp_t) \
+ 	GO(setjmp, iFp_t) \
++	GO(shm_unlink, iFp_t) \
+ 	GO(stime, iFp_t) \
+ 	GO(uname, iFp_t) \
+ 	GO(_ITM_RU1, CFp_t) \
+@@ -262,6 +264,7 @@ typedef int32_t (*iFppipppp_t)(void*, void*, int32_t, void*, void*, void*, void*
+ 	GO(__printf_chk, iFipV_t) \
+ 	GO(dprintf, iFipV_t) \
+ 	GO(vdprintf, iFipA_t) \
++	GO(shm_open, iFpii_t) \
+ 	GO(mprotect, iFpLi_t) \
+ 	GO(init_module, iFpLp_t) \
+ 	GO(ftw, iFppi_t) \
+diff --git a/src/wrapped/generated/wrappedlibrttypes.h b/src/wrapped/generated/wrappedlibrttypes.h
+index 1b1d124..320f4d9 100644
+--- a/src/wrapped/generated/wrappedlibrttypes.h
++++ b/src/wrapped/generated/wrappedlibrttypes.h
+@@ -14,6 +14,7 @@
+ typedef int32_t (*iFp_t)(void*);
+ typedef int32_t (*iFip_t)(int32_t, void*);
+ typedef int32_t (*iFipp_t)(int32_t, void*, void*);
++typedef int32_t (*iFpii_t)(void*, int32_t, int32_t);
+ typedef int32_t (*iFipip_t)(int32_t, void*, int32_t, void*);
+ 
+ #define SUPER() ADDED_FUNCTIONS() \
+@@ -21,8 +22,10 @@ typedef int32_t (*iFipip_t)(int32_t, void*, int32_t, void*);
+ 	GO(aio_read64, iFp_t) \
+ 	GO(aio_write, iFp_t) \
+ 	GO(aio_write64, iFp_t) \
++	GO(shm_unlink, iFp_t) \
+ 	GO(aio_cancel, iFip_t) \
+ 	GO(timer_create, iFipp_t) \
++	GO(shm_open, iFpii_t) \
+ 	GO(lio_listio, iFipip_t)
+ 
+ #endif // __wrappedlibrtTYPES_H_
+diff --git a/src/wrapped/generated/wrapper.c b/src/wrapped/generated/wrapper.c
+index d1ac4cf..95de3c1 100644
+--- a/src/wrapped/generated/wrapper.c
++++ b/src/wrapped/generated/wrapper.c
+@@ -723,7 +723,6 @@ typedef int32_t (*iFppL_t)(void*, void*, uintptr_t);
+ typedef int32_t (*iFppp_t)(void*, void*, void*);
+ typedef int32_t (*iFppH_t)(void*, void*, unsigned __int128);
+ typedef int32_t (*iFpOi_t)(void*, int32_t, int32_t);
+-typedef int32_t (*iFpOu_t)(void*, int32_t, uint32_t);
+ typedef int32_t (*iFpON_t)(void*, int32_t, ...);
+ typedef int32_t (*iFpSi_t)(void*, void*, int32_t);
+ typedef int32_t (*iFpSu_t)(void*, void*, uint32_t);
+@@ -4978,7 +4977,6 @@ void iFppL(x64emu_t *emu, uintptr_t fcn) { iFppL_t fn = (iFppL_t)fcn; R_RAX=(int
+ void iFppp(x64emu_t *emu, uintptr_t fcn) { iFppp_t fn = (iFppp_t)fcn; R_RAX=(int)fn((void*)R_RDI, (void*)R_RSI, (void*)R_RDX); }
+ void iFppH(x64emu_t *emu, uintptr_t fcn) { iFppH_t fn = (iFppH_t)fcn; R_RAX=(int)fn((void*)R_RDI, (void*)R_RSI, (unsigned __int128)R_RDX + ((unsigned __int128)R_RCX << 64)); }
+ void iFpOi(x64emu_t *emu, uintptr_t fcn) { iFpOi_t fn = (iFpOi_t)fcn; R_RAX=(int)fn((void*)R_RDI, of_convert((int32_t)R_RSI), (int32_t)R_RDX); }
+-void iFpOu(x64emu_t *emu, uintptr_t fcn) { iFpOu_t fn = (iFpOu_t)fcn; R_RAX=(int)fn((void*)R_RDI, of_convert((int32_t)R_RSI), (uint32_t)R_RDX); }
+ void iFpON(x64emu_t *emu, uintptr_t fcn) { iFpON_t fn = (iFpON_t)fcn; R_RAX=(int)fn((void*)R_RDI, of_convert((int32_t)R_RSI), (void*)R_RDX); }
+ void iFpSi(x64emu_t *emu, uintptr_t fcn) { iFpSi_t fn = (iFpSi_t)fcn; R_RAX=(int)fn((void*)R_RDI, io_convert((void*)R_RSI), (int32_t)R_RDX); }
+ void iFpSu(x64emu_t *emu, uintptr_t fcn) { iFpSu_t fn = (iFpSu_t)fcn; R_RAX=(int)fn((void*)R_RDI, io_convert((void*)R_RSI), (uint32_t)R_RDX); }
+diff --git a/src/wrapped/generated/wrapper.h b/src/wrapped/generated/wrapper.h
+index bc01129..86cedef 100644
+--- a/src/wrapped/generated/wrapper.h
++++ b/src/wrapped/generated/wrapper.h
+@@ -725,7 +725,6 @@ void iFppL(x64emu_t *emu, uintptr_t fnc);
+ void iFppp(x64emu_t *emu, uintptr_t fnc);
+ void iFppH(x64emu_t *emu, uintptr_t fnc);
+ void iFpOi(x64emu_t *emu, uintptr_t fnc);
+-void iFpOu(x64emu_t *emu, uintptr_t fnc);
+ void iFpON(x64emu_t *emu, uintptr_t fnc);
+ void iFpSi(x64emu_t *emu, uintptr_t fnc);
+ void iFpSu(x64emu_t *emu, uintptr_t fnc);
 diff --git a/src/wrapped/wrappedlib_init.h b/src/wrapped/wrappedlib_init.h
 index c861228..57d8b03 100644
 --- a/src/wrapped/wrappedlib_init.h
@@ -76,10 +202,334 @@ index c861228..57d8b03 100644
  #ifdef ALTNAME
              lib->w.lib = dlopen(ALTNAME, RTLD_LAZY | RTLD_GLOBAL);
 diff --git a/src/wrapped/wrappedlibc.c b/src/wrapped/wrappedlibc.c
-index c995a0c..e778ccd 100644
+index c995a0c..5ca20ab 100644
 --- a/src/wrapped/wrappedlibc.c
 +++ b/src/wrapped/wrappedlibc.c
-@@ -3597,11 +3597,20 @@ static int is_elf_or_pe(int fd)
+@@ -2256,13 +2256,68 @@ void CreateCpuCacheSize(int fd, int cpu, int index)
+ }
+ 
+ #ifdef ANDROID
+-static int shm_open(const char *name, int oflag, mode_t mode) {
++static int box_shm_open(const char *name, int oflag, mode_t mode) {
+     return -1;
+ }
+-static int shm_unlink(const char *name) {
++static int box_shm_unlink(const char *name) {
+     return -1;
+ }
++#elif defined(FLASHARM_NO_HOST_EXEC)
++// ARMFlash: the base system's glibc was built with Winlator's shared memory folder
++// (/data/data/com.winlator/files/rootfs/tmp/shm/, 45 characters) and copies exactly that many
++// bytes into every path. Relocated to ARMFlash's shorter folder (NUL padded), each path ended at
++// the folder itself, which open() refuses (EISDIR, reported as EINVAL): Wine's esync could never
++// start, and Box64's own fake /proc files failed too. Paths are built here instead, in
++// $TMPDIR/shm/ (ARMFlash's r/tmp/shm), with glibc's name rules and error codes.
++static int armflash_shm_path(char* out, size_t outlen, const char* name)
++{
++    while(*name == '/')
++        ++name;
++    size_t n = strlen(name);
++    if(!n || memchr(name, '/', n)) {
++        errno = EINVAL;
++        return -1;
++    }
++    const char* tmp = getenv("TMPDIR");
++    int len = snprintf(out, outlen, "%s/shm/%s", (tmp && *tmp) ? tmp : "/dev", name);
++    if(len < 0 || (size_t)len >= outlen) {
++        errno = ENAMETOOLONG;
++        return -1;
++    }
++    return 0;
++}
++static int box_shm_open(const char *name, int oflag, mode_t mode) {
++    char path[4096];
++    if(armflash_shm_path(path, sizeof(path), name))
++        return -1;
++    int fd = open(path, oflag | O_NOFOLLOW | O_CLOEXEC, mode);
++    if(fd < 0 && errno == EISDIR)
++        errno = EINVAL;
++    return fd;
++}
++static int box_shm_unlink(const char *name) {
++    char path[4096];
++    if(armflash_shm_path(path, sizeof(path), name))
++        return -1;
++    int ret = unlink(path);
++    if(ret < 0 && errno == EPERM)
++        errno = EACCES;
++    return ret;
++}
++#else
++#define box_shm_open shm_open
++#define box_shm_unlink shm_unlink
+ #endif
++EXPORT int my_shm_open(x64emu_t* emu, const char* name, int oflag, int mode)
++{
++    (void)emu;
++    return box_shm_open(name, of_convert(oflag), (mode_t)mode);
++}
++EXPORT int my_shm_unlink(x64emu_t* emu, const char* name)
++{
++    (void)emu;
++    return box_shm_unlink(name);
++}
+ 
+ #define TMP_CPUINFO "box64_tmpcpuinfo"
+ #define TMP_CPUTOPO "box64_tmpcputopo%d"
+@@ -2290,9 +2345,9 @@ EXPORT int32_t my_open(x64emu_t* emu, void* pathname, int32_t flags, uint32_t mo
+             dummy = write(tmp, emu->context->argv[i], strlen(emu->context->argv[i])+1);
+         lseek(tmp, 0, SEEK_SET);
+         #else
+-        int tmp = shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode);
+-        shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
+         int dummy = write(tmp, emu->context->fullpath, strlen(emu->context->fullpath)+1);
+         (void)dummy;
+         for (int i=1; i<emu->context->argc; ++i)
+@@ -2308,18 +2363,18 @@ EXPORT int32_t my_open(x64emu_t* emu, void* pathname, int32_t flags, uint32_t mo
+     #ifndef NOALIGN
+     if(strcmp((const char*)pathname, "/proc/cpuinfo")==0) {
+         // special case for cpuinfo
+-        int tmp = shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCPUInfoFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(!strcmp((const char*)pathname, "/sys/bus/clocksource/devices/clocksource0/current_clocksource")) {
+         // special case to say tsc as current clocksource
+-        int tmp = shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateClocksourceFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+@@ -2327,27 +2382,27 @@ EXPORT int32_t my_open(x64emu_t* emu, void* pathname, int32_t flags, uint32_t mo
+     int cpu, index;
+     if(isSysCpuCache(pathname, "ways_of_associativity", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(isSysCpuCache(pathname, "coherency_line_size", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheCoher(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(isSysCpuCache(pathname, "size", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+@@ -2359,9 +2414,9 @@ EXPORT int32_t my_open(x64emu_t* emu, void* pathname, int32_t flags, uint32_t mo
+     #endif
+ 
+     if (!strcmp((const char*)pathname, "box64-custom-bashrc-file")) {
+-        int tmp = shm_open("box64-custom-bashrc-file", O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open("box64-custom-bashrc-file", O_RDWR | O_CREAT, S_IRWXU);
+         if (tmp < 0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink("box64-custom-bashrc-file");
++        box_shm_unlink("box64-custom-bashrc-file");
+         const char* content = "if [ -f ~/.bashrc ]\nthen\n. ~/.bashrc\nfi\nexport PS1=\"(box64) \"$PS1\nexport BOX64_NOBANNER=1\nexport BOX64_LOG=0\n";
+         size_t dummy;
+         dummy = write(tmp, content, strlen(content));
+@@ -2433,9 +2488,9 @@ EXPORT int32_t my_open64(x64emu_t* emu, void* pathname, int32_t flags, uint32_t
+             dummy = write(tmp, emu->context->argv[i], strlen(emu->context->argv[i])+1);
+         lseek64(tmp, 0, SEEK_SET);
+         #else
+-        int tmp = shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open64(pathname, flags, mode);
+-        shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
+         int dummy = write(tmp, emu->context->fullpath, strlen(emu->context->fullpath)+1);
+         (void)dummy;
+         for (int i=1; i<emu->context->argc; ++i)
+@@ -2451,27 +2506,27 @@ EXPORT int32_t my_open64(x64emu_t* emu, void* pathname, int32_t flags, uint32_t
+     #ifndef NOALIGN
+     if(strcmp((const char*)pathname, "/proc/cpuinfo")==0) {
+         // special case for cpuinfo
+-        int tmp = shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open64(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCPUInfoFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if (BOX64ENV(maxcpu) && (!strcmp(pathname, "/sys/devices/system/cpu/present") || !strcmp(pathname, "/sys/devices/system/cpu/online")) && (box64_sysinfo.ncpu >= BOX64ENV(maxcpu))) {
+         // special case for cpu present (to limit to 64 cores)
+-        int tmp = shm_open(TMP_CPUPRESENT, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUPRESENT, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open64(pathname, mode); // error fallback
+-        shm_unlink(TMP_CPUPRESENT);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUPRESENT);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCPUPresentFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(!strcmp((const char*)pathname, "/sys/bus/clocksource/devices/clocksource0/current_clocksource")) {
+         // special case to say tsc as current clocksource
+-        int tmp = shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open64(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateClocksourceFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+@@ -2479,27 +2534,27 @@ EXPORT int32_t my_open64(x64emu_t* emu, void* pathname, int32_t flags, uint32_t
+     int cpu, index;
+     if(isSysCpuCache(pathname, "ways_of_associativity", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(isSysCpuCache(pathname, "coherency_line_size", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheCoher(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+     }
+     if(isSysCpuCache(pathname, "size", &cpu, &index) && !FileExist(pathname, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return open(pathname, flags, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return tmp;
+@@ -2511,9 +2566,9 @@ EXPORT int32_t my_open64(x64emu_t* emu, void* pathname, int32_t flags, uint32_t
+ EXPORT FILE* my_fopen64(x64emu_t* emu, const char* path, const char* mode)
+ {
+     if(isProcSelf((const char*)path, "cmdline")) {
+-        int tmp = shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CMDLINE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode);
+-        shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CMDLINE);    // remove the shm file, but it will still exist because it's currently in use
+         int dummy = write(tmp, emu->context->fullpath, strlen(emu->context->fullpath)+1);
+         (void)dummy;
+         for (int i=1; i<emu->context->argc; ++i)
+@@ -2527,9 +2582,9 @@ EXPORT FILE* my_fopen64(x64emu_t* emu, const char* path, const char* mode)
+     }
+     if(isProcSelf(path, "maps")) {
+         // special case for self memory map
+-        int tmp = shm_open(TMP_MEMMAP, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_MEMMAP, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_MEMMAP);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_MEMMAP);    // remove the shm file, but it will still exist because it's currently in use
+         CreateMemorymapFile(emu->context, tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+@@ -2537,27 +2592,27 @@ EXPORT FILE* my_fopen64(x64emu_t* emu, const char* path, const char* mode)
+     #ifndef NOALIGN
+     if(strcmp(path, "/proc/cpuinfo")==0) {
+         // special case for cpuinfo
+-        int tmp = shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUINFO, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUINFO);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCPUInfoFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+     }
+     if (BOX64ENV(maxcpu) && (!strcmp(path, "/sys/devices/system/cpu/present") || !strcmp(path, "/sys/devices/system/cpu/online")) && (box64_sysinfo.ncpu >= BOX64ENV(maxcpu))) {
+         // special case for cpu present (to limit to 64 cores)
+-        int tmp = shm_open(TMP_CPUPRESENT, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUPRESENT, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CPUPRESENT);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUPRESENT);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCPUPresentFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+     }
+     if(strcmp(path, "/sys/bus/clocksource/devices/clocksource0/current_clocksource")==0) {
+         // special case to say tsc as current clocksource
+-        int tmp = shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CLOCKSOURCE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CLOCKSOURCE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateClocksourceFile(tmp);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+@@ -2565,27 +2620,27 @@ EXPORT FILE* my_fopen64(x64emu_t* emu, const char* path, const char* mode)
+     int cpu=0, index=0;
+     if(isSysCpuCache(path, "ways_of_associativity", &cpu, &index) && !FileExist(path, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_ASSOC, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_ASSOC);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+     }
+     if(isSysCpuCache(path, "coherency_line_size", &cpu, &index) && !FileExist(path, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_COHER, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_COHER);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheCoher(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+     }
+     if(isSysCpuCache(path, "size", &cpu, &index) && !FileExist(path, IS_FILE)) {
+         // Create a dummy one
+-        int tmp = shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
++        int tmp = box_shm_open(TMP_CPUCACHE_SIZE, O_RDWR | O_CREAT, S_IRWXU);
+         if(tmp<0) return fopen64(path, mode); // error fallback
+-        shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
++        box_shm_unlink(TMP_CPUCACHE_SIZE);    // remove the shm file, but it will still exist because it's currently in use
+         CreateCpuCacheAssoc(tmp, cpu, index);
+         lseek(tmp, 0, SEEK_SET);
+         return fdopen(tmp, mode);
+@@ -3597,11 +3652,20 @@ static int is_elf_or_pe(int fd)
      return !memcmp(magic, "PE\0\0", sizeof(magic));
  }
  
@@ -101,7 +551,7 @@ index c995a0c..e778ccd 100644
      int e = errno;
      if(emu && box64_is32bits && ret!=MAP_FAILED && ((ret>(void*)0xc0000000) || (ret+length>(void*)0xc0000000))) {
          // do not allow allocating memory that high for 32bits process
-@@ -3772,7 +3781,7 @@ EXPORT int my_mprotect(x64emu_t* emu, void *addr, unsigned long len, int prot)
+@@ -3772,7 +3836,7 @@ EXPORT int my_mprotect(x64emu_t* emu, void *addr, unsigned long len, int prot)
      if(emu && (BOX64ENV(log)>=LOG_DEBUG || BOX64ENV(dynarec_log)>=LOG_DEBUG)) {printf_log(LOG_NONE, "mprotect(%p, 0x%lx, 0x%x)\n", addr, len, prot);}
      if(prot&PROT_WRITE)
          prot|=PROT_READ;    // PROT_READ is implicit with PROT_WRITE on x86_64
@@ -110,6 +560,31 @@ index c995a0c..e778ccd 100644
      if(!ret && len) {
          updateProtection((uintptr_t)addr, len, prot);
      }
+@@ -4030,9 +4094,9 @@ EXPORT int my_memfd_create(x64emu_t* emu, void* name, uint32_t flags)
+     uint32_t fl = O_RDWR | O_CREAT;
+     if(flags&MFD_CLOEXEC)
+         fl |= O_CLOEXEC;
+-    int tmp = shm_open(name, fl, S_IRWXU);
++    int tmp = box_shm_open(name, fl, S_IRWXU);
+     if(tmp<0) return -1;
+-    shm_unlink(name);    // remove the shm file, but it will still exist because it's currently in use
++    box_shm_unlink(name);    // remove the shm file, but it will still exist because it's currently in use
+     return tmp;
+ }
+ #endif
+diff --git a/src/wrapped/wrappedlibc_private.h b/src/wrapped/wrappedlibc_private.h
+index c147d76..8538d83 100644
+--- a/src/wrapped/wrappedlibc_private.h
++++ b/src/wrapped/wrappedlibc_private.h
+@@ -1860,6 +1860,8 @@ GOW(sgetsgent_r, iFpppLp)
+ #endif
+ GO(sgetspent, pFp)
+ GOW(sgetspent_r, iFpppLp)
++GOM(shm_open, iFEpii)
++GOM(shm_unlink, iFEp)
+ GO(shmat, pFipi)
+ GO(shmctl, iFiip)
+ GO(shmdt, iFp)
 diff --git a/src/wrapped/wrappedlibgl.c b/src/wrapped/wrappedlibgl.c
 index c67a36e..15b80f7 100644
 --- a/src/wrapped/wrappedlibgl.c
@@ -122,6 +597,36 @@ index c67a36e..15b80f7 100644
          lib->path = strdup(BOX64ENV(libgl));                                    \
      }
  
+diff --git a/src/wrapped/wrappedlibrt.c b/src/wrapped/wrappedlibrt.c
+index 438b331..cdba2bb 100644
+--- a/src/wrapped/wrappedlibrt.c
++++ b/src/wrapped/wrappedlibrt.c
+@@ -23,6 +23,10 @@
+ #include "box64context.h"
+ #include "emu/x64emu_private.h"
+ 
++// shm_open/shm_unlink are libc's (see wrappedlibc.c: ARMFlash builds the paths itself).
++int my_shm_open(x64emu_t* emu, const char* name, int oflag, int mode);
++int my_shm_unlink(x64emu_t* emu, const char* name);
++
+ #undef aio_suspend
+ #undef aio_return
+ #undef aio_write
+diff --git a/src/wrapped/wrappedlibrt_private.h b/src/wrapped/wrappedlibrt_private.h
+index e6a8214..75d1586 100644
+--- a/src/wrapped/wrappedlibrt_private.h
++++ b/src/wrapped/wrappedlibrt_private.h
+@@ -40,8 +40,8 @@ GO(mq_setattr, iFipp)
+ GO(mq_timedreceive, lFipLpp)
+ GO(mq_timedsend, iFipLup)
+ GO(mq_unlink, iFp)
+-GO(shm_open, iFpOu)
+-GO(shm_unlink, iFp)
++GOM(shm_open, iFEpii)
++GOM(shm_unlink, iFEp)
+ GOM(timer_create, iFEipp)
+ GO(timer_delete, iFp)
+ GO(timer_getoverrun, iFp)
 diff --git a/src/wrapped/wrappedlibx11.c b/src/wrapped/wrappedlibx11.c
 index 502cd85..7a59db3 100644
 --- a/src/wrapped/wrappedlibx11.c

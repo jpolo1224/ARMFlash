@@ -17,7 +17,9 @@ the small plugins) inside ARMFlash, Play-compliant (target SDK stays current).
    PROT_EXEC; the dynarec only reads them; X errors Wine did not expect are logged instead of ending the program;
    and a fault the kernel reports as a write (ESR_EL1.WnR) reaches Wine as a write, where Box64's
    own opcode guess misses SSE stores with a 66/F2/F3 prefix and Wine then turned write-watch
-   faults into access violations, killing Silverlight's .NET runtime), ships as `libbox64.so` with its ELF interpreter set
+   faults into access violations, killing Silverlight's .NET runtime; and shm_open/shm_unlink build their
+   paths in $TMPDIR/shm/ themselves, because the base system's glibc copies Winlator's 45-character shm folder
+   and the relocated (shorter) one ended every name at the folder, so Wine's esync never started), ships as `libbox64.so` with its ELF interpreter set
    (patchelf) to `/data/data/com.armsx.flasharm/r/ld`, a link the app makes to `libldlinux.so`.
    Box64 can then start, and re-start itself for every Wine process.
 3. The glibc base system with Wine 10.10 (WoW64) lives in `<data>/r`. Today it is Winlator's
