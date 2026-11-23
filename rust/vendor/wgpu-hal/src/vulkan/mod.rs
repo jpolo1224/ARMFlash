@@ -1046,6 +1046,8 @@ struct TempTextureViewKey {
 // be reset for reused encoders in `begin_encoding`.
 pub struct CommandEncoder {
     raw: vk::CommandPool,
+    /// ARMFlash: the queue family `raw` was made for, to make its replacement.
+    family_index: u32,
     device: Arc<DeviceShared>,
 
     /// The current command buffer, if `self` is in the ["recording"]

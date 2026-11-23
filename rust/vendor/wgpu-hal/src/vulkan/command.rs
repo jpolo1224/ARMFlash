@@ -5,8 +5,9 @@ use core::{mem, ops::Range};
 use hashbrown::hash_map::Entry;
 
 const ALLOCATION_GRANULARITY: u32 = 16;
-/// ARMFlash: spare command buffers a pool keeps between resets (see `reset_all`).
-const MAX_FREE_COMMAND_BUFFERS: usize = 32;
+/// ARMFlash: past this many command buffers, a pool is replaced on reset (see `reset_all`).
+const MAX_FREE_COMMAND_BUFFERS: usize = 256;
+static POOLS_REPLACED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 const DST_IMAGE_LAYOUT: vk::ImageLayout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
 
 impl super::Texture {
@@ -187,22 +188,38 @@ impl crate::CommandEncoder for super::CommandEncoder {
         for (_, framebuffer) in self.framebuffers.drain() {
             unsafe { self.device.raw.destroy_framebuffer(framebuffer, None) };
         }
-        // ARMFlash: upstream keeps every command buffer this pool ever needed at its busiest
-        // frame, each holding its GPU memory (a plain pool reset keeps it), so a game with a
-        // burst of passes (Ninja Painter between levels) left thousands of them behind until the
-        // process hit Android's mapping cap. Free the ones past a small spare set, and when a
-        // burst happened, give the pool's memory back to the driver as well.
-        let trimmed = self.free.len() > MAX_FREE_COMMAND_BUFFERS;
-        if trimmed {
-            let excess = self.free.split_off(MAX_FREE_COMMAND_BUFFERS);
-            unsafe { self.device.raw.free_command_buffers(self.raw, &excess) };
+        // ARMFlash: cached views of destroyed textures would otherwise stay until the encoder
+        // itself goes away. Every command buffer is done by now, so nothing still uses them.
+        for (_, view) in self.temp_texture_views.drain() {
+            unsafe { self.device.raw.destroy_image_view(view.raw, None) };
         }
-        let flags = if trimmed {
-            vk::CommandPoolResetFlags::RELEASE_RESOURCES
-        } else {
-            vk::CommandPoolResetFlags::default()
+        // ARMFlash: upstream keeps every command buffer this pool ever needed at its busiest
+        // frame, each holding driver memory, so a game with a burst of passes (Ninja Painter
+        // between levels) left thousands behind until the process hit Android's mapping cap.
+        // Freeing single buffers is not enough: drivers may keep freed buffers cached in the
+        // pool. After a burst, swap in a fresh pool instead; destroying a pool frees everything
+        // it ever made on every driver.
+        if self.free.len() > MAX_FREE_COMMAND_BUFFERS {
+            let vk_info = vk::CommandPoolCreateInfo::default()
+                .queue_family_index(self.family_index)
+                .flags(vk::CommandPoolCreateFlags::TRANSIENT);
+            if let Ok(fresh) = unsafe { self.device.raw.create_command_pool(&vk_info, None) } {
+                let old = core::mem::replace(&mut self.raw, fresh);
+                let dropped = self.free.len();
+                self.free.clear();
+                unsafe { self.device.raw.destroy_command_pool(old, None) };
+                let n = POOLS_REPLACED.fetch_add(1, core::sync::atomic::Ordering::Relaxed) + 1;
+                if n <= 4 || n % 64 == 0 {
+                    log::info!("ARMFlash: replaced command pool after a burst of {dropped} command buffers ({n} so far)");
+                }
+                return;
+            }
+        }
+        let _ = unsafe {
+            self.device
+                .raw
+                .reset_command_pool(self.raw, vk::CommandPoolResetFlags::default())
         };
-        let _ = unsafe { self.device.raw.reset_command_pool(self.raw, flags) };
     }
 
     unsafe fn transition_buffers<'a, T>(&mut self, barriers: T)

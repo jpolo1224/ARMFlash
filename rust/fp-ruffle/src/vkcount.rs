@@ -94,12 +94,28 @@ struct CbAllocInfo { s_type: i32, p_next: *const c_void, pool: u64, level: i32, 
 unsafe extern "system" fn alloc_cb(d: vk::Device, info: *const CbAllocInfo, out: *mut *mut c_void) -> vk::Result {
     let real: unsafe extern "system" fn(vk::Device, *const CbAllocInfo, *mut *mut c_void) -> vk::Result = unsafe { std::mem::transmute(REAL_ALLOC_CB.load(Ordering::Relaxed)) };
     let r = unsafe { real(d, info, out) };
-    if r == vk::Result::SUCCESS { CMD_BUFFERS.fetch_add(unsafe { (*info).count } as isize, Ordering::Relaxed); }
+    if r == vk::Result::SUCCESS {
+        let n = unsafe { (*info).count } as isize;
+        CMD_BUFFERS.fetch_add(n, Ordering::Relaxed);
+        *PER_POOL.lock().unwrap().entry(unsafe { (*info).pool }).or_default() += n;
+    }
     r
+}
+/// Live command buffers per pool: destroying a pool frees the ones it still holds.
+static PER_POOL: std::sync::Mutex<std::collections::BTreeMap<u64, isize>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+static REAL_DESTROY_POOL: AtomicUsize = AtomicUsize::new(0);
+unsafe extern "system" fn destroy_pool(d: vk::Device, pool: u64, alloc: *const c_void) {
+    let real: DestroyFn = unsafe { std::mem::transmute(REAL_DESTROY_POOL.load(Ordering::Relaxed)) };
+    if pool != 0 {
+        LIVE[6].fetch_sub(1, Ordering::Relaxed);
+        if let Some(n) = PER_POOL.lock().unwrap().remove(&pool) { CMD_BUFFERS.fetch_sub(n, Ordering::Relaxed); }
+    }
+    unsafe { real(d, pool, alloc) }
 }
 unsafe extern "system" fn free_cb(d: vk::Device, pool: u64, n: u32, bufs: *const *mut c_void) {
     let real: unsafe extern "system" fn(vk::Device, u64, u32, *const *mut c_void) = unsafe { std::mem::transmute(REAL_FREE_CB.load(Ordering::Relaxed)) };
     CMD_BUFFERS.fetch_sub(n as isize, Ordering::Relaxed);
+    if let Some(c) = PER_POOL.lock().unwrap().get_mut(&pool) { *c -= n as isize; }
     unsafe { real(d, pool, n, bufs) }
 }
 unsafe extern "system" fn gfx_pipes(d: vk::Device, cache: u64, n: u32, infos: *const c_void, alloc: *const c_void, out: *mut u64) -> vk::Result {
@@ -126,6 +142,7 @@ fn special(name: &str, real: unsafe extern "system" fn()) -> Option<vk::PFN_vkVo
         "vkCreateGraphicsPipelines" => (&REAL_GFX_PIPES, gfx_pipes as usize),
         "vkDestroyPipeline" => (&REAL_DESTROY_PIPE, destroy_pipe as usize),
         "vkResetCommandPool" => (&REAL_RESET_POOL, reset_pool as usize),
+        "vkDestroyCommandPool" => (&REAL_DESTROY_POOL, destroy_pool as usize),
         _ => return None,
     };
     slot.store(real as usize, Ordering::Relaxed);
