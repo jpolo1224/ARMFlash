@@ -52,7 +52,8 @@ import com.armsx.flashpoint.R
 import com.armsx.flashpoint.core.Game
 
 /** The desktop launcher's top tabs. Help opens the online manual, as on desktop. */
-enum class Tab(val label: String) { HOME("Home"), NEWS("News"), GAMES("Games"), ANIMATIONS("Animations"), LOGS("Logs"), CONFIG("Config"), HELP("Help"), ABOUT("About") }
+/** The launcher's tabs. ARMFlash is for games: Flashpoint's animations (its Theatre library) are left out. */
+enum class Tab(val label: String) { HOME("Home"), NEWS("News"), GAMES("Games"), LOGS("Logs"), CONFIG("Config"), HELP("Help"), ABOUT("About") }
 
 /** LB / RB on a controller: step through the launcher's tabs (set by MainActivity). */
 object ShellNav {
@@ -72,7 +73,6 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
         when (t) {
             Tab.HELP -> ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MANUAL_URL)))
             Tab.GAMES -> { vm.showLibrary("arcade"); tab = t }
-            Tab.ANIMATIONS -> { vm.showLibrary("theatre"); tab = t }
             else -> tab = t
         }
     }
@@ -127,7 +127,7 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
                 Tab.HOME -> HomePage(vm, onPlay, go = ::go)
-                Tab.GAMES, Tab.ANIMATIONS -> BrowseScreen(vm, onPlay, onConfig = { tab = Tab.CONFIG })
+                Tab.GAMES -> BrowseScreen(vm, onPlay, onConfig = { tab = Tab.CONFIG })
                 Tab.NEWS -> NewsPage()
                 Tab.LOGS -> LogsPage()
                 Tab.CONFIG -> configPage()
@@ -177,7 +177,6 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
             val left: @Composable () -> Unit = {
                 HomeBox("Quick Start") {
                     QuickLink("Looking for something to play? View ", "All Games") { go(Tab.GAMES) }
-                    QuickLink("Just want something to watch? View ", "All Animations") { go(Tab.ANIMATIONS) }
                     QuickLink("Want to change something? Go to ", "Config") { go(Tab.CONFIG) }
                     QuickLink("Need help? ", "Read the manual") { go(Tab.HELP) }
                 }

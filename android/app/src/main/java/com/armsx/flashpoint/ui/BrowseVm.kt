@@ -51,7 +51,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     val library = (app as FpApp).library
     val prefs2 = AppPrefs(app)
 
-    /** Which browse tab: "arcade" (Games) or "theatre" (Animations). */
+    /** The library the launcher browses: Flashpoint's games ("arcade"). Its animations ("theatre") are left out. */
     var lib by mutableStateOf("arcade")
         private set
     var playlists by mutableStateOf<List<com.armsx.flashpoint.data.Playlist>>(emptyList())
@@ -96,7 +96,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     /** Home's "Filter by platform" (it opens the Games tab): the platforms with games. */
     var gamePlatforms by mutableStateOf<List<String>>(emptyList())
         private set
-    /** Per tab ("arcade", "theatre"), under the current Extreme setting. */
+    /** Per library ("arcade"), under the current Extreme setting. */
     private var platformsFor = mapOf<String, List<String>>()
     var index by mutableStateOf<SearchIndex?>(null)
     private val pages = mutableStateMapOf<Int, List<Game>>()
@@ -288,7 +288,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private fun loadPlatforms() = viewModelScope.launch {
         val bl = tagBlacklist()
         platformsFor = withContext(Dispatchers.IO) {
-            listOf("arcade", "theatre").associateWith { l ->
+            listOf("arcade").associateWith { l ->
                 runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl)) }
                     .getOrElse { FpCore.platformNames() }.filter { it.isNotBlank() }.sorted()
             }
@@ -310,7 +310,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private fun tagBlacklist(): List<String>? = if (prefs2.extremeGames.value) null else ExtremeTags.list.ifEmpty { null }
 
     fun rerollPicks() = viewModelScope.launch {
-        val libs = prefs2.randomLibraries.value.ifEmpty { setOf("arcade") }
+        val libs = setOf("arcade")
         randomPicks = withContext(Dispatchers.IO) {
             runCatching {
                 libs.flatMap { FpCore.random(SearchOpts(library = it, tagBlacklist = tagBlacklist()), 6 / libs.size + 1) }.shuffled().take(6)
@@ -327,10 +327,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun loadHomeRows() = viewModelScope.launch {
         val bl = tagBlacklist()
         recent = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), 12) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade"), 12) }.getOrDefault(emptyList())
         }
         installedGames = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), 12) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade"), 12) }.getOrDefault(emptyList())
         }
     }
 
@@ -343,15 +343,22 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun loadHomeAll() = viewModelScope.launch {
         val bl = tagBlacklist()
         recentAll = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), HOME_ALL) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade"), HOME_ALL) }.getOrDefault(emptyList())
         }
         installedAll = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), HOME_ALL) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade"), HOME_ALL) }.getOrDefault(emptyList())
         }
     }
 
     fun loadGotd() = viewModelScope.launch {
-        gotd = withContext(Dispatchers.IO) { Gotd.today()?.let { (entry, _) -> runCatching { FpCore.game(entry.id) }.getOrNull()?.let { entry.copy(game = it) } } }
+        // The newest Game of the Day that is a game (Flashpoint sometimes picks an animation).
+        gotd = withContext(Dispatchers.IO) {
+            Gotd.today()?.let { (_, past) ->
+                past.asReversed().take(30).firstNotNullOfOrNull { entry ->
+                    runCatching { FpCore.game(entry.id) }.getOrNull()?.takeIf { it.library == "arcade" }?.let { entry.copy(game = it) }
+                }
+            }
+        }
     }
 
     private fun opts(): SearchOpts {
@@ -363,7 +370,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     private fun baseOpts() = SearchOpts(
-        // Every shelf stays inside its tab: Installed on Animations lists installed animations only.
+        // Every shelf stays inside the games library: Installed lists installed games only.
         library = lib,
         tagBlacklist = tagBlacklist(),
         installed = if (shelf == Shelf.INSTALLED) true else null,

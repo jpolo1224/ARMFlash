@@ -137,7 +137,7 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
     LazyColumn(modifier.background(Fp.Sidebar).padding(vertical = 8.dp)) {
         items(Shelf.entries) { s ->
             SidebarRow(
-                label = if (s == Shelf.ALL) (if (vm.lib == "theatre") "All Animations" else "All Games") else s.label,
+                label = if (s == Shelf.ALL) "All Games" else s.label,
                 on = vm.playlist == null && vm.shelf == s,
             ) { vm.pickShelf(s); onPicked() }
         }

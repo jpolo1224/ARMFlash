@@ -55,7 +55,7 @@ class RecentGamesContentProvider : ContentProvider() {
         if (!library.database.isFile) return cursor
         runCatching {
             FpCore.open(library.database.path)
-            FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true), MAX_RECENT)
+            FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, library = "arcade"), MAX_RECENT)
         }.getOrNull().orEmpty().forEach { g ->
             val last = g.lastPlayed?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
             cursor.addRow(arrayOf<Any?>(Frontend.playUri(g.id).toString(), g.title, g.id, Frontend.EXT, g.primaryPlatform, last))
