@@ -490,6 +490,7 @@ async fn run(app: AndroidApp) {
                     ))
                 }).unwrap_or_default();
                 log::info!("memory: {maps} maps, {live} live bitmaps, {gpu}");
+                log::info!("memory sizes: {}", map_sizes());
             }
         }
     }
@@ -608,6 +609,28 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFra
     _this: JObject<'local>,
 ) -> jni::sys::jlong {
     FRAMES.load(std::sync::atomic::Ordering::Relaxed) as jni::sys::jlong
+}
+
+/// The commonest mapping sizes for the GPU driver's memory (kgsl), large mallocs (Scudo
+/// secondary) and plain anonymous memory, to tell what the mappings are.
+fn map_sizes() -> String {
+    let Ok(text) = std::fs::read_to_string("/proc/self/maps") else { return String::new() };
+    let mut kinds: std::collections::BTreeMap<&str, std::collections::HashMap<u64, u32>> = Default::default();
+    for line in text.lines() {
+        let mut it = line.split_whitespace();
+        let Some(range) = it.next() else { continue };
+        let name = line.splitn(6, ' ').nth(5).unwrap_or("").trim();
+        let kind = if name.contains("kgsl-3d0") { "kgsl" } else if name.contains("scudo:secondary") { "scudo2" } else if name.is_empty() { "anon" } else { continue };
+        let (a, b) = range.split_once('-').unwrap_or(("0", "0"));
+        let size = u64::from_str_radix(b, 16).unwrap_or(0).saturating_sub(u64::from_str_radix(a, 16).unwrap_or(0));
+        *kinds.entry(kind).or_default().entry(size).or_default() += 1;
+    }
+    kinds.iter().map(|(k, m)| {
+        let mut v: Vec<_> = m.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(a.1));
+        let top: Vec<String> = v.iter().take(5).map(|(s, n)| format!("{}KB x{}", *s / 1024, n)).collect();
+        format!("{k}[{}]", top.join(" "))
+    }).collect::<Vec<_>>().join(" ")
 }
 
 /// Lines in /proc/self/maps: the process's memory mappings (Android caps them at 65,530).
