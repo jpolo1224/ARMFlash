@@ -23,6 +23,8 @@ pub unsafe fn renderer_with_driver(
     android_sdk: u32,
 ) -> Result<WgpuRenderBackend<ShaderTarget>, String> {
     let gipa: vk::PFN_vkGetInstanceProcAddr = unsafe { std::mem::transmute(gipa) };
+    // Count the driver objects wgpu's counters leave out (memory log).
+    let gipa = crate::vkcount::install(gipa);
     let entry = unsafe { ash::Entry::from_static_fn(ash::StaticFn { get_instance_proc_addr: gipa }) };
 
     let available = unsafe { entry.try_enumerate_instance_version() }.ok().flatten().unwrap_or(vk::API_VERSION_1_0);

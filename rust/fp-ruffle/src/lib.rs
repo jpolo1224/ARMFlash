@@ -14,6 +14,7 @@ mod audio;
 mod custom_event;
 mod driver;
 mod shader;
+mod vkcount;
 mod java;
 mod keycodes;
 mod navigator;
@@ -491,6 +492,9 @@ async fn run(app: AndroidApp) {
                 }).unwrap_or_default();
                 log::info!("memory: {maps} maps, {live} live bitmaps, {gpu}");
                 log::info!("memory sizes: {}", map_sizes());
+                if vkcount::active() {
+                    log::info!("memory vulkan live: {}", vkcount::summary());
+                }
             }
         }
     }
