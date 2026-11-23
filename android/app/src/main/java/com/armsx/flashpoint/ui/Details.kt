@@ -50,6 +50,8 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
     val dl = vm.downloads[g.id]
     val installed = full != null && (full.activeData == null || vm.isInstalled(full))
     val plan = full?.let { Launch.plan(it) }
+    // The player's own .swf (My Games): no Flashpoint entry, so no favorite, pack or shortcut.
+    val mine = com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
 
     Column(Modifier.fillMaxSize().padVerticalScroll().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -59,7 +61,7 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
                 if (g.developer.isNotBlank()) Text("by ${g.developer}", color = Fp.TextDim, fontSize = 13.sp)
             }
             val fav = g.id in vm.favorites
-            IconButton(onClick = { vm.toggleFavorite(g.id) }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) {
+            if (!mine) IconButton(onClick = { vm.toggleFavorite(g.id) }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) {
                 Icon(if (fav) Icons.Filled.Star else Icons.Outlined.Star, "Favorite", tint = if (fav) Fp.Accent else Fp.TextDim)
             }
         }
@@ -67,6 +69,7 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
         Text(
             when {
                 full == null -> ""
+                mine -> "My Games"
                 full.activeData == null -> "Legacy"
                 installed -> "Installed"
                 else -> "Not installed"
@@ -131,8 +134,10 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             )
         }
 
+        if (mine && full != null) MyGameActions(vm, full)
+
         // Add to home screen: a launcher shortcut with the game's own art.
-        if (full != null && com.armsx.flashpoint.HomeShortcuts.isSupported(LocalContext.current)) {
+        if (full != null && !mine && com.armsx.flashpoint.HomeShortcuts.isSupported(LocalContext.current)) {
             val ctx = LocalContext.current
             val scope = androidx.compose.runtime.rememberCoroutineScope()
             Spacer(Modifier.height(6.dp))
@@ -225,4 +230,53 @@ private fun playtime(s: Long): String = when {
     s <= 0 -> "Never"
     s < 3600 -> "${s / 60} Minutes"
     else -> "%.1f Hours".format(s / 3600.0)
+}
+
+/** Rename and Remove for a game in My Games. */
+@Composable
+private fun MyGameActions(vm: BrowseVm, g: Game) {
+    var renaming by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
+    Spacer(Modifier.height(6.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("Rename" to { renaming = true }, "Remove" to { removing = true }).forEach { (label, onClick) ->
+            Box(
+                Modifier.weight(1f).height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable(onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) { Text(label, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+        }
+    }
+    if (renaming) {
+        var name by remember { mutableStateOf(g.title) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { renaming = false },
+            title = { Text("Rename") },
+            text = { androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { renaming = false; vm.renameLocal(g.id, name) },
+                    enabled = name.isNotBlank(),
+                    modifier = Modifier.padFocus(RoundedCornerShape(20.dp)),
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { renaming = false }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Cancel") }
+            },
+        )
+    }
+    if (removing) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { removing = false },
+        title = { Text("Remove ${g.title}?") },
+        text = { Text("It leaves My Games, and ARMFlash's copy of the file is deleted. The file you added it from stays where it is.") },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = { removing = false; vm.removeLocal(g.id) },
+                modifier = Modifier.padFocus(RoundedCornerShape(20.dp)),
+            ) { Text("Remove") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = { removing = false }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Cancel") }
+        },
+    )
 }

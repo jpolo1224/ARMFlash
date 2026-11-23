@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         vm.pendingGame = Frontend.gameId(this, intent)
+        intent.getStringExtra("status")?.let { vm.status = it }
     }
 
     override fun onStart() {
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         Frontend.gameId(this, intent)?.let { vm.pendingGame = it }
+        intent.getStringExtra("status")?.let { vm.status = it }
     }
 
     override fun onStop() {
@@ -175,10 +177,14 @@ private fun App(vm: BrowseVm) {
     // A frontend or home-screen shortcut asked for a game: play it once the library is ready.
     LaunchedEffect(vm.pendingGame, vm.dbReady) {
         val id = vm.pendingGame ?: return@LaunchedEffect
-        if (!vm.dbReady) return@LaunchedEffect
+        // My Games needs no database: a .swf opened with ARMFlash plays even before setup.
+        val mine = com.armsx.flashpoint.data.LocalGames.isLocal(id)
+        if (!vm.dbReady && !mine) return@LaunchedEffect
         vm.pendingGame = null
-        val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.armsx.flashpoint.core.FpCore.game(id) }.getOrNull() }
-        if (game != null) play(game) else vm.status = "That game is not in the database."
+        val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (mine) vm.library.local.game(id) else runCatching { com.armsx.flashpoint.core.FpCore.game(id) }.getOrNull()
+        }
+        if (game != null) play(game) else vm.status = if (mine) "That game is no longer in My Games." else "That game is not in the database."
     }
 
     Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {

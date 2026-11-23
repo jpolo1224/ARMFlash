@@ -38,6 +38,8 @@ class Library(private val ctx: Context) {
     val database get() = File(root, "Data/flashpoint.sqlite")
     val games get() = File(root, "Data/Games")
     val htdocs get() = File(root, "Legacy/htdocs")
+    /** My Games: the player's own .swf files. */
+    val local by lazy { LocalGames(this) }
     val playlists get() = Playlists(File(root, "Data/Playlists"))
 
     /** A place the Flashpoint folder can go, with its free space. */
@@ -137,7 +139,7 @@ class Library(private val ctx: Context) {
     fun screenshotUrl(id: String) = imageUrl("Screenshots", id)
 
     private fun imageUrl(folder: String, id: String): String {
-        if (id.length < 4 || !prefs.getBoolean("onDemandImages", true)) return ""
+        if (id.length < 4 || LocalGames.isLocal(id) || !prefs.getBoolean("onDemandImages", true)) return ""
         val base = imagesBase.let { if (it.endsWith("/")) it else "$it/" }
         val url = "$base$folder/${id.substring(0, 2)}/${id.substring(2, 4)}/$id.png"
         // The launcher's "Compressed Images": same path, ?type=jpg.

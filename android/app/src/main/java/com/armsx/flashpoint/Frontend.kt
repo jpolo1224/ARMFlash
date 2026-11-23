@@ -11,6 +11,8 @@ import android.net.Uri
  *  - `.armflash` files, one small text file per game (`id=<id>` on a line), that frontends
  *    scan like ROMs and open with ARMFlash (Config, Frontends exports them);
  *  - an `id` or `gameId` extra.
+ * A game from My Games (the player's own .swf) is addressed by its `local-...` ID the same way,
+ * and a .swf file opened with ARMFlash is added to My Games first ([swf]).
  */
 object Frontend {
     const val SCHEME = "armflash"
@@ -21,7 +23,7 @@ object Frontend {
     /** The Flashpoint game an outside launch asks for, or null. */
     fun gameId(ctx: Context, intent: Intent?): String? {
         intent ?: return null
-        (intent.getStringExtra("id") ?: intent.getStringExtra("gameId"))?.takeIf { looksLikeId(it) }?.let { return it }
+        (intent.getStringExtra("id") ?: intent.getStringExtra("gameId"))?.takeIf { looksLikeId(it) }?.let { return it.trim() }
         val data = intent.data ?: return null
         if (data.scheme == SCHEME) return data.lastPathSegment?.takeIf { looksLikeId(it) }
         if (data.scheme == "content" || data.scheme == "file") {
@@ -33,7 +35,18 @@ object Frontend {
         return null
     }
 
-    private fun looksLikeId(s: String) = Regex("""[0-9a-fA-F-]{36}""").matches(s.trim())
+    private fun looksLikeId(s: String) = Regex("""[0-9a-fA-F-]{36}""").matches(s.trim()) ||
+        Regex("""${com.armsx.flashpoint.data.LocalGames.PREFIX}[0-9a-f]{16}""").matches(s.trim())
+
+    /** The file a launch opens when it is a Flash movie (.swf), whatever its name or type says. */
+    fun swf(ctx: Context, intent: Intent?): Uri? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "content" && data.scheme != "file") return null
+        val head = runCatching {
+            ctx.contentResolver.openInputStream(data)?.use { ins -> ByteArray(3).also { b -> if (ins.read(b) < 3) return null } }
+        }.getOrNull() ?: return null
+        return data.takeIf { com.armsx.flashpoint.data.LocalGames.isSwf(head) }
+    }
 
     /** The text of a game's `.armflash` file. */
     fun fileText(id: String, title: String, platform: String) =

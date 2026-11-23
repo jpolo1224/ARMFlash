@@ -45,9 +45,17 @@ class BootActivity : Activity() {
     private var startNs = 0L
     private var shown: Bitmap? = null
     private var previous: Bitmap? = null
+    /** A .swf opened with ARMFlash: added to My Games while the intro plays. */
+    private var swfImport: Thread? = null
+    @Volatile private var swfResult: Result<String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Frontend.swf(this, intent)?.let { uri ->
+            val name = com.armsx.flashpoint.ui.displayName(this, uri)
+            val lib = (application as FpApp).library
+            swfImport = Thread({ swfResult = runCatching { lib.local.import(this, uri, name).id } }, "swf-import").apply { start() }
+        }
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val part0 = frames("boot/part0")
         val part1 = frames("boot/part1")
@@ -167,6 +175,15 @@ class BootActivity : Activity() {
         // A frontend's launch (a game link, a .armflash file) goes on to the launcher with it.
         val main = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         Frontend.gameId(this, intent)?.let { main.putExtra("gameId", it) }
+        swfImport?.let { t ->
+            t.join(15_000)
+            swfResult?.onSuccess { main.putExtra("gameId", it) }
+                ?.onFailure { main.putExtra("status", it.message ?: "Could not add that file.") }
+        }
+        // Any other file opened with ARMFlash: say what it opens instead of doing nothing.
+        if (swfImport == null && !main.hasExtra("gameId") && intent.data?.scheme.let { it == "content" || it == "file" }) {
+            main.putExtra("status", "ARMFlash opens Flash games (.swf) and its own game files (.armflash). That file is neither.")
+        }
         startActivity(main)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()

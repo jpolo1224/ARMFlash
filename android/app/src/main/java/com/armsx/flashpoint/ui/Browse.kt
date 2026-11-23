@@ -221,7 +221,13 @@ private fun TopBar(vm: BrowseVm, onMenu: (() -> Unit)?, onConfig: () -> Unit) {
             }
         }
         Spacer(Modifier.height(6.dp))
+        // My Games: the player's own .swf files (any file type is offered: few file managers
+        // know Flash's type; ARMFlash checks the file itself).
+        val swfPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
+        ) { uris -> if (uris.isNotEmpty()) vm.importSwfs(uris) }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (vm.shelf == Shelf.MY_GAMES) item { Chip("Import .swf", true) { swfPicker.launch(arrayOf("*/*")) } }
             item { Chip(if (vm.shelf == Shelf.INSTALLED) "Installed ✓" else "Installed", vm.shelf == Shelf.INSTALLED) {
                 vm.pickShelf(if (vm.shelf == Shelf.INSTALLED) Shelf.ALL else Shelf.INSTALLED)
             } }
@@ -290,6 +296,14 @@ private fun Grid(vm: BrowseVm, modifier: Modifier) {
         // Keys include the search, so the cards already on screen are rebuilt for new results
         // instead of keeping the previous search's games until scrolled away.
         val searchKey = System.identityHashCode(vm.index)
+        if (vm.shelf == Shelf.MY_GAMES && vm.playlist == null && total == 0 && vm.query.isEmpty()) {
+            item(key = "mine-empty", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "Your own Flash games go here. Press Import .swf above, or open a .swf file with ARMFlash from your file manager.",
+                    color = Fp.TextDim, fontSize = 15.sp, modifier = Modifier.padding(8.dp),
+                )
+            }
+        }
         if (vm.showFeatured) {
             item(key = "popular", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { GridHeader("Popular") }
             items(vm.featured.size, key = { "popular:${vm.featured[it].id}" }) { i ->
@@ -322,8 +336,12 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
             if (g != null) {
                 AsyncImage(
-                    model = vm.library.logoUrl(g.id), contentDescription = null,
-                    contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize(),
+                    // An imported game has no Flashpoint logo: its platform's stands in.
+                    model = if (com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) LogoSets.image(g.primaryPlatform) else vm.library.logoUrl(g.id),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().then(
+                        if (com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) Modifier.padding(28.dp) else Modifier,
+                    ),
                 )
                 PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(6.dp))
             }

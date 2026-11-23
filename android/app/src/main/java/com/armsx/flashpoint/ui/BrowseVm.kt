@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Sidebar entries. Real Flashpoint playlists come later; these are the built-in ones. */
-enum class Shelf(val label: String) { ALL("All"), INSTALLED("Installed"), FAVORITES("Favorites"), HISTORY("Play History") }
+enum class Shelf(val label: String) { ALL("All"), INSTALLED("Installed"), FAVORITES("Favorites"), HISTORY("Play History"), MY_GAMES("My Games") }
 
 data class Download(val done: Long, val total: Long)
 
@@ -414,6 +414,15 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             if (!immediate) delay(220)
             val gen = ++generation
+            if (shelf == Shelf.MY_GAMES && playlist == null) {
+                val mine = withContext(Dispatchers.IO) { myGames() }
+                if (gen != generation) return@launch
+                pages.clear()
+                loading.clear()
+                mine.chunked(PAGE).forEachIndexed { i, page -> pages[i] = page }
+                index = SearchIndex(mine.size.toLong(), PAGE, emptyList())
+                return@launch
+            }
             val q = query
             val o = opts()
             // A newer keystroke cancels this search: that is not a failure, so it must not be caught.
@@ -458,6 +467,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun select(g: Game) {
         selected = g
         details = null
+        if (com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) {
+            details = library.local.game(g.id) ?: g
+            return
+        }
         viewModelScope.launch {
             val d = withContext(Dispatchers.IO) { runCatching { FpCore.game(g.id) }.getOrNull() }
             if (selected?.id == g.id) details = d
@@ -629,13 +642,81 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
 
     /** A game started: count the play and its date now, so it is in Play History even if it never returns cleanly. */
     fun recordPlay(game: Game) = viewModelScope.launch(Dispatchers.IO) {
+        if (com.armsx.flashpoint.data.LocalGames.isLocal(game.id)) {
+            library.local.started(game.id)
+            withContext(Dispatchers.Main) { showLocal(game.id) }
+            return@launch
+        }
         if (!tracks(game)) return@launch
         runCatching { FpCore.playtime(game.id, 0) }
     }
 
     fun addPlaytime(id: String, seconds: Long) = viewModelScope.launch(Dispatchers.IO) {
-        if (prefs2.enablePlaytimeTracking.value) runCatching { FpCore.playSeconds(id, seconds) }
+        if (com.armsx.flashpoint.data.LocalGames.isLocal(id)) {
+            library.local.played(id, seconds)
+            withContext(Dispatchers.Main) { showLocal(id) }
+        } else if (prefs2.enablePlaytimeTracking.value) runCatching { FpCore.playSeconds(id, seconds) }
         recentTick++
+    }
+
+    /** An imported game's play count or time changed: its details and the shelf show it. */
+    private fun showLocal(id: String) {
+        library.local.game(id)?.let { if (selected?.id == id) { selected = it; details = it } }
+        if (shelf == Shelf.MY_GAMES) refresh(immediate = true)
+    }
+
+    /** My Games for the grid: the search box, platform filter and sort order apply as for any shelf. */
+    private fun myGames(): List<Game> {
+        val q = query.trim().lowercase()
+        val list = library.local.all().map { library.local.game(it) }
+            .filter { q.isEmpty() || q in it.title.lowercase() }
+            .filter { platform == null || it.primaryPlatform == platform }
+        val sorted = when (order) {
+            "LASTPLAYED" -> list.sortedBy { it.lastPlayed ?: "" }
+            "PLAYTIME" -> list.sortedBy { it.playtime }
+            "DATEADDED" -> list.sortedBy { library.local.entry(it.id)?.added ?: 0 }
+            else -> list.sortedBy { it.title.lowercase() }
+        }
+        return if (descending) sorted.reversed() else sorted
+    }
+
+    /**
+     * Add the player's own .swf ([uri], named [name]) to My Games and show it there. Returns the
+     * game, or null with [status] saying why not.
+     */
+    suspend fun importSwf(uri: Uri, name: String?): Game? {
+        val e = try {
+            withContext(Dispatchers.IO) { library.local.import(getApplication(), uri, name) }
+        } catch (e: com.armsx.flashpoint.data.LocalGames.NotASwf) {
+            status = e.message ?: "That is not a Flash game (.swf) file."; return null
+        } catch (e: Exception) {
+            status = "Could not add that file: ${e.message}"; return null
+        }
+        playlist = null
+        shelf = Shelf.MY_GAMES
+        refresh(immediate = true)
+        val g = library.local.game(e)
+        select(g)
+        status = "Added ${g.title} to My Games"
+        return g
+    }
+
+    /** The files a player picked in Import .swf. */
+    fun importSwfs(uris: List<Uri>) = viewModelScope.launch {
+        val ctx = getApplication<Application>()
+        for (u in uris) importSwf(u, displayName(ctx, u))
+    }
+
+    fun removeLocal(id: String) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { library.local.remove(id) }
+        if (selected?.id == id) clearSelection()
+        refresh(immediate = true)
+    }
+
+    fun renameLocal(id: String, title: String) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { library.local.rename(id, title) }
+        library.local.game(id)?.let { if (selected?.id == id) { selected = it; details = it } }
+        refresh(immediate = true)
     }
 
     private fun tracks(game: Game) = prefs2.enablePlaytimeTracking.value &&
@@ -659,3 +740,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         )
     }
 }
+
+/** A content or file URI's file name ("My Game.swf"), or null. */
+fun displayName(ctx: Context, uri: Uri): String? = runCatching {
+    if (uri.scheme == "file") return@runCatching uri.lastPathSegment
+    ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    }
+}.getOrNull()
