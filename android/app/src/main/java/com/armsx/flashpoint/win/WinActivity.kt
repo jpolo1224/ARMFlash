@@ -188,6 +188,10 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
+        // TEST (remove once Silverlight runs): the calls +relay traces for it.
+        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) rt.relayOnly(listOf(
+            "LoadLibraryW", "LoadLibraryExW", "LoadLibraryA", "LoadLibraryExA", "CreateFileW", "GlobalMemoryStatusEx", "CreateProcessW",
+        ).flatMap { listOf("KERNEL32.$it", "KERNELBASE.$it") } + listOf("USER32.LoadStringW", "USER32.MessageBoxW", "USER32.MessageBoxIndirectW"))
         rt.ensureMfc42(::say)
         if (SupportPacks.needsBrowser(this, packs) && !rt.ensureGecko(::say)) return
         val fp = drive
@@ -221,7 +225,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             env += WinRuntime.JIT_SAFE
             // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction
             // Box64 cannot translate (reported at log level 1 only).
-            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "-all,err+all,+loaddll")
+            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,warn+seh,warn+virtual,+relay")
         }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()

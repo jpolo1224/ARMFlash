@@ -174,6 +174,11 @@ class WinRuntime(private val ctx: Context) {
         if (ok) mark.writeText("")
     }
 
+    /** TEST (remove once Silverlight runs): the only calls a +relay trace logs. */
+    fun relayOnly(calls: List<String>) {
+        run(listOf("reg", "add", "HKCU\\Software\\Wine\\Debug", "/v", "RelayInclude", "/t", "REG_SZ", "/d", calls.joinToString(";"), "/f"), null).waitFor()
+    }
+
     /**
      * Let Wine place its windows itself. There is no window manager on the virtual screen, and
      * Wine hands "managed" windows' moves and resizes to one and waits: a Shockwave projector
@@ -293,7 +298,8 @@ class WinRuntime(private val ctx: Context) {
     }
 
     private fun drain(p: Process, tag: String) = Thread {
-        runCatching { p.inputStream.bufferedReader().forEachLine { Log.i(TAG, "$tag: $it") } }
+        // TEST (remove once Silverlight runs): a +relay trace's window and hook callbacks stay out of the log.
+        runCatching { p.inputStream.bufferedReader().forEachLine { if (RELAY_NOISE.none { n -> n in it }) Log.i(TAG, "$tag: $it") } }
     }.apply { isDaemon = true }.start()
 
     /** Every process this app started under Wine or X (they outlive their parents). */
@@ -327,6 +333,7 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
+        private val RELAY_NOISE = listOf("window proc ", "hook proc ", "winevent hook", "PE DLL (", "GlobalMemoryStatusEx() retval")
         /**
          * Box64's translation for a program that compiles its own code as it runs (a JIT): what
          * Box64 switches to by itself when it sees Mono or Java's libjvm load
