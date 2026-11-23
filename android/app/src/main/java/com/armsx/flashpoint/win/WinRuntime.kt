@@ -350,7 +350,7 @@ class WinRuntime(private val ctx: Context) {
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
         /** Where the runtime and the 3D file download from: ARMFlash's first GitHub release. */
-        private const val RELEASE_FILES = "https://github.com/jpolo1224/ARMFlash/releases/download/v0.1.0/"
+        private const val RELEASE_FILES = "https://github.com/jpolo1224/ARMFlash/releases/download/1.0/"
         const val RUNTIME_URL = RELEASE_FILES + "ARMFlash-windows-1.tar.zst"
         const val GRAPHICS_URL = RELEASE_FILES + "ARMFlash-3d-1.tar.zst"
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"

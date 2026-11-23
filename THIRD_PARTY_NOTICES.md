@@ -26,7 +26,7 @@ along with Flashpoint's full list of contributors (Flashpoint's `credits.json`).
 
 ## Windows support download (`ARMFlash-windows-1.tar.zst`)
 
-This is the file that Config, under Windows Players, downloads from this repository's v0.1.0 release.
+This is the file that Config, under Windows Players, downloads from this repository's 1.0 release.
 It holds:
 
 - **Wine 10.10** (LGPL-2.1-or-later), as built for Winlator. Source: https://gitlab.winehq.org/wine/wine
