@@ -28,6 +28,8 @@ class WinRuntime(private val ctx: Context) {
     private var wine: Process? = null
     /** This game's settings, on top of the usual ones (see WinActivity.gameEnv). */
     var extra: Map<String, String> = emptyMap()
+    /** TEST: when set, every Wine command runs through toybox's taskset with this CPU mask (hex). */
+    var cpuMask: String? = null
 
     /**
      * Install the runtime archive (tools/winrt/pack.py's winrt-N.tar.zst) from [src], checking
@@ -314,7 +316,8 @@ class WinRuntime(private val ctx: Context) {
     /** Run `wine <args>` with [cwd] as the working folder. */
     fun run(args: List<String>, cwd: File?): Process {
         prepareLinks()
-        val pb = ProcessBuilder(listOf("$lib/libbox64.so", "${root.path}/opt/wine/bin/wine") + args).redirectErrorStream(true)
+        val cmd = listOf("$lib/libbox64.so", "${root.path}/opt/wine/bin/wine") + args
+        val pb = ProcessBuilder(cpuMask?.let { listOf("/system/bin/taskset", it) + cmd } ?: cmd).redirectErrorStream(true)
         if (cwd != null) pb.directory(cwd)
         pb.environment().putAll(env)
         pb.environment().putAll(extra)
@@ -356,6 +359,17 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
+        /**
+         * TEST: the fastest core (highest cpuinfo_max_freq; the last one on a tie) as a taskset
+         * mask, or null when the kernel does not say.
+         */
+        fun fastestCpuMask(): String? = runCatching {
+            val cpus = File("/sys/devices/system/cpu").listFiles().orEmpty()
+                .mapNotNull { f -> Regex("cpu(\\d+)").matchEntire(f.name)?.groupValues?.get(1)?.toInt()?.let { it to f } }
+                .mapNotNull { (n, f) -> File(f, "cpufreq/cpuinfo_max_freq").readText().trim().toLongOrNull()?.let { n to it } }
+            val best = cpus.maxWithOrNull(compareBy({ it.second }, { it.first }))?.first ?: return@runCatching null
+            java.math.BigInteger.ONE.shiftLeft(best).toString(16)
+        }.getOrNull()
         /**
          * Box64's translation for a program that compiles its own code as it runs (a JIT): what
          * Box64 switches to by itself when it sees Mono or Java's libjvm load

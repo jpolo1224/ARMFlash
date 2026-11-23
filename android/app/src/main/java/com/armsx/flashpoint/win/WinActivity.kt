@@ -188,6 +188,14 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         // This game's settings before the first Wine command: Wine's server and every program
         // must agree on some of them (WINEESYNC), and setup commands below start the server.
         rt.extra = gameEnv(fpRoot)
+        // TEST: Silverlight on one core. The Xbox Avatar Editor's controls load their XAML while
+        // other threads already work, and .NET's resource reader then fails without a word
+        // (ResourceManager.GetStream throws NotSupportedException, Silverlight swallows it), so a
+        // control comes up empty and the editor stops. It ran when Silverlight was slowed down.
+        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
+            rt.cpuMask = WinRuntime.fastestCpuMask()
+            android.util.Log.i(WinRuntime.TAG, "Silverlight on CPU mask ${rt.cpuMask}")
+        }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
