@@ -256,6 +256,8 @@ pub fn add_playtime(game_id: &str, seconds: i64) -> Res {
 struct Proxy {
     server: Arc<GameServer>,
     handle: ProxyHandle,
+    /// More ports serving the same server (see [proxy_start]).
+    extra: Vec<ProxyHandle>,
 }
 
 fn proxy() -> &'static Mutex<Option<Proxy>> {
@@ -272,14 +274,21 @@ pub fn proxy_start(port: u16, htdocs: &str, legacy_base: &str, cache_remote: boo
         live_domains: live_domains.split(',').map(|d| d.trim().to_ascii_lowercase()).filter(|d| !d.is_empty()).collect(),
     };
     let mut p = proxy().lock().map_err(|_| "proxy lock poisoned")?;
-    if let Some(running) = p.as_ref() {
+    if let Some(running) = p.as_mut() {
         running.server.set_config(cfg);
-        return Ok(running.handle.port);
+        // A player that needs a set port (Windows players use desktop Flashpoint's) after a game
+        // that took any port (Ruffle, then a switch to Flash Player): serve that port too, from
+        // the same server, so what is mounted stays mounted.
+        if port != 0 && running.handle.port != port && !running.extra.iter().any(|h| h.port == port) {
+            let h = fp_proxy::start(running.server.clone(), port).map_err(e)?;
+            running.extra.push(h);
+        }
+        return Ok(if port != 0 { port } else { running.handle.port });
     }
     let server = GameServer::new(cfg);
     let handle = fp_proxy::start(server.clone(), port).map_err(e)?;
     let port = handle.port;
-    *p = Some(Proxy { server, handle });
+    *p = Some(Proxy { server, handle, extra: Vec::new() });
     Ok(port)
 }
 
