@@ -45,6 +45,10 @@ pub struct Config {
     /// third-party ad and tracking hosts must keep failing as they do on desktop, or a game
     /// waits forever on an ad loader that comes back to life (Hidden Room Escape). Empty: off.
     pub live_domains: Vec<String>,
+    /// Sites a game runs from live, before its pack (which is then the offline fallback): games
+    /// whose online parts only work with the site's current version (Happy Wheels HTML5: its
+    /// 2021 client and today's level server no longer fully understand each other).
+    pub live_first: Vec<String>,
 }
 
 /// Where a request was found.

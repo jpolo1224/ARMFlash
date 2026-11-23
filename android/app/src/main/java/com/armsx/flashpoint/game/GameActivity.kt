@@ -133,7 +133,9 @@ class GameActivity : ComponentActivity() {
                 legacyBase = intent.getStringExtra(EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
                 liveDomains = if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true))
-                    listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) else emptyList(),
+                    listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) +
+                        LiveSites.firstFor(intent.getStringExtra(EXTRA_GAME_ID).orEmpty())
+                else emptyList(),
             )
             zips.forEach { FpCore.mount(it) }
             p

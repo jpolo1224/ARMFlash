@@ -196,6 +196,30 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
         log::info!("{} {host}{}{}", req.method(), uri.path(), query.map(|q| format!("?{q}")).unwrap_or_default());
     }
 
+    // A game run from its own live website: the site first, the pack only when it cannot be
+    // reached. Its server calls always go there.
+    let rel_key = key.htdocs_rel();
+    if in_domains(&srv.config().live_first, &rel_key) && !tracker(&rel_key) {
+        let rel = utf8_percent_encode(&rel_key, PATH_ESC).to_string();
+        let q = query.filter(|q| !q.is_empty()).map(|q| format!("?{q}")).unwrap_or_default();
+        if req.method() != Method::GET && !head {
+            let method = req.method().clone();
+            let headers = req.headers().clone();
+            let body = req.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+            return live_forward(method, &headers, body, &rel, &q)
+                .await
+                .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"));
+        }
+        if let Some((bytes, ct)) = fetch(&format!("http://{rel}{q}"), "live-first").await {
+            let len = bytes.len() as u64;
+            let mut r = ok_file(&key.path, len, if head { empty() } else { full(bytes) });
+            if let Some(ct) = ct {
+                r.headers_mut().insert(header::CONTENT_TYPE, ct);
+            }
+            return r;
+        }
+    }
+
     // A pack's .htaccess may send the request elsewhere first. A redirect to a copy kept in
     // another pack (Happy Wheels HTML5's level server is in its Flash release's 9 GB pack) only
     // when that pack is here: otherwise the request stays, for the game's own site to answer.
@@ -506,7 +530,13 @@ fn live_allowed(domains: &[String], rel: &str) -> bool {
         return false;
     }
     let host = rel.split('/').next().unwrap_or("").to_ascii_lowercase();
-    domains.iter().any(|d| host == *d || host.ends_with(&format!(".{d}"))) || LIBRARY_CDNS.contains(&host.as_str())
+    in_domains(domains, rel) || LIBRARY_CDNS.contains(&host.as_str())
+}
+
+/// Whether `rel` (`<host>/<path>`) is on one of `domains` or their subdomains.
+fn in_domains(domains: &[String], rel: &str) -> bool {
+    let host = rel.split('/').next().unwrap_or("").to_ascii_lowercase();
+    domains.iter().any(|d| host == *d || host.ends_with(&format!(".{d}")))
 }
 
 /// Analytics and ad beacons old games still call: never sent to the live web.
@@ -546,7 +576,11 @@ async fn fetch(url: &str, what: &str) -> Option<(Bytes, Option<HeaderValue>)> {
         }
         let ct = resp.headers().get(header::CONTENT_TYPE).cloned();
         let bytes = resp.into_body().collect().await.ok()?.to_bytes();
-        log::info!("{what} hit {url} ({} bytes)", bytes.len());
+        if what == "live-first" {
+            log::debug!("{what} hit {url} ({} bytes)", bytes.len());
+        } else {
+            log::info!("{what} hit {url} ({} bytes)", bytes.len());
+        }
         return Some((bytes, ct));
     }
     None

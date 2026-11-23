@@ -289,7 +289,9 @@ pub fn proxy_start(port: u16, htdocs: &str, legacy_base: &str, cache_remote: boo
         htdocs: (!htdocs.is_empty()).then(|| htdocs.into()),
         legacy_base: (!legacy_base.is_empty()).then(|| legacy_base.to_string()),
         cache_remote,
-        live_domains: live_domains.split(',').map(|d| d.trim().to_ascii_lowercase()).filter(|d| !d.is_empty()).collect(),
+        // "!site" marks a site the game runs from live, before its pack.
+        live_domains: live_domains.split(',').map(|d| d.trim().trim_start_matches('!').to_ascii_lowercase()).filter(|d| !d.is_empty()).collect(),
+        live_first: live_domains.split(',').map(str::trim).filter_map(|d| d.strip_prefix('!')).map(str::to_ascii_lowercase).filter(|d| !d.is_empty()).collect(),
     };
     let mut p = proxy().lock().map_err(|_| "proxy lock poisoned")?;
     if let Some(running) = p.as_mut() {
