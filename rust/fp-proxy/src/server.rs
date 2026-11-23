@@ -126,8 +126,7 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
     }
     let (method, uri) = (req.method().clone(), req.uri().clone());
     let mut r = serve(srv, port, req, https).await;
-    // TEST (back to debug before release): every request, to see what a player asked for.
-    log::info!("{method} {uri} -> {}", r.status().as_u16());
+    log::debug!("{method} {uri} -> {}", r.status().as_u16());
     allow_origin(&mut r, origin);
     r
 }
@@ -626,8 +625,7 @@ where
                 log::warn!("file stream failed after {sent} of {size} bytes: {e}");
                 let _ = tx.blocking_send(Err(e));
             }
-            // TEST (back to debug before release): a player that stops reading a file.
-            Ok(()) if left => log::info!("file stream: the reader left after {sent} of {size} bytes"),
+            Ok(()) if left => log::debug!("file stream: the reader left after {sent} of {size} bytes"),
             Ok(()) => {}
         }
     });
