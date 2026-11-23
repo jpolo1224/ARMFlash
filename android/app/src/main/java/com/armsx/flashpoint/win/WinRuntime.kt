@@ -33,11 +33,30 @@ class WinRuntime(private val ctx: Context) {
      * Install the runtime archive (tools/winrt/pack.py's winrt-N.tar.zst) from [src], checking
      * its SHA-256 when [sha256] is given. The Wine prefix (r/home) is kept.
      */
+    /**
+     * Download [url] (the runtime or the 3D file on ARMFlash's GitHub release) and install it when
+     * its checksum is [sha256], as for a file picked by hand.
+     */
+    fun download(url: String, sha256: String, progress: (String) -> Unit): Boolean {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.setRequestProperty("User-Agent", "ARMFlash")
+        conn.connectTimeout = 20_000; conn.readTimeout = 60_000
+        return try {
+            if (conn.responseCode != 200) { progress("Download failed (HTTP ${conn.responseCode})."); false }
+            else install(conn.inputStream, setOf(sha256), conn.contentLengthLong, progress)
+        } catch (e: java.io.IOException) {
+            progress("Download failed: ${e.message}"); false
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     /** Install the runtime or the 3D pack from [src] when its checksum is one of [accepted]. */
-    fun install(src: java.io.InputStream, accepted: Set<String>?, progress: (String) -> Unit): Boolean {
+    fun install(src: java.io.InputStream, accepted: Set<String>?, size: Long = -1, progress: (String) -> Unit): Boolean {
         val tmp = File(ctx.cacheDir, "winrt.tar.zst")
         val md = java.security.MessageDigest.getInstance("SHA-256")
-        progress("Copying…")
+        val verb = if (size > 0) "Downloading" else "Copying"
+        progress("$verb…")
         src.use { ins ->
             tmp.outputStream().use { out ->
                 val buf = ByteArray(1 shl 16)
@@ -45,7 +64,7 @@ class WinRuntime(private val ctx: Context) {
                 while (true) {
                     val n = ins.read(buf); if (n < 0) break
                     out.write(buf, 0, n); md.update(buf, 0, n); total += n
-                    if (total % (8 shl 20) < n) progress("Copying… ${total shr 20} MB")
+                    if (total % (8 shl 20) < n) progress("$verb… ${total shr 20}${if (size > 0) " of ${size shr 20}" else ""} MB")
                 }
             }
         }
@@ -330,8 +349,10 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
-        /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
-        const val RUNTIME_URL = ""
+        /** Where the runtime and the 3D file download from: ARMFlash's first GitHub release. */
+        private const val RELEASE_FILES = "https://github.com/jpolo1224/ARMFlash/releases/download/v0.1.0/"
+        const val RUNTIME_URL = RELEASE_FILES + "ARMFlash-windows-1.tar.zst"
+        const val GRAPHICS_URL = RELEASE_FILES + "ARMFlash-3d-1.tar.zst"
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"
         /** Microsoft's Visual C++ 6 runtime (winetricks' source for MFC 4.2). */
         const val VC6_URL = "https://download.microsoft.com/download/vc60pro/Update/2/W9XNT4/EN-US/VC6RedistSetup_deu.exe"

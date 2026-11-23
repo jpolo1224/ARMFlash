@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/armflash-logo.png" width="160" alt="ARMFlash logo"></p>
+
 # ARMFlash: Flashpoint Archive for Android (native ARM64)
 
 A standalone Android port of Flashpoint Archive. No containers, no Wine-in-an-app,

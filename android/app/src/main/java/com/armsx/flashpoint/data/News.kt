@@ -21,8 +21,8 @@ import java.net.URL
 /** Adapted from ARMSX3 News.kt: release notes from GitHub releases, with their pictures. */
 object News {
     private const val TAG = "News"
-    /** ARMFlash's GitHub repository ("owner/name"). Empty until it has one: nothing is fetched. */
-    const val REPO = ""
+    /** ARMFlash's GitHub repository ("owner/name"). */
+    const val REPO = "jpolo1224/ARMFlash"
     private val RELEASES_URL get() = "https://api.github.com/repos/$REPO/releases?per_page=20"
 
     /** A release's page on GitHub. */

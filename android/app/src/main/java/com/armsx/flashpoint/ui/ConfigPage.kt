@@ -569,6 +569,7 @@ private fun WindowsSupportRow() {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val rt = remember { com.armsx.flashpoint.win.WinRuntime(ctx) }
     var installed by remember { mutableStateOf(rt.installed) }
+    var has3d by remember { mutableStateOf(rt.has3d) }
     var busy by remember { mutableStateOf<String?>(null) }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -580,18 +581,34 @@ private fun WindowsSupportRow() {
                 val ins = ctx.contentResolver.openInputStream(uri) ?: return@withContext false
                 rt.install(ins, setOf(com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256)) { busy = it }
             }
-            installed = rt.installed
+            installed = rt.installed; has3d = rt.has3d
             busy = if (ok) null else (busy ?: "Install failed")
         }
     }
     ConfigRow(
         "Windows support",
         if (installed) "Installed. Shockwave, Unity, Java, Flash Player and the other Windows players can run." +
-            (if (rt.has3d) " 3D: installed (software)." else " For 3D games (Unity, Shockwave 3D), also install the 3D file the same way.")
-        else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players.",
+            (if (has3d) " 3D: installed (software)." else " For 3D games (Unity, Shockwave 3D), also download the 3D file (52 MB).")
+        else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players (82 MB download).",
     ) {
-        Chip(busy ?: if (installed) "Reinstall from file" else "Install from file", on = !installed) {
-            if (busy == null) pick.launch(arrayOf("*/*"))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // The runtime first, then the 3D file; each is checked like a file picked by hand.
+            if (!installed || !has3d) Chip(busy ?: if (!installed) "Download" else "Download 3D", on = true) {
+                if (busy == null) {
+                    busy = "Starting…"
+                    scope.launch {
+                        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            if (!rt.installed) rt.download(com.armsx.flashpoint.win.WinRuntime.RUNTIME_URL, com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256) { busy = it }
+                            else rt.download(com.armsx.flashpoint.win.WinRuntime.GRAPHICS_URL, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256) { busy = it }
+                        }
+                        installed = rt.installed; has3d = rt.has3d
+                        busy = if (ok) null else (busy ?: "Download failed")
+                    }
+                }
+            }
+            Chip(if (installed) "Reinstall from file" else "Install from file", on = false) {
+                if (busy == null) pick.launch(arrayOf("*/*"))
+            }
         }
     }
 }
