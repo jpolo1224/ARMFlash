@@ -156,11 +156,13 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         // The game's support pack (normally fetched by the launcher; a pause-menu switch to
         // Flash Player lands here without it).
         val fpRoot = File(intent.getStringExtra(EXTRA_ROOT) ?: (application as com.armsx.flashpoint.FpApp).library.root.path)
+        if (File(fpRoot, "FPSoftware").isDirectory) say("Moving the Windows players…")
+        val drive = SupportPacks.drive(this, fpRoot)
         SupportPacks.idFor(program())?.let { id ->
-            if (!SupportPacks.installed(fpRoot, id)) {
+            if (!SupportPacks.installed(drive, id)) {
                 say("Downloading the $id player…")
                 try {
-                    SupportPacks.install(fpRoot, id) { d, t -> if (t > 0) say("Downloading the $id player… ${d * 100 / t}%") }
+                    SupportPacks.install(drive, id) { d, t -> if (t > 0) say("Downloading the $id player… ${d * 100 / t}%") }
                 } catch (e: Exception) { say("Could not get the $id player: ${e.message}"); return }
             }
         }
@@ -180,7 +182,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
-        val fp = fpRoot
+        val fp = drive
         rt.mapDrive('f', fp)
         val app = program()
         // Without a launch command (a switch from Ruffle), Flash Player gets the game's SWF.

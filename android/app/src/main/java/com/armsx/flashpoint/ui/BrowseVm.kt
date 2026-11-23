@@ -454,11 +454,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val id = com.armsx.flashpoint.win.SupportPacks.idFor(winApp)
-            if (id != null && !com.armsx.flashpoint.win.SupportPacks.installed(library.root, id)) {
+            val drive = withContext(Dispatchers.IO) { com.armsx.flashpoint.win.SupportPacks.drive(ctx, library.root) }
+            if (id != null && !com.armsx.flashpoint.win.SupportPacks.installed(drive, id)) {
                 downloads[game.id] = Download(0, 0)
                 try {
                     withContext(Dispatchers.IO) {
-                        com.armsx.flashpoint.win.SupportPacks.install(library.root, id) { d, t -> downloads[game.id] = Download(d, t) }
+                        com.armsx.flashpoint.win.SupportPacks.install(drive, id) { d, t -> downloads[game.id] = Download(d, t) }
                     }
                 } catch (e: Exception) {
                     status = "Could not get the $id player: ${e.message}"
