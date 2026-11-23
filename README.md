@@ -17,6 +17,21 @@ under Wine and Box64, from a one-time download in Config.
 Games that need PHP on the server side run with the bundled PHP 7.4. Touch controls and game
 controllers work across all of them.
 
+## Requirements
+
+| | Minimum |
+|---|---|
+| Android | 9 or newer |
+| Processor | 64-bit ARM (arm64-v8a) |
+| Graphics | Vulkan or OpenGL ES 3.0, for native Flash |
+| Memory | 3 GB of RAM; 4 GB or more recommended for Windows players |
+| Storage | About 100 MB for the app and 470 MB for the game database, plus the games you play |
+| Windows players | About 1 GB more: Windows support (about 500 MB), its Windows setup on first run (about 350 MB) and each game's support pack; 3D games add about 225 MB |
+| Internet | To download the game database (or import it from a desktop install), games and Windows support |
+
+Custom GPU drivers are for Snapdragon (Adreno) devices. Windows players emulate an x86 PC, so
+they run best on a recent high-end chip.
+
 ## Layout
 
 ```
