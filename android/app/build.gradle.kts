@@ -81,10 +81,13 @@ android {
             dimension = "store"
             isDefault = true
             buildConfigField("boolean", "STORAGE_ALL_FILES", "true")
+            // The in-app updater (src/github): never in the Play build.
+            buildConfigField("boolean", "IN_APP_UPDATER", "true")
         }
         create("play") {
             dimension = "store"
             buildConfigField("boolean", "STORAGE_ALL_FILES", "false")
+            buildConfigField("boolean", "IN_APP_UPDATER", "false")
         }
     }
     androidResources {

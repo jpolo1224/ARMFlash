@@ -187,6 +187,9 @@ private fun App(vm: BrowseVm) {
         if (game != null) play(game) else vm.status = if (mine) "That game is no longer in My Games." else "That game is not in the database."
     }
 
+    // Check on Launch (Config, Updates): one quiet check at start, GitHub build only.
+    if (com.armsx.flashpoint.BuildConfig.IN_APP_UPDATER) com.armsx.flashpoint.update.AutoUpdateGate()
+
     Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
         if (!vm.dbReady) {
             if (vm.opening) Opening() else Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)

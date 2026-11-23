@@ -55,6 +55,11 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
         Text("Config", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
 
+        // New versions from ARMFlash's GitHub releases (GitHub build only; see update/Updater.kt).
+        if (com.armsx.flashpoint.BuildConfig.IN_APP_UPDATER) Section("Updates") {
+            com.armsx.flashpoint.update.UpdaterRows()
+        }
+
         Section("Theme") {
             ConfigRow("Theme", "Colours for the launcher.") {
                 ThemeMenu()

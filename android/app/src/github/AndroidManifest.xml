@@ -1,7 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- GitHub build only: a Flashpoint folder anywhere on shared storage (Setup's Custom folder). -->
+<!--
+    GitHub build only, so the Play build never carries them:
+    - MANAGE_EXTERNAL_STORAGE: a Flashpoint folder anywhere on shared storage (Setup's Custom folder).
+    - REQUEST_INSTALL_PACKAGES and the FileProvider: the in-app updater downloads a GitHub release
+      APK and hands it to the system package installer. Play rejects apps that update themselves
+      outside the store, and it is the declared permission it rejects, so it stays out of main.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The updater hands its APK straight to the system installer, which it must be able to see. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
+
+    <application>
+        <!-- Hands the downloaded update APK to the system package installer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updateprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+    </application>
 </manifest>

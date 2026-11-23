@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for the in-app updater: the downloaded update APK in
+     externalCacheDir/updates/, handed to the system package installer from there. Only that one
+     directory, so the provider exposes the update and nothing else. -->
+<paths>
+    <external-cache-path name="updates" path="updates/" />
+</paths>
