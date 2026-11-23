@@ -187,6 +187,7 @@ impl Seekable {
         table.push(0);
         count += 1;
         let mut inbuf = vec![0u8; 1 << 20];
+        let mut prep = Prep::new(self.csize);
         let (mut totin, mut totout, mut last) = (0u64, 0u64, 0u64);
         let mut pos = self.data_start;
         let end = self.data_start + self.csize;
@@ -202,6 +203,7 @@ impl Seekable {
                         let want = inbuf.len().min((end - pos) as usize);
                         self.zip.read_exact_at(&mut inbuf[..want], pos)?;
                         pos += want as u64;
+                        prep.add(want as u64);
                         s.next_in = inbuf.as_ptr();
                         s.avail_in = want as u32;
                     }
@@ -324,6 +326,43 @@ impl Seekable {
 // ---- the files PHP sees, and the socket it reads them through ------------------------------
 
 static FILES: RwLock<Vec<(PathBuf, Arc<Seekable>)>> = RwLock::new(Vec::new());
+
+// Seek indexes being built right now: compressed bytes read so far and in all, for the game
+// screen's "getting this game's data ready" notice (a first run of Happy Wheels takes a minute).
+static PREP_DONE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PREP_TOTAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// While a game's big data is being indexed: (bytes done, bytes in all).
+pub fn preparing() -> Option<(u64, u64)> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let total = PREP_TOTAL.load(Relaxed);
+    (total > 0).then(|| (PREP_DONE.load(Relaxed).min(total), total))
+}
+
+/// One index build's share of [preparing], taken back when the build ends either way.
+struct Prep {
+    total: u64,
+    done: u64,
+}
+
+impl Prep {
+    fn new(total: u64) -> Prep {
+        PREP_TOTAL.fetch_add(total, std::sync::atomic::Ordering::Relaxed);
+        Prep { total, done: 0 }
+    }
+
+    fn add(&mut self, n: u64) {
+        self.done += n;
+        PREP_DONE.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Drop for Prep {
+    fn drop(&mut self) {
+        PREP_DONE.fetch_sub(self.done, std::sync::atomic::Ordering::Relaxed);
+        PREP_TOTAL.fetch_sub(self.total, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 static SOCKET: OnceLock<PathBuf> = OnceLock::new();
 
 /// Show entry `index` of `zip` to PHP at `placeholder` (an empty file made here). Returns the

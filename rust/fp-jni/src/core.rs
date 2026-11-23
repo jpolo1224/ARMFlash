@@ -391,4 +391,36 @@ mod tests {
         let g: serde_json::Value = serde_json::from_str(&find_game("id-0").unwrap()).unwrap();
         assert_eq!(g["title"], "Poptropica");
     }
+
+    /// The Games tab's Popular query against a real database: FP_TEST_DB=<flashpoint.sqlite>
+    /// FP_TEST_IDS=<comma-separated ids>.
+    #[test]
+    fn popular_query_real_db() {
+        let (Ok(db), Ok(ids)) = (std::env::var("FP_TEST_DB"), std::env::var("FP_TEST_IDS")) else { return };
+        open_database(&db).unwrap();
+        let ids: Vec<&str> = ids.split(',').collect();
+        for bl in [None, Some(vec!["Extreme"])] {
+            let opts = serde_json::json!({ "ids": ids, "tagBlacklist": bl });
+            match search_page("", &opts.to_string(), ids.len() as i64) {
+                Ok(j) => {
+                    let v: Vec<serde_json::Value> = serde_json::from_str(&j).unwrap();
+                    eprintln!("blacklist {bl:?}: {} games; first {:?}", v.len(), v.first().map(|g| g["title"].clone()));
+                }
+                Err(e) => eprintln!("blacklist {bl:?}: ERROR {e}"),
+            }
+        }
+    }
+
+    /// The Platform filter's choices for the games tab: FP_TEST_DB=<flashpoint.sqlite>.
+    #[test]
+    fn platforms_real_db() {
+        let Ok(db) = std::env::var("FP_TEST_DB") else { return };
+        open_database(&db).unwrap();
+        let t = std::time::Instant::now();
+        let r = platforms_with_games(r#"{"library":"arcade"}"#);
+        eprintln!("arcade platforms in {:?}: {:?}", t.elapsed(), r.as_ref().map(|j| serde_json::from_str::<Vec<String>>(j).map(|v| v.len())));
+        let all: Vec<String> = serde_json::from_str(&platforms().unwrap()).unwrap_or_default();
+        let arcade: Vec<String> = r.ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        eprintln!("all {} platforms; not in arcade: {:?}", all.len(), all.iter().filter(|p| !arcade.contains(p)).collect::<Vec<_>>());
+    }
 }

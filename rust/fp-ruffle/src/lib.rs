@@ -311,8 +311,15 @@ async fn run(app: AndroidApp) {
                     }
                     MainEvent::TerminateWindow { .. } => {
                         if let Some(p) = playerbox.as_ref() {
-                            p.player.lock().unwrap().set_is_playing(false);
+                            let mut player = p.player.lock().unwrap();
+                            player.set_is_playing(false);
+                            // Let the surface go with its window: coming back makes a new one, and
+                            // Vulkan refuses a second surface on a window that still has one.
+                            if let Some(renderer) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player.renderer_mut()) {
+                                renderer.target().release();
+                            }
                         }
+                        native_window = None;
                     }
                     MainEvent::InputAvailable => {
                         if let Ok(mut inputs) = app.input_events_iter() {

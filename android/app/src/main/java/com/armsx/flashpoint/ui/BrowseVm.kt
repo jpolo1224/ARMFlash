@@ -289,8 +289,18 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         val bl = tagBlacklist()
         platformsFor = withContext(Dispatchers.IO) {
             listOf("arcade").associateWith { l ->
-                runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl)) }
-                    .getOrElse { FpCore.platformNames() }.filter { it.isNotBlank() }.sorted()
+                // Counted while the rest of startup also searches: retry a few times before giving
+                // up, and never fall back to platforms that only have animations.
+                var found: List<String>? = null
+                for (attempt in 1..3) {
+                    found = runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl)) }
+                        .onFailure { android.util.Log.w("BrowseVm", "platforms for $l (try $attempt): ${it.message}") }
+                        .getOrNull()
+                    if (found != null) break
+                    kotlinx.coroutines.delay(2000L * attempt)
+                }
+                (found ?: runCatching { FpCore.platformNames() }.getOrDefault(emptyList()).filter { it !in ANIMATION_ONLY_PLATFORMS })
+                    .filter { it.isNotBlank() }.sorted()
             }
         }
         applyPlatforms()
@@ -507,7 +517,14 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private fun loadFeatured() = viewModelScope.launch {
         val bl = tagBlacklist()
         featured = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(ids = FEATURED_GAMES, order = "CUSTOM", tagBlacklist = bl), FEATURED_GAMES.size) }.getOrDefault(emptyList())
+            runCatching {
+                // Fetched by id, then ordered and filtered here: the database's CUSTOM order and tag
+                // filter both join tables that only a full index pass fills, which one page never
+                // runs (so at startup the list came back empty).
+                val byId = FpCore.page("", SearchOpts(ids = FEATURED_GAMES), FEATURED_GAMES.size).associateBy { it.id }
+                FEATURED_GAMES.mapNotNull { byId[it] }
+                    .filter { g -> bl == null || g.tags.split(';').none { it.trim() in bl } }
+            }.getOrDefault(emptyList())
         }
     }
 
@@ -613,6 +630,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         private set
 
     companion object {
+        /** Flashpoint platforms with animations only (checked against the database 2026-11-22). */
+        private val ANIMATION_ONLY_PLATFORMS = setOf(
+            "AnimaFlex", "Sizzler", "Flick", "Animated Widgets", "MegaView", "Fractal eXtreme", "20-20 3D Viewer",
+            "EGI", "NAPLPS", "Electrifier", "EMBLAZE", "CrazyTalk", "Atomic3D", "Tulip3D",
+        )
+
         /** Game id -> the game whose pack serves its online parts. */
         private val COMPANION_PACKS = mapOf(
             "b448cbec-8a0e-4abf-96cf-4a12b41b6818" to "2686de77-6b3c-4718-b57b-9ba01a8bf255", // Happy Wheels HTML5 -> Flash

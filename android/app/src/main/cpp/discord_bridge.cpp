@@ -197,6 +197,9 @@ namespace
 		// Name the game, not ARMFlash, in the status line: the player's Friends switch, and only ever
 		// set for a real game (a place such as the Icon Museum keeps "Playing ARMFlash").
 		bool want_show_game = false;
+		// Discord could not find the "flasharm" art asset (not uploaded yet, or still on its way
+		// after an upload): presence goes out without it. Tried again with each new presence.
+		bool no_art_asset = false;
 	};
 
 	State& S()
@@ -249,8 +252,10 @@ namespace
 		std::shared_ptr<discordpp::Client> client;
 		std::string serial, title, cover, ra, party;
 		bool show_game = false;
+		bool no_art = false;
 		{
 			std::lock_guard<std::mutex> lock(S().mutex);
+			no_art = S().no_art_asset;
 			client = S().client;
 			serial = S().want_serial;
 			title = S().want_title;
@@ -307,12 +312,15 @@ namespace
 		// showing a broken image. Mixing the two forms is fine: Discord resolves each asset field
 		// independently, so a URL in the large slot and an asset key in the small one both render.
 		discordpp::ActivityAssets assets;
-		assets.SetLargeImage(cover.empty() ? std::string(kIdleImageKey) : cover);
+		if (!cover.empty())
+			assets.SetLargeImage(cover);
+		else if (!no_art)
+			assets.SetLargeImage(std::string(kIdleImageKey));
 		// LargeText now carries the SERIAL, because State no longer can -- a friend's client reads
 		// this to look up cover art. Nothing else may be appended: it is parsed, not just shown.
 		// (Hover text on the cover is a reasonable home for a serial anyway.)
 		assets.SetLargeText(serial.empty() ? (title.empty() ? std::string("ARMFlash") : title) : serial);
-		if (!cover.empty())
+		if (!cover.empty() && !no_art)
 		{
 			// Small badge in the corner keeps ARMFlash identifiable when the big image is a cover.
 			assets.SetSmallImage(std::string(kIdleImageKey));
@@ -320,9 +328,22 @@ namespace
 		}
 		activity.SetAssets(std::move(assets));
 
-		client->UpdateRichPresence(std::move(activity), [](discordpp::ClientResult result) {
-			if (!result.Successful())
-				DLOGW("presence update failed: %s", result.Error().c_str());
+		const bool used_art = !no_art;
+		client->UpdateRichPresence(std::move(activity), [used_art](discordpp::ClientResult result) {
+			if (result.Successful())
+				return;
+			DLOGW("presence update failed: %s", result.Error().c_str());
+			// Discord rejects the whole presence when an art asset it cannot find is named: send it
+			// again without ARMFlash's picture rather than showing nothing at all.
+			if (used_art && result.Error().find("Unable to resolve") != std::string::npos)
+			{
+				{
+					std::lock_guard<std::mutex> lock(S().mutex);
+					S().no_art_asset = true;
+				}
+				DLOGI("presence: sending it without the flasharm art asset");
+				PushPresence();
+			}
 		});
 	}
 
@@ -758,6 +779,7 @@ Java_com_armsx_flashpoint_discord_DiscordNative_setPlaying(
 		S().want_ra = JStr(env, ra);
 		S().want_party = JStr(env, party);
 		S().want_show_game = show_game != JNI_FALSE;
+		S().no_art_asset = false;
 	}
 	if (S().status.load(std::memory_order_acquire) == static_cast<int>(BridgeStatus::Connected))
 		PushPresence();

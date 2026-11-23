@@ -82,6 +82,10 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyStart(htdocs: JString, legacy: J
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyMount(zip: JString) => core::proxy_mount(&zip));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyPhp(loader: JString, home: JString, work: JString) => core::proxy_php(&loader, &home, &work));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyUnmountAll() => { core::proxy_unmount_all(); Ok("{}".into()) });
+jfn!(Java_com_armsx_flashpoint_core_FpCore_dataPrep() => Ok(match fp_proxy::preparing() {
+    Some((done, total)) => serde_json::json!({ "done": done, "total": total }).to_string(),
+    None => "{}".into(),
+}));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStart(base: JString, after: JString) => sync::start(&base, &after));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStatus() => sync::status());
 jfn!(Java_com_armsx_flashpoint_core_FpCore_syncCancel() => { sync::cancel(); Ok("{}".into()) });

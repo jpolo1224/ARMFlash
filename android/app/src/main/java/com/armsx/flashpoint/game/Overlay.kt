@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -217,6 +218,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         if (st.menu) QuickMenu(st, host)
         WelcomeBannerOverlay(this)
         com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))
+        DataPrepBanner(host.title, Modifier.align(Alignment.BottomCenter))
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
         if (st.picking) KeyPicker(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }
@@ -612,4 +614,44 @@ private fun add(st: OverlayState, b: TouchButton) {
     }
     st.swapping = null
     st.picking = false
+}
+
+/**
+ * "Getting <game> ready for its first run": shown while the game server indexes a game's big data
+ * (Happy Wheels' 9 GB level pack takes a minute or two, once), with how far it has got.
+ */
+@Composable
+private fun DataPrepBanner(title: String, modifier: Modifier = Modifier) {
+    var progress by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            progress = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.armsx.flashpoint.core.FpCore.preparing() }
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val p = progress ?: return
+    val pct = if (p.second > 0) (p.first * 100 / p.second).toInt() else 0
+    androidx.compose.material3.Surface(
+        modifier = modifier.padding(bottom = 18.dp, start = 16.dp, end = 16.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        color = Color(0xE6202024),
+        shadowElevation = 10.dp,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).widthIn(max = 520.dp)) {
+            Text(
+                "Getting ${title.ifBlank { "this game" }} ready for its first run: $pct%",
+                color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "This takes a minute or two, once. Its levels and other online parts load when it is done.",
+                color = Color(0xFFBDBDC2), fontSize = 12.sp,
+            )
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { pct / 100f },
+                modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                color = Color(0xFF6CC63F),
+                trackColor = Color(0xFF48484D),
+            )
+        }
+    }
 }

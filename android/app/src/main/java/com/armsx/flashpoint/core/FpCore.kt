@@ -42,6 +42,7 @@ object FpCore {
     @JvmStatic private external fun proxyMount(zip: String): String
     @JvmStatic private external fun proxyPhp(loader: String, home: String, work: String): String
     @JvmStatic private external fun proxyUnmountAll(): String
+    @JvmStatic private external fun dataPrep(): String
     @JvmStatic private external fun syncStart(base: String, after: String): String
     @JvmStatic private external fun syncStatus(): String
     @JvmStatic private external fun syncCancel(): String
@@ -125,6 +126,17 @@ object FpCore {
     fun mount(zip: String) {
         check(proxyMount(zip))
     }
+
+    /**
+     * While a game's big data is being made ready (the first run of Happy Wheels indexes its
+     * 9 GB level pack): bytes done and bytes in all. Null when nothing is being prepared.
+     */
+    fun preparing(): Pair<Long, Long>? = runCatching {
+        val o = json.parseToJsonElement(dataPrep()) as JsonObject
+        val done = o["done"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: return@runCatching null
+        val total = o["total"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: return@runCatching null
+        done to total
+    }.getOrNull()
 
     fun unmountAll() {
         check(proxyUnmountAll())

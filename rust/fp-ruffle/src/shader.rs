@@ -17,7 +17,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct ShaderTarget {
-    surface: Mutex<wgpu::Surface<'static>>,
+    /// None while the app has no window (in the background): the surface is let go with its
+    /// window, as Vulkan allows one surface per Android window.
+    surface: Mutex<Option<wgpu::Surface<'static>>>,
     config: Mutex<wgpu::SurfaceConfiguration>,
     chain: Mutex<Option<FilterChainWgpu>>,
     /// Ruffle's frame when a chain runs: same size and format as the window.
@@ -78,7 +80,7 @@ impl ShaderTarget {
         let config = surface_config(&surface, adapter, size);
         surface.configure(device, &config);
         Self {
-            surface: Mutex::new(surface),
+            surface: Mutex::new(Some(surface)),
             config: Mutex::new(config),
             chain: Mutex::new(None),
             offscreen: Mutex::new(None),
@@ -86,12 +88,20 @@ impl ShaderTarget {
         }
     }
 
-    /// A new window surface (the old one went with the old window).
+    /// Let the window's surface go: the window is going away (the app left the screen). A second
+    /// surface on the same window fails (VK_ERROR_NATIVE_WINDOW_IN_USE_KHR) and wgpu panics on it.
+    pub fn release(&self) {
+        *self.surface.lock().unwrap() = None;
+        *self.offscreen.lock().unwrap() = None;
+    }
+
+    /// A new window surface (the old one, if still here, is let go first).
     pub fn recreate(&self, d: &Descriptors, target: wgpu::SurfaceTargetUnsafe, size: (u32, u32)) -> Result<(), String> {
+        self.release();
         let surface = unsafe { d.wgpu_instance.create_surface_unsafe(target) }.map_err(|e| e.to_string())?;
         let config = surface_config(&surface, &d.adapter, size);
         surface.configure(&d.device, &config);
-        *self.surface.lock().unwrap() = surface;
+        *self.surface.lock().unwrap() = Some(surface);
         *self.config.lock().unwrap() = config;
         *self.offscreen.lock().unwrap() = None;
         Ok(())
@@ -147,7 +157,9 @@ impl RenderTarget for ShaderTarget {
         let mut config = self.config.lock().unwrap();
         config.width = width;
         config.height = height;
-        self.surface.lock().unwrap().configure(device, &config);
+        if let Some(surface) = self.surface.lock().unwrap().as_ref() {
+            surface.configure(device, &config);
+        }
     }
 
     fn format(&self) -> wgpu::TextureFormat {
@@ -163,7 +175,9 @@ impl RenderTarget for ShaderTarget {
     }
 
     fn get_next_texture(&mut self) -> Option<Self::Frame> {
-        let texture = match self.surface.lock().unwrap().get_current_texture() {
+        // No window (in the background): nothing to draw on.
+        let current = self.surface.lock().unwrap().as_ref().map(|s| s.get_current_texture())?;
+        let texture = match current {
             wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             state => {
                 log::warn!("no surface texture: {state:?}");

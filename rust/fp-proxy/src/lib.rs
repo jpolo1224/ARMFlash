@@ -27,6 +27,7 @@ use std::sync::{Arc, RwLock};
 pub use mount::Mount;
 pub use path::Key;
 pub use server::{http_get, start, ProxyHandle};
+pub use zipseek::preparing;
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
