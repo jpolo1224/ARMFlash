@@ -473,10 +473,20 @@ async fn run(app: AndroidApp) {
                     let r = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(p.renderer_mut())?;
                     let rep = r.descriptors().wgpu_instance.generate_report()?;
                     let h = rep.hub_report();
+                    // wgpu-hal's counts: what Vulkan still holds, including objects Ruffle has
+                    // dropped that wgpu has not destroyed yet.
+                    let c = r.descriptors().device.get_internal_counters().hal;
+                    // Self-correction: Vulkan holding far more textures or buffers than Ruffle uses
+                    // means destruction is waiting on the GPU; wait for it once, which frees them.
+                    if c.textures.read() > h.textures.num_allocated as isize + 300 || c.buffers.read() > h.buffers.num_allocated as isize + 2000 {
+                        let _ = r.descriptors().device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
+                    }
                     Some(format!(
-                        "buffers {} textures {} views {} bind_groups {} samplers {}",
-                        h.buffers.num_allocated, h.textures.num_allocated, h.texture_views.num_allocated,
-                        h.bind_groups.num_allocated, h.samplers.num_allocated,
+                        "ruffle: buffers {} textures {} bind_groups {}; vulkan: buffers {} textures {} views {} bind_groups {} encoders {} fences {} allocations {} texture MB {} buffer MB {}",
+                        h.buffers.num_allocated, h.textures.num_allocated, h.bind_groups.num_allocated,
+                        c.buffers.read(), c.textures.read(), c.texture_views.read(), c.bind_groups.read(),
+                        c.command_encoders.read(), c.fences.read(), c.memory_allocations.read(),
+                        c.texture_memory.read() >> 20, c.buffer_memory.read() >> 20,
                     ))
                 }).unwrap_or_default();
                 log::info!("memory: {maps} maps, {live} live bitmaps, {gpu}");

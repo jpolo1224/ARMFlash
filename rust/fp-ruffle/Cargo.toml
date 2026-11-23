@@ -24,7 +24,8 @@ android_logger = "0.15.1"
 jni = "0.22.4"
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
 ndk = { version = "0.9.0", features = ["audio"] }
-wgpu = "30.0.1"
+# counters: wgpu-hal's own object and memory counts, for the memory log.
+wgpu = { version = "30.0.1", features = ["counters"] }
 # RetroArch (.slangp) shader chains on native Flash (MPL-2.0).
 librashader-runtime-wgpu = "0.12.1"
 librashader-common = "0.12.1"
