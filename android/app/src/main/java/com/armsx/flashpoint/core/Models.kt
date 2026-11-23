@@ -74,6 +74,8 @@ data class SearchOpts(
     val platforms: List<String>? = null,
     val ids: List<String>? = null,
     val tagBlacklist: List<String>? = null,
+    /** Games the tag filter also hides (set from [Extreme.ids] by [FpCore]). */
+    val hideIds: List<String>? = null,
     val library: String? = null,
     val played: Boolean = false,
     val after: PageMark? = null,

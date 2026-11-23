@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.armsx.flashpoint.FpApp
+import com.armsx.flashpoint.core.Extreme
 import com.armsx.flashpoint.core.FpCore
 import com.armsx.flashpoint.core.Game
 import com.armsx.flashpoint.core.OFFERED_PLATFORMS
@@ -284,6 +285,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         rerollPicks()
         loadPlatforms()
         loadFeatured()
+        // Home's rows and Game of the Day follow Show Extreme Games too, and an Extreme game left
+        // open closes when they are hidden again.
+        recentTick++
+        loadGotd()
+        (details ?: selected)?.let { if (hidden(it)) clearSelection() }
     }
 
     fun showLibrary(l: String) {
@@ -331,8 +337,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Tags hidden while "Show Extreme Filters" is off (the launcher's Extreme tag filter group). */
-    private fun tagBlacklist(): List<String>? = if (prefs2.extremeGames.value) null else ExtremeTags.list.ifEmpty { null }
+    /** The Extreme tags, hidden while Show Extreme Games is off (the default). */
+    private fun tagBlacklist(): List<String>? = if (prefs2.extremeGames.value) null else Extreme.tags
+
+    private fun hidden(g: Game) = !prefs2.extremeGames.value && Extreme.isExtreme(g)
 
     fun rerollPicks() = viewModelScope.launch {
         val libs = setOf("arcade")
@@ -381,7 +389,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         gotd = withContext(Dispatchers.IO) {
             Gotd.today()?.let { (_, past) ->
                 past.asReversed().take(30).firstNotNullOfOrNull { entry ->
-                    runCatching { FpCore.game(entry.id) }.getOrNull()?.takeIf { it.library == "arcade" && it.primaryPlatform in OFFERED_PLATFORMS }?.let { entry.copy(game = it) }
+                    runCatching { FpCore.game(entry.id) }.getOrNull()?.takeIf { it.library == "arcade" && it.primaryPlatform in OFFERED_PLATFORMS && !hidden(it) }?.let { entry.copy(game = it) }
                 }
             }
         }
@@ -498,9 +506,9 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             runCatching {
                 val games = when (which) {
                     "favorites" -> favorites.mapNotNull { runCatching { FpCore.game(it) }.getOrNull() }
-                    "played" -> FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, platforms = OFFERED_PLATFORMS), 5000)
-                    else -> FpCore.page("", SearchOpts(installed = true, platforms = OFFERED_PLATFORMS), 20000)
-                }
+                    "played" -> FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = tagBlacklist(), platforms = OFFERED_PLATFORMS), 5000)
+                    else -> FpCore.page("", SearchOpts(installed = true, tagBlacklist = tagBlacklist(), platforms = OFFERED_PLATFORMS), 20000)
+                }.filterNot(::hidden)
                 val dir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, tree) ?: return@runCatching 0
                 val existing = dir.listFiles().mapNotNull { it.name }.toSet()
                 var written = 0
@@ -547,12 +555,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         val bl = tagBlacklist()
         featured = withContext(Dispatchers.IO) {
             runCatching {
-                // Fetched by id, then ordered and filtered here: the database's CUSTOM order and tag
-                // filter both join tables that only a full index pass fills, which one page never
-                // runs (so at startup the list came back empty).
+                // Fetched by id, then ordered and filtered here: the database's CUSTOM order joins a
+                // table that only a full index pass fills, which one page never runs (so at startup
+                // the list came back empty).
                 val byId = FpCore.page("", SearchOpts(ids = FEATURED_GAMES, platforms = OFFERED_PLATFORMS), FEATURED_GAMES.size).associateBy { it.id }
                 FEATURED_GAMES.mapNotNull { byId[it] }
-                    .filter { g -> bl == null || g.tags.split(';').none { it.trim() in bl } }
+                    .filter { g -> bl == null || !Extreme.isExtreme(g) }
             }.getOrDefault(emptyList())
         }
     }
@@ -720,7 +728,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     private fun tracks(game: Game) = prefs2.enablePlaytimeTracking.value &&
-        (prefs2.enablePlaytimeTrackingExtreme.value || game.tags.split(';').none { it.trim() in ExtremeTags.list })
+        (prefs2.enablePlaytimeTrackingExtreme.value || !Extreme.isExtreme(game))
 
     /** Bumped when a game returns, so the Home rows reload. */
     var recentTick by mutableStateOf(0)

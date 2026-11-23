@@ -44,15 +44,3 @@ data class Gotd(
         }
     }
 }
-
-/**
- * Tags hidden while Config > Show Extreme Filters is off: the launcher's default Extreme
- * tag filter group. Filled from the install's preferences.json (see [load]).
- */
-object ExtremeTags {
-    @Volatile var list: List<String> = emptyList()
-
-    fun load(tags: List<String>) {
-        list = tags
-    }
-}

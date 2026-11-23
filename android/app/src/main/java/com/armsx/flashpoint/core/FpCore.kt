@@ -64,14 +64,18 @@ object FpCore {
         (check(openDatabase(path)) as JsonObject)["games"]!!.jsonPrimitive.int
 
     fun index(query: String, opts: SearchOpts, pageSize: Int): SearchIndex =
-        json.decodeFromJsonElement(SearchIndex.serializer(), check(searchIndex(query, json.encodeToString(SearchOpts.serializer(), opts), pageSize)))
+        json.decodeFromJsonElement(SearchIndex.serializer(), check(searchIndex(query, enc(opts), pageSize)))
+
+    /** [opts] as JSON; a search filtered by the Extreme tags also hides [Extreme.ids]. */
+    private fun enc(opts: SearchOpts) = json.encodeToString(SearchOpts.serializer(),
+        if (opts.tagBlacklist.isNullOrEmpty()) opts else opts.copy(hideIds = Extreme.ids.toList()))
 
     /** How many games [opts] finds. */
     fun total(opts: SearchOpts): Int =
-        (check(searchTotal(json.encodeToString(SearchOpts.serializer(), opts))) as JsonObject)["total"]!!.jsonPrimitive.int
+        (check(searchTotal(enc(opts))) as JsonObject)["total"]!!.jsonPrimitive.int
 
     fun page(query: String, opts: SearchOpts, pageSize: Int): List<Game> =
-        json.decodeFromJsonElement(GameListSerializer, check(searchPage(query, json.encodeToString(SearchOpts.serializer(), opts), pageSize)))
+        json.decodeFromJsonElement(GameListSerializer, check(searchPage(query, enc(opts), pageSize)))
 
     fun game(id: String): Game? {
         val el = check(findGame(id))
@@ -83,7 +87,7 @@ object FpCore {
 
     /** The platforms that have games under [opts] (a tab and its filters). */
     fun platformsWithGames(opts: SearchOpts): List<String> =
-        json.decodeFromJsonElement(StringListSerializer, check(platformsWithGames(json.encodeToString(SearchOpts.serializer(), opts))))
+        json.decodeFromJsonElement(StringListSerializer, check(platformsWithGames(enc(opts))))
 
     fun markOnDisk(gameDataId: Long, path: String) {
         check(markDataOnDisk(path, gameDataId))
@@ -154,7 +158,7 @@ object FpCore {
     fun sync(): SyncStatus = json.decodeFromJsonElement(SyncStatus.serializer(), check(syncStatus()))
 
     fun random(opts: SearchOpts, count: Int): List<Game> =
-        json.decodeFromJsonElement(GameListSerializer, check(randomGames(json.encodeToString(SearchOpts.serializer(), opts), count)))
+        json.decodeFromJsonElement(GameListSerializer, check(randomGames(enc(opts), count)))
 
     fun optimizeDatabase() {
         check(optimize())

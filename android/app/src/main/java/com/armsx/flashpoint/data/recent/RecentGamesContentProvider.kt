@@ -55,7 +55,10 @@ class RecentGamesContentProvider : ContentProvider() {
         if (!library.database.isFile) return cursor
         runCatching {
             FpCore.open(library.database.path)
-            FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, library = "arcade", platforms = com.armsx.flashpoint.core.OFFERED_PLATFORMS), MAX_RECENT)
+            // Extreme games stay out while Config > Show Extreme Games is off, as in ARMFlash itself.
+            val extreme = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).getBoolean("extremeGames", false)
+            FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, library = "arcade", platforms = com.armsx.flashpoint.core.OFFERED_PLATFORMS,
+                tagBlacklist = if (extreme) null else com.armsx.flashpoint.core.Extreme.tags), MAX_RECENT)
         }.getOrNull().orEmpty().forEach { g ->
             val last = g.lastPlayed?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
             cursor.addRow(arrayOf<Any?>(Frontend.playUri(g.id).toString(), g.title, g.id, Frontend.EXT, g.primaryPlatform, last))

@@ -73,6 +73,8 @@ pub struct SearchOpts {
     /// Playlist order (CUSTOM sort) or restriction to a playlist's games.
     pub ids: Option<Vec<String>>,
     pub tag_blacklist: Option<Vec<String>>,
+    /// Games the tag filter also leaves out (ones Flashpoint has none of its tags on).
+    pub hide_ids: Option<Vec<String>>,
     /// Library: "arcade" (Games tab) or "theatre" (Animations tab).
     pub library: Option<String>,
     /// Only games that have been played (the Home page's Play History).
@@ -105,6 +107,44 @@ fn sortable(s: Option<&str>) -> GameSearchSortable {
     }
 }
 
+/// Fill the database's tag filter table for [tags]: every search with a tag filter (the Extreme
+/// tags) keeps only the games listed there. The crate's own index and random searches never
+/// fill it: they pass the tags in a field its fill step clears first. So the table stayed empty
+/// and a filtered search found nothing. The crate refills it only when the tags or the games
+/// (a sync) changed. The lock stops two searches filling it at once (its ids are a primary key).
+///
+/// [hide] leave the table too, so every filtered search (pages, totals, random picks) leaves
+/// them out in the database. The crate's id blacklist cannot: its SQL ORs the id test with a
+/// redirect test that every game passes.
+fn ensure_tag_filter(fp: &FlashpointArchive, tags: &[String], hide: &[String]) {
+    static FILL: Mutex<Option<(String, rusqlite::Connection)>> = Mutex::new(None);
+    let mut conn = FILL.lock().unwrap_or_else(|p| p.into_inner());
+    let mut f = flashpoint_archive::game::search::GameSearch::default();
+    f.with_tag_filter = Some(tags.to_vec());
+    if let Err(err) = rt().block_on(fp.new_tag_filter_index(&mut f)) {
+        log::warn!("tag filter: {err}");
+        return;
+    }
+    if hide.is_empty() {
+        return;
+    }
+    let path = db_path().read().map(|p| p.clone()).unwrap_or_default();
+    if conn.as_ref().map(|(p, _)| p != &path).unwrap_or(true) {
+        *conn = rusqlite::Connection::open(&path)
+            .and_then(|c| c.busy_timeout(std::time::Duration::from_secs(5)).map(|_| c))
+            .map(|c| (path.clone(), c))
+            .map_err(|err| log::warn!("tag filter hide: {err}"))
+            .ok();
+    }
+    if let Some((_, c)) = conn.as_ref() {
+        for id in hide {
+            if let Err(err) = c.execute("DELETE FROM tag_filter_index WHERE id = ?1", [id]) {
+                log::warn!("tag filter hide {id}: {err}");
+            }
+        }
+    }
+}
+
 fn build_search(fp: &FlashpointArchive, input: &str, opts: &SearchOpts, limit: i64) -> flashpoint_archive::game::search::GameSearch {
     let mut s = fp.parse_user_input(input).search;
     s.limit = limit;
@@ -133,6 +173,7 @@ fn build_search(fp: &FlashpointArchive, input: &str, opts: &SearchOpts, limit: i
     }
     if let Some(tb) = &opts.tag_blacklist {
         if !tb.is_empty() {
+            ensure_tag_filter(fp, tb, opts.hide_ids.as_deref().unwrap_or_default());
             s.with_tag_filter = Some(tb.clone());
         }
     }
@@ -449,6 +490,57 @@ mod tests {
                 }
                 Err(e) => eprintln!("blacklist {bl:?}: ERROR {e}"),
             }
+        }
+    }
+
+    /// The Extreme filter hides tagged games from every kind of search, from a cold start (no
+    /// search run yet): FP_TEST_DB=<flashpoint.sqlite>.
+    #[test]
+    fn extreme_filter_real_db() {
+        let Ok(db) = std::env::var("FP_TEST_DB") else { return };
+        open_database(&db).unwrap();
+        let bl = json!(["Adult", "Gore", "Necrophilia", "Sexual Content", "LEGACY-Extreme"]);
+        let pedopriest = "d4295219-e61c-4952-b964-45c388f81e40";
+        let titles = |q: &str, opts: serde_json::Value| -> Vec<String> {
+            let v: Vec<serde_json::Value> = serde_json::from_str(&search_page(q, &opts.to_string(), 100).unwrap()).unwrap();
+            v.iter().map(|g| g["title"].as_str().unwrap_or("").to_string()).collect()
+        };
+        let t = std::time::Instant::now();
+        let hidden = titles("Dead Babies", json!({ "library": "arcade", "tagBlacklist": bl }));
+        eprintln!("first filtered search (fills the table) in {:?}: {hidden:?}", t.elapsed());
+        let all = titles("Dead Babies", json!({ "library": "arcade" }));
+        eprintln!("unfiltered: {all:?}");
+        assert!(all.iter().any(|t| t == "6 More Things To Do With Dead Babies!"));
+        assert!(!hidden.iter().any(|t| t == "6 More Things To Do With Dead Babies!"));
+        assert!(hidden.iter().any(|t| t == "Babies Dream of Dead Worlds"));
+
+        let total = |opts: serde_json::Value| -> i64 {
+            serde_json::from_str::<serde_json::Value>(&search_total(&opts.to_string()).unwrap()).unwrap()["total"].as_i64().unwrap()
+        };
+        let (open, filtered) = (total(json!({ "library": "arcade" })), total(json!({ "library": "arcade", "tagBlacklist": bl })));
+        eprintln!("arcade: {open} games, {filtered} with the filter");
+        assert!(filtered > 0 && filtered < open);
+        let idx: serde_json::Value =
+            serde_json::from_str(&search_index("", &json!({ "library": "arcade", "tagBlacklist": bl }).to_string(), 100).unwrap()).unwrap();
+        assert_eq!(idx["total"].as_i64().unwrap(), filtered);
+
+        // A game hidden by id: gone from pages and totals alike, and back without the filter.
+        assert_eq!(titles("Pedopriest", json!({ "library": "arcade" })), vec!["Operation: Pedopriest"]);
+        let with_hide = json!({ "library": "arcade", "tagBlacklist": bl, "hideIds": [pedopriest] });
+        assert!(titles("Pedopriest", with_hide.clone()).is_empty());
+        assert_eq!(total(with_hide.clone()), filtered - 1);
+        let idx: serde_json::Value = serde_json::from_str(&search_index("Pedopriest", &with_hide.to_string(), 100).unwrap()).unwrap();
+        assert_eq!(idx["total"].as_i64().unwrap(), 0);
+        assert!(titles("Molleindustria", with_hide.clone()).iter().all(|t| t != "Operation: Pedopriest"));
+        assert!(!titles("Molleindustria", with_hide.clone()).is_empty());
+
+        let picks: Vec<serde_json::Value> =
+            serde_json::from_str(&random_games(&json!({ "library": "arcade", "tagBlacklist": bl }).to_string(), 40).unwrap()).unwrap();
+        assert_eq!(picks.len(), 40);
+        let banned: Vec<String> = bl.as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_lowercase()).collect();
+        for g in &picks {
+            let tags = g["tags"].as_str().or(g["tagsStr"].as_str()).unwrap_or("").to_lowercase();
+            assert!(!tags.split(';').any(|t| banned.contains(&t.trim().to_string())), "{} has {tags}", g["title"]);
         }
     }
 

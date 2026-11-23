@@ -201,7 +201,16 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             Text(g.originalDescription, color = Fp.Text, fontSize = 13.sp)
             Spacer(Modifier.height(8.dp))
         }
-        AsyncImage(
+        // Hide Extreme Screenshots: an Extreme game's screenshot shows only when asked, as in the
+        // launcher.
+        var showShot by remember(g.id) { mutableStateOf(false) }
+        if (vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g) && !showShot) {
+            Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Screenshot hidden (Extreme).", color = Fp.TextDim, fontSize = 13.sp)
+                Spacer(Modifier.size(8.dp))
+                Chip("Show Screenshot", on = false) { showShot = true }
+            }
+        } else AsyncImage(
             model = vm.library.screenshotUrl(g.id), contentDescription = "Screenshot",
             contentScale = ContentScale.FillWidth,
             modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).clip(RoundedCornerShape(4.dp)),

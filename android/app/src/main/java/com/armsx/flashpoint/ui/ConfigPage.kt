@@ -98,8 +98,8 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
         }
 
         Section("Preferences") {
-            Toggle("Show Extreme Filters", "Allows Extreme tag filters to be toggled, to control content unsuitable for children.", p.extremeGames) { vm.refreshAll() }
-            Toggle("Hide Extreme Screenshots", "Hides screenshots of Extreme tagged content.", p.hideExtremeScreenshots)
+            Toggle("Show Extreme Games", "Shows games Flashpoint tags as Extreme: adult, sexual, gory and other content unsuitable for children. Off by default.", p.extremeGames) { vm.refreshAll() }
+            Toggle("Hide Extreme Screenshots", "An Extreme game's screenshot shows only after a tap.", p.hideExtremeScreenshots)
             ConfigRow("Default Opening Page", "Default page to open to.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Chip("Home", p.defaultOpeningPage.value == "home") { p.defaultOpeningPage.value = "home" }
