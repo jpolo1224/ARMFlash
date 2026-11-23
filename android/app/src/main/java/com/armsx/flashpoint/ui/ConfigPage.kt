@@ -588,7 +588,7 @@ private fun WindowsSupportRow() {
         scope.launch {
             val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val ins = ctx.contentResolver.openInputStream(uri) ?: return@withContext false
-                rt.install(ins, com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256) { busy = it }
+                rt.install(ins, setOf(com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256)) { busy = it }
             }
             installed = rt.installed
             busy = if (ok) null else (busy ?: "Install failed")
@@ -596,7 +596,8 @@ private fun WindowsSupportRow() {
     }
     ConfigRow(
         "Windows support",
-        if (installed) "Installed. Shockwave, Unity, Java, Flash Player and the other Windows players can run."
+        if (installed) "Installed. Shockwave, Unity, Java, Flash Player and the other Windows players can run." +
+            (if (rt.has3d) " 3D: installed (software)." else " For 3D games (Unity, Shockwave 3D), also install the 3D file the same way.")
         else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players.",
     ) {
         Chip(busy ?: if (installed) "Reinstall from file" else "Install from file", on = !installed) {

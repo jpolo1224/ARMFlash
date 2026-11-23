@@ -184,6 +184,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
+        rt.ensureMfc42(::say)
         val fp = drive
         rt.mapDrive('f', fp)
         val app = program()
@@ -264,13 +265,19 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (win.width() < 32 || win.height() < 32) return win
         // The background: the commonest colour just inside the bottom-right corner (inside the
         // window's frame, which Wine draws in a different colour).
-        val bg = (6..14 step 2).flatMap { dy -> (6..14 step 2).map { dx -> px.get((win.bottom - dy) * stride + win.right - dx) and 0xffffff } }
+        // A browser's page: its commonest colour over the whole window (its corner can be a
+        // scrollbar), with the scrollbar strips at the right and bottom edges left out.
+        val bg = if (isBrowser) {
+            (win.top until win.bottom - 24 step 16).flatMap { y -> (win.left until win.right - 24 step 16).map { x -> px.get(y * stride + x) and 0xffffff } }
+                .groupingBy { it }.eachCount().maxBy { it.value }.key
+        } else (6..14 step 2).flatMap { dy -> (6..14 step 2).map { dx -> px.get((win.bottom - dy) * stride + win.right - dx) and 0xffffff } }
             .groupingBy { it }.eachCount().maxBy { it.value }.key
         val step = 2
         fun busy(n: Int, of: Int) = n * step * 4 > of // over a quarter not background
         // A frame Wine drew itself: skip its border, and the title bar (rows of one colour at
         // the top that is not the background), so only the game's own pixels count.
         var area = Rect(win)
+        if (isBrowser) area = Rect(win.left, win.top, win.right - 24, win.bottom - 24)
         if (ownFrame) {
             area = Rect(win.left + 6, win.top, win.right - 6, win.bottom - 6)
             // The client area starts at the first row that is mostly background; without one

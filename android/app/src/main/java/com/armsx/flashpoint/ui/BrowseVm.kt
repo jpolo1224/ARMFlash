@@ -51,7 +51,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         private set
     private val prefs = app.getSharedPreferences("browse", Context.MODE_PRIVATE)
 
-    var status by mutableStateOf("")
+    private val statusState = mutableStateOf("")
+    /** The launcher's status line; problems also go to the log, to find them afterwards. */
+    var status: String
+        get() = statusState.value
+        set(v) { if (v.isNotEmpty()) android.util.Log.i("ARMFlash", "status: $v"); statusState.value = v }
     var dbReady by mutableStateOf(false)
     var dbGames by mutableStateOf(0)
     var importing by mutableStateOf<Long?>(null)

@@ -31,7 +31,8 @@ class WinRuntime(private val ctx: Context) {
      * Install the runtime archive (tools/winrt/pack.py's winrt-N.tar.zst) from [src], checking
      * its SHA-256 when [sha256] is given. The Wine prefix (r/home) is kept.
      */
-    fun install(src: java.io.InputStream, sha256: String?, progress: (String) -> Unit): Boolean {
+    /** Install the runtime or the 3D pack from [src] when its checksum is one of [accepted]. */
+    fun install(src: java.io.InputStream, accepted: Set<String>?, progress: (String) -> Unit): Boolean {
         val tmp = File(ctx.cacheDir, "winrt.tar.zst")
         val md = java.security.MessageDigest.getInstance("SHA-256")
         progress("Copying…")
@@ -47,14 +48,21 @@ class WinRuntime(private val ctx: Context) {
             }
         }
         val got = md.digest().joinToString("") { "%02x".format(it) }
-        if (sha256 != null && !got.equals(sha256, ignoreCase = true)) { tmp.delete(); progress("The file is damaged (checksum)."); return false }
+        if (accepted != null && accepted.none { it.equals(got, ignoreCase = true) }) {
+            tmp.delete(); progress("That is not ARMFlash's Windows support or 3D file, or it is damaged."); return false
+        }
         progress("Unpacking…")
         val ok = runCatching { com.armsx.flashpoint.core.FpCore.untarZst(tmp.path, ctx.dataDir.path) }
             .onFailure { progress("Unpacking failed: ${it.message}") }.isSuccess
         tmp.delete()
+        if (ok && got.equals(GRAPHICS_SHA256, ignoreCase = true)) { File(gl, ".armflash-3d").writeText(got); return true }
         if (ok) File(root, ".armflash-runtime").writeText(got)
         return ok && installed
     }
+
+    /** Software 3D (tools/winrt/pack3d.py): Mesa's llvmpipe, for Wine's OpenGL and Direct3D. */
+    private val gl = File(root, "usr/lib/3d")
+    val has3d: Boolean get() = File(gl, ".armflash-3d").isFile
 
     /** The base system and X server are in place. */
     val installed: Boolean
@@ -64,7 +72,8 @@ class WinRuntime(private val ctx: Context) {
         get() = mapOf(
             "HOME" to "${root.path}/home",
             "TMPDIR" to "${root.path}/tmp",
-            "LD_LIBRARY_PATH" to "${root.path}/usr/lib",
+            // The 3D pack's libraries after the base system's, so its own copies of shared ones win.
+            "LD_LIBRARY_PATH" to "${root.path}/usr/lib" + if (has3d) ":${gl.path}" else "",
             "BOX64_LD_LIBRARY_PATH" to "${root.path}/usr/lib/x86_64-linux-gnu",
             "GCONV_PATH" to "${root.path}/usr/lib/gconv",
             "BOX64_LOG" to "0",
@@ -88,6 +97,17 @@ class WinRuntime(private val ctx: Context) {
             // system's "android_aserver" device, which streams to [AudioServer].
             "ALSA_PLUGIN_DIR" to lib,
             "ARMFLASH_AUDIO" to audioName,
+        ) + if (!has3d) emptyMap() else mapOf(
+            // Mesa's software renderer for Wine's OpenGL (and Direct3D on top of it).
+            "LIBGL_DRIVERS_PATH" to "${gl.path}/dri",
+            "__EGL_VENDOR_LIBRARY_DIRS" to "${gl.path}/share/glvnd/egl_vendor.d",
+            "__GLX_VENDOR_LIBRARY_NAME" to "mesa",
+            "GALLIUM_DRIVER" to "llvmpipe",
+            "LIBGL_ALWAYS_SOFTWARE" to "1",
+            // Box64 opens the native libGL for Wine; by then the libraries Box64 already loaded
+            // have used glibc's spare static TLS, which glvnd and Mesa need: reserve more.
+            "GLIBC_TUNABLES" to "glibc.rtld.optional_static_tls=0x20000",
+            "BOX64_LIBGL" to "${gl.path}/libGL.so.1",
         )
 
     private fun link(target: String, at: File) {
@@ -170,6 +190,42 @@ class WinRuntime(private val ctx: Context) {
         if (ok) mark.writeText("")
     }
 
+    /**
+     * MFC 4.2 (mfc42.dll), which Windows always had and Wine does not: Netscape 4 needs it, and
+     * with it every plugin platform that runs in Netscape (Cult3D, Live Picture, MapGuide and the
+     * like). From Microsoft's Visual C++ 6 runtime, as winetricks gets it: the installer and the
+     * vcredist.exe inside it are both unpacked by Wine itself (/T:<folder> /C /Q), and only the
+     * MFC libraries go into the 32-bit system folder. Done once; a failure only logs.
+     */
+    fun ensureMfc42(log: (String) -> Unit) {
+        val sys = File(prefix, "drive_c/windows/syswow64")
+        if (File(sys, "mfc42.dll").isFile || !sys.isDirectory) return
+        runCatching {
+            log("Getting Windows libraries (MFC)…")
+            val tmp = File(prefix, "drive_c/windows/temp/armflash-vc6").apply { deleteRecursively(); mkdirs() }
+            val setup = File(tmp, "vc6redist.exe")
+            val conn = java.net.URL(VC6_URL).openConnection() as java.net.HttpURLConnection
+            conn.setRequestProperty("User-Agent", "ARMFlash"); conn.connectTimeout = 20_000; conn.readTimeout = 60_000
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            conn.inputStream.use { ins -> setup.outputStream().use { out ->
+                val buf = ByteArray(1 shl 16)
+                while (true) { val n = ins.read(buf); if (n < 0) break; out.write(buf, 0, n); md.update(buf, 0, n) }
+            } }
+            val got = md.digest().joinToString("") { "%02x".format(it) }
+            check(got == VC6_SHA256) { "checksum $got" }
+            val win = "C:\\windows\\temp\\armflash-vc6"
+            run(listOf("$win\\vc6redist.exe", "/T:$win\\a", "/C", "/Q"), null).waitFor()
+            val inner = File(tmp, "a").listFiles().orEmpty().firstOrNull { it.name.equals("vcredist.exe", ignoreCase = true) }
+                ?: error("no vcredist.exe")
+            run(listOf("$win\\a\\${inner.name}", "/T:$win\\b", "/C", "/Q"), null).waitFor()
+            val dlls = File(tmp, "b").listFiles().orEmpty().filter { it.name.lowercase().startsWith("mfc42") && it.name.lowercase().endsWith(".dll") }
+            check(dlls.isNotEmpty()) { "no mfc42 in vcredist" }
+            dlls.forEach { it.copyTo(File(sys, it.name.lowercase()), overwrite = true) }
+            tmp.deleteRecursively()
+            Log.i(TAG, "mfc42: installed ${dlls.map { it.name }}")
+        }.onFailure { Log.w(TAG, "mfc42: ${it.message}") }
+    }
+
     /** Map Windows drive F: to [dir] (the Flashpoint folder), as desktop Flashpoint's paths expect. */
     fun mapDrive(letter: Char, dir: File) {
         link(dir.path, File(prefix, "dosdevices/${letter.lowercaseChar()}:"))
@@ -222,6 +278,11 @@ class WinRuntime(private val ctx: Context) {
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"
+        /** Microsoft's Visual C++ 6 runtime (winetricks' source for MFC 4.2). */
+        const val VC6_URL = "https://download.microsoft.com/download/vc60pro/Update/2/W9XNT4/EN-US/VC6RedistSetup_deu.exe"
+        const val VC6_SHA256 = "c2eb91d9c4448d50e46a32fecbcc3b418706d002beab9b5f4981de552098cee7"
+        /** ARMFlash-3d-1.tar.zst (tools/winrt/pack3d.py). */
+        const val GRAPHICS_SHA256 = "2ac35e8bd4ab011f83c1041608806603273f236d7d83f88111b72b3212ee0260"
         const val DISPLAY_NO = 1
         private const val SIGSTOP = 19
         private const val SIGCONT = 18

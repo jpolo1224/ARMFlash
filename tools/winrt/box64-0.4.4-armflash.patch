@@ -1,3 +1,24 @@
+diff --git a/src/wrapped/wrappedlib_init.h b/src/wrapped/wrappedlib_init.h
+index c861228..57d8b03 100644
+--- a/src/wrapped/wrappedlib_init.h
++++ b/src/wrapped/wrappedlib_init.h
+@@ -174,7 +174,16 @@ int FUNC(_init)(library_t* lib, box64context_t* box64)
+ #endif
+     {
+ #ifndef STATICBUILD
++        void* armflash_pre = lib->w.lib;
+         lib->w.lib = dlopen(MAPNAME(Name), RTLD_LAZY | RTLD_GLOBAL);
++        if(!lib->w.lib && armflash_pre) lib->w.lib = armflash_pre; /* ARMFlash: keep PRE_INIT's full-path load */
++#ifdef FLASHARM_NO_HOST_EXEC
++        if(!lib->w.lib) {
++            /* ARMFlash: the first failure is the telling one; later tries overwrite dlerror. */
++            const char* e = dlerror();
++            if(e) printf_log(LOG_NONE, "ARMFlash: dlopen %s failed: %s\n", MAPNAME(Name), e);
++        }
++#endif
+         if(!lib->w.lib) {
+ #ifdef ALTNAME
+             lib->w.lib = dlopen(ALTNAME, RTLD_LAZY | RTLD_GLOBAL);
 diff --git a/src/wrapped/wrappedlibc.c b/src/wrapped/wrappedlibc.c
 index c995a0c..e778ccd 100644
 --- a/src/wrapped/wrappedlibc.c
@@ -33,6 +54,18 @@ index c995a0c..e778ccd 100644
      if(!ret && len) {
          updateProtection((uintptr_t)addr, len, prot);
      }
+diff --git a/src/wrapped/wrappedlibgl.c b/src/wrapped/wrappedlibgl.c
+index c67a36e..15b80f7 100644
+--- a/src/wrapped/wrappedlibgl.c
++++ b/src/wrapped/wrappedlibgl.c
+@@ -181,6 +181,7 @@ static void* find_get_blob_func_Fct(void* fct)
+ #define PRE_INIT                                                                \
+     if(BOX64ENV(libgl)) {                                                       \
+         lib->w.lib = dlopen(BOX64ENV(libgl), RTLD_LAZY | RTLD_GLOBAL);          \
++        if(!lib->w.lib) printf_log(LOG_NONE, "ARMFlash: dlopen %s failed: %s\n", BOX64ENV(libgl), dlerror()); \
+         lib->path = strdup(BOX64ENV(libgl));                                    \
+     }
+ 
 diff --git a/src/wrapped/wrappedlibx11.c b/src/wrapped/wrappedlibx11.c
 index 502cd85..7a59db3 100644
 --- a/src/wrapped/wrappedlibx11.c

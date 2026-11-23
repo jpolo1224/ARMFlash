@@ -20,8 +20,8 @@ object SupportPacks {
     private const val BASE = "https://nexus-dev.unstable.life/repository/stable/"
 
     /**
-     * Windows' drive F:, laid out like desktop Flashpoint's folder: FPSoftware here, Legacy and
-     * Data linked from the Flashpoint folder at [fpRoot]. Players an earlier version unpacked
+     * Windows' drive F:, laid out like desktop Flashpoint's folder: FPSoftware and a private
+     * Legacy folder, all in private storage. Players an earlier version unpacked
      * into the Flashpoint folder move here once.
      */
     @Synchronized
@@ -38,11 +38,15 @@ object SupportPacks {
             if (soft.isDirectory) old.deleteRecursively()
         }
         soft.mkdirs()
+        // Nothing on drive F: may lead into shared storage: Wine's folder scans there crash
+        // Android's storage service (seen again with a plugin browser following a link into the
+        // Flashpoint folder). Games get their files from the game server; Legacy is a private
+        // folder (for the few that look for a page under F:\Legacy\htdocs).
         for (name in listOf("Legacy", "Data")) {
             val at = File(d, name)
-            if (at.exists() || java.nio.file.Files.isSymbolicLink(at.toPath())) at.delete()
-            runCatching { android.system.Os.symlink(File(fpRoot, name).path, at.path) }
+            if (java.nio.file.Files.isSymbolicLink(at.toPath())) at.delete()
         }
+        File(d, "Legacy/htdocs").mkdirs()
         return d
     }
 
