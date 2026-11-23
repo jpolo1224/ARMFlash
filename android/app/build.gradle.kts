@@ -21,6 +21,16 @@ val discordAppId: String? = (System.getenv("FLASHARM_DISCORD_APP_ID") ?: provide
     ?.takeIf { it.matches(Regex("\\d{15,20}")) }
 val haveDiscord = discordSdkDir != null && discordAppId != null
 
+// Release signing key: android/keystore.properties (storeFile, storePassword, keyAlias,
+// keyPassword), kept out of git like ARMSX2's. Without it, release builds are signed with this
+// machine's debug key, which is fine for testing and never for a published APK.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
+}
+val haveReleaseKey = keystoreProps.getProperty("storeFile") != null
+if (!haveReleaseKey) logger.warn("ARMFlash: no android/keystore.properties, release builds use the debug key")
+
 android {
     namespace = "com.armsx.flashpoint"
     compileSdk = 37
@@ -46,11 +56,19 @@ android {
         buildConfigField("boolean", "DISCORD", haveDiscord.toString())
     }
 
+    signingConfigs {
+        if (haveReleaseKey) create("release") {
+            storeFile = file(keystoreProps.getProperty("storeFile"))
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (haveReleaseKey) "release" else "debug")
         }
     }
     buildFeatures { compose = true; buildConfig = true }

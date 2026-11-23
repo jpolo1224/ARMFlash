@@ -16,3 +16,6 @@ rust/tools/leakprobe/target/
 tools/winrt/fsp/*.exe
 tools/winrt/fsp/*.pdb
 dist/
+android/keystore.properties
+*.jks
+*.keystore
