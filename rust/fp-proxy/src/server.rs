@@ -126,7 +126,8 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
     }
     let (method, uri) = (req.method().clone(), req.uri().clone());
     let mut r = serve(srv, port, req, https).await;
-    log::debug!("{method} {uri} -> {}", r.status().as_u16());
+    // TEST (back to debug once Silverlight runs): every request, to see what a player asked for.
+    log::info!("{method} {uri} -> {}", r.status().as_u16());
     allow_origin(&mut r, origin);
     r
 }
@@ -598,9 +599,21 @@ where
     let (tx, rx) = mpsc::channel::<io::Result<Bytes>>(4);
     tokio::task::spawn_blocking(move || {
         let tx2 = tx.clone();
-        let mut send = |b: Bytes| tx2.blocking_send(Ok(b)).is_ok();
-        if let Err(e) = produce(&mut send) {
-            let _ = tx.blocking_send(Err(e));
+        let (mut sent, mut left) = (0u64, false);
+        let mut send = |b: Bytes| {
+            let n = b.len() as u64;
+            let ok = tx2.blocking_send(Ok(b)).is_ok();
+            if ok { sent += n } else { left = true }
+            ok
+        };
+        match produce(&mut send) {
+            Err(e) => {
+                log::warn!("file stream failed after {sent} of {size} bytes: {e}");
+                let _ = tx.blocking_send(Err(e));
+            }
+            // TEST (back to debug once Silverlight runs): a player that stops reading a file.
+            Ok(()) if left => log::info!("file stream: the reader left after {sent} of {size} bytes"),
+            Ok(()) => {}
         }
     });
     ChanBody { rx, remaining: size }.boxed()

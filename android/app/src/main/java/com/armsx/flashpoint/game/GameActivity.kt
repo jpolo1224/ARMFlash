@@ -166,6 +166,8 @@ class GameActivity : ComponentActivity() {
                 userAgentString = userAgentString.replace("; wv", "").replace(Regex("""Version/\d+(\.\d+)* """), "")
             }
             webViewClient = Client(this@GameActivity).apply { site = Launch.siteOf(url) }
+            // TEST (remove once Happy Wheels HTML5 runs): inspect game pages over adb.
+            WebView.setWebContentsDebuggingEnabled(true)
             // Links a game opens in a new tab or window (sponsor and "more games" links,
             // window.open) are dropped, like a blocked pop-up: without this the WebView loads
             // them in place of the game.
