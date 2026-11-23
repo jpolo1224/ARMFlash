@@ -2,8 +2,20 @@
 
 # ARMFlash: Flashpoint Archive for Android (native ARM64)
 
-A standalone Android port of Flashpoint Archive. No containers, no Wine-in-an-app,
-no Termux: everything is compiled into the APK for arm64-v8a.
+A standalone Android port of Flashpoint Archive for arm64-v8a. Flash and HTML5 games play
+in the app itself; Shockwave, Java and PopCap games run Flashpoint's own Windows players
+under Wine and Box64, from a one-time download in Config.
+
+## What it plays
+
+| Platform | How |
+|---|---|
+| Flash | Ruffle, built into the app: natively on the GPU, or its web version in the browser. The pause menu can switch a game to Flashpoint's own Flash Player. |
+| HTML5 | Android's WebView, through the app's game server, so pages load from their original addresses |
+| Shockwave, Java, PopCap Plugin | Flashpoint's Windows players, run by Wine and Box64 (Config, Windows Players, Download) |
+
+Games that need PHP on the server side run with the bundled PHP 7.4. Touch controls and game
+controllers work across all of them.
 
 ## Layout
 
@@ -37,17 +49,6 @@ On-device data uses the desktop folder layout, so files copy across as-is:
    embed Flash work. HTML5 runs in the WebView (V8 JIT).
 4. Leaving the game kills the `:game` process; playtime is written back.
 
-## Phases
-
-| Phase | What | State |
-|---|---|---|
-| 1 | Game server, database, downloads, launcher UI, WebView runner | **Done**, tested on the AVD (HTML5 + Flash from zips) |
-| 2 | Native Ruffle (wgpu/Vulkan) reading zips in-process via `GameServer::read` | Next |
-| 3 | Touch overlay: virtual mouse/trackpad, keys, D-pad, per-game layouts; controllers | |
-| 2b | AS3 (AVM2) to ARM64 JIT inside Ruffle, after profiling real games | |
-| 4 | Shockwave (ScummVM Director), Java (applets) | |
-| 5 | Unity Web Player / Silverlight: ARM64 Wine + wowbox64 + NPAPI host (Pipelight-style) | |
-
 ## Build
 
 ```
@@ -59,9 +60,9 @@ Host tests: `cd rust && cargo test`.
 Test library for a device: `cargo run -p fp-jni --example make_test_library -- <dir>/Flashpoint`,
 then copy the folder to `Android/data/com.armsx.flasharm/files/`.
 
-## Open items
+## License
 
-- The default game data source URL is unverified (the launcher ships none); set it in Config.
-- HTTPS requests from games are refused (CONNECT -> 403) until TLS interception lands.
-- PHP-backed Legacy games need a PHP runtime (Flashpoint-Router); not yet.
-- Playlists from `Data/Playlists/*.json` are not imported yet; Favorites are local.
+ARMFlash is free software under the GNU General Public License, version 3 ([LICENSE](LICENSE)).
+It includes code from ARMSX2 (GPL-3.0) and builds on many other projects, listed with their
+licenses and sources in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Flashpoint Archive,
+its game database and its games belong to their respective owners.

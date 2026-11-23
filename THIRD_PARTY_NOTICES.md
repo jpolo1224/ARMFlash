@@ -75,4 +75,5 @@ ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1). Source: Debi
 ## From ARMSX2
 
 Touch control sprites, the in-game menu, the battery indicator, the custom driver manager, Discord
-presence, home screen shortcuts and the controller focus ring come from ARMSX2, by the ARMSX2 team.
+presence, home screen shortcuts and the controller focus ring come from ARMSX2, by the ARMSX2 team
+(GPL-3.0, the license ARMFlash itself uses).
