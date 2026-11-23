@@ -9,8 +9,8 @@ Layout (under php/): bin/php-cgi, lib/ (every shared library, flattened), ext/ (
 conf.d/ (the extensions to load), php.ini.
 
 Usage: python3 tools/winrt/packphp.py <work dir> <windows runtime .tar.zst> <out.tar.zst>
-Needs the zstandard module."""
-import io, lzma, os, re, shutil, sys, tarfile, urllib.request, zstandard, hashlib
+Needs the zstandard and ziglang modules."""
+import io, lzma, os, re, shutil, subprocess, sys, tarfile, urllib.request, zstandard, hashlib
 
 # Debian 11's support has ended: its packages and security updates live on Debian's archive.
 MIRRORS = [('http://deb.debian.org/debian/', 'bullseye'), ('http://archive.debian.org/debian-security/', 'bullseye-security')]
@@ -104,6 +104,10 @@ def main(work, runtime, out):
             dst = os.path.join(lib, os.path.basename(name))
             if os.path.lexists(dst): os.remove(dst)
             if os.path.isfile(target): shutil.copy2(target, dst)
+    # The file shim for big data files PHP reads straight from a game's zip (see zipfs/zipfs.c).
+    subprocess.run([sys.executable, '-m', 'ziglang', 'cc', '-target', 'aarch64-linux-gnu.2.36', '-shared', '-fPIC', '-O2',
+                    '-o', os.path.join(lib, 'libarmflash_zipfs.so'),
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zipfs', 'zipfs.c')], check=True)
     # Desktop Flashpoint's php.ini settings that differ from PHP's own defaults, plus what running
     # as the game server's CGI needs (no web server redirect check; the session and upload folders
     # are given on the command line, as they live in the app's own storage).

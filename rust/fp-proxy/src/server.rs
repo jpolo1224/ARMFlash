@@ -109,7 +109,43 @@ fn handle_boxed(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
     Box::pin(handle(srv, port, req, https))
 }
 
+/// Every answer may be read by other sites' pages (as on the game server): archived sites call
+/// each other (Happy Wheels HTML5 asks the Flash release's level server).
 async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: bool) -> Response<Body> {
+    let origin = req.headers().get(header::ORIGIN).cloned();
+    if req.method() == Method::OPTIONS && req.headers().contains_key(header::ACCESS_CONTROL_REQUEST_METHOD) {
+        let mut r = text(StatusCode::NO_CONTENT, "");
+        let h = r.headers_mut();
+        h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, PUT, OPTIONS, HEAD"));
+        if let Some(v) = req.headers().get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
+            h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, v.clone());
+        }
+        h.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("86400"));
+        allow_origin(&mut r, origin);
+        return r;
+    }
+    let mut r = serve(srv, port, req, https).await;
+    allow_origin(&mut r, origin);
+    r
+}
+
+fn allow_origin(r: &mut Response<Body>, origin: Option<HeaderValue>) {
+    let h = r.headers_mut();
+    if h.contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN) {
+        return;
+    }
+    match origin {
+        Some(o) => {
+            h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, o);
+            h.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+        }
+        None => {
+            h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+        }
+    }
+}
+
+async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: bool) -> Response<Body> {
     if req.method() == Method::CONNECT {
         // HTTPS: accept the tunnel, end TLS here, serve what's inside like http://.
         let host = req.uri().authority().map(|a| a.host().to_string()).unwrap_or_default();
@@ -156,6 +192,16 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
     let head = req.method() == Method::HEAD;
     let query = uri.query();
 
+    // A pack's .htaccess may send the request elsewhere first.
+    let mounts = srv.mounts.read().unwrap().clone();
+    if let Some((code, to)) = crate::rewrite::redirect(&mounts, &key, query) {
+        log::info!("rewrite: {host}{} -> {to} ({code})", uri.path());
+        let mut r = text(StatusCode::from_u16(code).unwrap_or(StatusCode::FOUND), "");
+        if let Ok(v) = HeaderValue::from_str(&to) {
+            r.headers_mut().insert(header::LOCATION, v);
+        }
+        return r;
+    }
     let resolved = srv.resolve(&key, query);
     // PHP pages run, as on desktop Flashpoint's Legacy server.
     if crate::php::enabled() {
@@ -234,7 +280,12 @@ async fn php_script(srv: &Arc<GameServer>, key: &Key, resolved: &Resolved, query
         Resolved::Zip { mount, index, .. } => {
             let name = mount.reader().by_index_raw(*index).ok()?.name().ok()?.replace('\\', "/");
             if !crate::php::is_script(&name) {
-                return None;
+                // Maybe a script by the site's .htaccess (`AddHandler application/x-httpd-php .hw`).
+                let m = mount.clone();
+                let extra = tokio::task::spawn_blocking(move || crate::php::handler_exts(&m)).await.ok()?;
+                if !crate::php::is_script_in(&name, &extra) {
+                    return None;
+                }
             }
             let m = mount.clone();
             let dir = tokio::task::spawn_blocking(move || crate::php::unpacked(&m)).await.ok()?.ok()?;

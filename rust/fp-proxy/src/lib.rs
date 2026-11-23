@@ -15,7 +15,9 @@ mod mount;
 mod path;
 mod pfile;
 pub mod php;
+mod rewrite;
 mod server;
+pub mod zipseek;
 mod tls;
 
 use std::io;
@@ -84,7 +86,20 @@ impl GameServer {
         log::info!("mounted {} ({} files, {:?})", zip.display(), n, started.elapsed());
         let mut mounts = self.mounts.write().unwrap();
         if !mounts.iter().any(|x| x.path == zip) {
-            mounts.push(m);
+            mounts.push(m.clone());
+        }
+        drop(mounts);
+        // A pack that runs PHP (Happy Wheels' level server): unpack its scripts and start indexing
+        // its big data files now, while the game loads, instead of on its first request.
+        if php::enabled() {
+            let _ = std::thread::Builder::new().name("php-unpack".into()).spawn(move || {
+                let extra = php::handler_exts(&m);
+                if m.names().any(|name| php::is_script_in(name, &extra)) {
+                    if let Err(e) = php::unpacked(&m) {
+                        log::warn!("php: unpacking {}: {e}", m.path.display());
+                    }
+                }
+            });
         }
         Ok(n)
     }

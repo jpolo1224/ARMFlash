@@ -67,6 +67,11 @@ impl Mount {
         self.files.len()
     }
 
+    /// Every file's lowercased name.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.files.keys().map(|k| k.as_str())
+    }
+
     /// A private handle for streaming one entry. Cheap: shares the parsed central
     /// directory and the file descriptor.
     pub fn reader(&self) -> ZipArchive<PFile> {

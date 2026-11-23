@@ -202,6 +202,7 @@ class GameActivity : ComponentActivity() {
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.POLYFILL, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.EMBED_FRAMES, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.AUDIO_GATE, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(web, RufflePage.PAGE_FIT, setOf("*"))
         }
 
         val target = when (runner) {
@@ -431,9 +432,78 @@ object RufflePage {
         })();
     """.trimIndent()
 
+    /**
+     * Browser games as the game, not the web page around it: the page is scaled (a CSS transform
+     * on the root, so positions games read through getBoundingClientRect stay right) until its
+     * game element, the largest canvas, plugin, video or frame, fills the screen, and everything
+     * outside it is blacked out. A page whose game already fills the window is left alone. The
+     * Scale setting picks the fit: keep the shape (Game default, Fit), Stretch, Fill, or the
+     * page as its site laid it out (Original size). Kept up as the game resizes or appears.
+     */
+    val PAGE_FIT = """
+        (function(){
+          if (window.top !== window || window.__fpmFit) return;
+          window.__fpmFit = true;
+          function mode() { return (window.__fpmDisplay && window.__fpmDisplay.pageFit) || 'fit'; }
+          var cur = { x: 0, y: 0, s: 1, t: 1 }, last = '';
+          function pick() {
+            var best = null, area = 0;
+            var all = document.querySelectorAll('canvas, iframe, embed, object, video, ruffle-player, ruffle-embed, ruffle-object');
+            for (var i = 0; i < all.length; i++) {
+              var r = all[i].getBoundingClientRect();
+              var w = r.width / cur.s, h = r.height / cur.t;
+              if (w < 160 || h < 120) continue;
+              if (w * h > area) { area = w * h; best = all[i]; }
+            }
+            return best;
+          }
+          function fit() {
+            var root = document.documentElement, body = document.body;
+            if (!root || !body) return;
+            var m = mode();
+            if (m === 'off') {
+              if (last) { root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 }; last = ''; }
+              return;
+            }
+            var e = pick();
+            if (!e) return;
+            var r = e.getBoundingClientRect();
+            // Back to page coordinates (undoing the transform already applied).
+            var w = r.width / cur.s, h = r.height / cur.t;
+            var x = (r.left - cur.x) / cur.s + window.scrollX, y = (r.top - cur.y) / cur.t + window.scrollY;
+            var vw = window.innerWidth, vh = window.innerHeight;
+            var fills = x <= 2 && y <= 2 && w >= vw * 0.94 && h >= vh * 0.94;
+            var kx = vw / w, ky = vh / h, ax = Math.min(kx, ky), ay = ax;
+            if (m === 'stretch') { ax = kx; ay = ky; }
+            else if (m === 'fill') { ax = ay = Math.max(kx, ky); }
+            if (fills) { ax = 1; ay = 1; x = 0; y = 0; w = vw; h = vh; }
+            var tx = (vw - w * ax) / 2 - x * ax, ty = (vh - h * ay) / 2 - y * ay;
+            var key = [tx, ty, ax, ay, w, h].map(function(n) { return n.toFixed(1); }).join();
+            if (key === last) return;
+            last = key;
+            if (fills) {
+              root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 };
+              return;
+            }
+            window.scrollTo(0, 0);
+            root.style.transformOrigin = '0 0';
+            root.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + ax + ',' + ay + ')';
+            root.style.clipPath = 'inset(' + y + 'px ' + Math.max(0, root.scrollWidth - x - w) + 'px ' + Math.max(0, root.scrollHeight - y - h) + 'px ' + x + 'px)';
+            root.style.background = '#000';
+            root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
+            cur = { x: tx, y: ty, s: ax, t: ay };
+          }
+          window.addEventListener('load', fit);
+          window.addEventListener('resize', function() { last = ''; fit(); });
+          setInterval(fit, 1000);
+        })();
+    """.trimIndent()
+
     /** Scale mode and quality for Ruffle's web build, as a document-start script. */
     fun displayJs(scale: String, quality: String): String {
         val parts = mutableListOf("\"quality\":\"$quality\"")
+        // Browser pages: fit the game element to the screen, unless Original size asks for the page.
+        parts += "\"pageFit\":\"" + when (scale) { "stretch" -> "stretch"; "fill" -> "fill"; "original" -> "off"; else -> "fit" } + "\""
         when (scale) {
             "fit" -> parts += listOf("\"scale\":\"showAll\"", "\"forceScale\":true")
             "stretch" -> parts += listOf("\"scale\":\"exactFit\"", "\"forceScale\":true", "\"letterbox\":\"off\"")

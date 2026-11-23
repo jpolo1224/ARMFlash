@@ -3,9 +3,9 @@ package com.armsx.flashpoint.ui
 /**
  * The Games tab's first screen: well-known titles before the A to Z list, picked by jpolo1224
  * (Papa's games, Gravity Guy, Poptropica, Fancy Pants, Super Mario 63, Ultimate Flash Sonic,
- * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run and Club Penguin's games). By
- * Flashpoint game id, in this order; Happy Wheels is its HTML5 release by its own makers, as
- * the Flash pack carries 8.8 GB of archived levels.
+ * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run, Fireboy & Watergirl by Oslo Albet
+ * and Jan Villanueva, and Club Penguin's games). By Flashpoint game id, in this order; Happy
+ * Wheels is its HTML5 release by its own makers.
  */
 val FEATURED_GAMES = listOf(
     "279b23ca-c7f3-4f56-a02f-3752ec7c5c5d", // Papa's Pizzeria
@@ -49,6 +49,12 @@ val FEATURED_GAMES = listOf(
     "f74effdd-39d2-413d-93ff-68c912f6dd77", // Run
     "371749ad-fbb1-491e-8037-5953e1d46477", // Run 2
     "e75483c1-e4cc-44d1-95a6-a85c16b057b0", // Run 3
+    "e0059b62-ad8a-4d5e-bdc9-c59acffc954e", // Fireboy & Watergirl in The Forest Temple
+    "a3cfa640-3f47-4e18-ba44-e5083db99d6b", // Fireboy & Watergirl 2 in The Light Temple
+    "eb9a27b0-834a-4982-af0e-f30aebb4eed3", // Fireboy & Watergirl 3 in The Ice Temple
+    "aedea00b-4e68-446d-b847-cad06d9d49b0", // Fireboy and Watergirl 4: In The Crystal Temple
+    "462cb01d-38d9-4f75-98d1-01794c387eec", // Fireboy & Watergirl: Elements
+    "d1ca652b-06a3-4da0-9027-40f2e9dc15dd", // Fireboy & Watergirl: Fairy Tales
     "f2c3eb37-444a-4f1f-9f24-e4f9442ddcb7", // Bits & Bolts
     "e33d57cc-8bb2-406e-a21c-b282d6e8f0ee", // Blaster Game
     "05383ad0-70c4-4ef4-99bc-b807b18a4866", // CLUB PENGUIN ISLAND - THE MEDIEVAL TEXT ADVENTURE

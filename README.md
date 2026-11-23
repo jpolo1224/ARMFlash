@@ -1,4 +1,4 @@
-# FlashARM: Flashpoint Archive for Android (native ARM64)
+# ARMFlash: Flashpoint Archive for Android (native ARM64)
 
 A standalone Android port of Flashpoint Archive. No containers, no Wine-in-an-app,
 no Termux: everything is compiled into the APK for arm64-v8a.

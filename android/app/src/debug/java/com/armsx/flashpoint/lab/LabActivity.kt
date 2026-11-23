@@ -118,7 +118,7 @@ class LabActivity : androidx.activity.ComponentActivity() {
             // Only programs from a support pack (FPSoftware), never anything else.
             val app = intent.getStringExtra("app")?.replace('/', '\\')?.takeIf { it.startsWith("FPSoftware\\") && ".." !in it } ?: "FPSoftware\\Shockwave\\PJ101\\SPR.exe"
             startActivity(com.armsx.flashpoint.win.WinActivity.intent(this, base, app,
-                intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr", "$r/home/.wine/drive_c"))
+                intent.getStringExtra("url") ?: "http://www.clevermedia.com/arcade/lava.dcr", "$r/home/.wine/drive_c", intent.getStringExtra("platform") ?: "Shockwave"))
             return finish()
         }
         val lib = applicationInfo.nativeLibraryDir

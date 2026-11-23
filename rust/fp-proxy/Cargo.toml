@@ -6,7 +6,8 @@ license.workspace = true
 description = "Flashpoint-compatible game server: serves game files straight out of data-pack zips"
 
 [dependencies]
-tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time", "process"] }
+regex = "1"
+tokio ={ version = "1.54", features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time", "process"] }
 hyper = { version = "1.12", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1.21", features = ["tokio", "client-legacy", "http1"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "tls12", "ring", "webpki-roots"] }
@@ -17,6 +18,8 @@ percent-encoding = "2.3"
 mime_guess = "2.0.5"
 log = "0.4"
 flate2 = "1"
+# zlib's C API in Rust (zlib-rs), for seeking inside compressed zip entries (inflatePrime).
+libz-rs-sys = { version = "0.6", default-features = false, features = ["rust-allocator"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 rcgen = { version = "0.14", default-features = false, features = ["ring", "crypto"] }

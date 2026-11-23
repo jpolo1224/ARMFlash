@@ -549,6 +549,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             }
             zips += zip.path
         }
+        // Games whose online parts live in another game's pack (Happy Wheels HTML5's levels are
+        // served by the Flash release's level server): mounted too when that pack is downloaded.
+        COMPANION_PACKS[game.id]?.let { other ->
+            withContext(Dispatchers.IO) { FpCore.game(other)?.activeData?.let { library.zipFor(it) } }
+                ?.takeIf { it.isFile }?.let { zips += it.path }
+        }
         // Windows players (and Flash Player for a Flash game set to it): the runtime, then the
         // game's support pack, downloaded the first time.
         val ctx = getApplication<Application>()
@@ -607,6 +613,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         private set
 
     companion object {
+        /** Game id -> the game whose pack serves its online parts. */
+        private val COMPANION_PACKS = mapOf(
+            "b448cbec-8a0e-4abf-96cf-4a12b41b6818" to "2686de77-6b3c-4718-b57b-9ba01a8bf255", // Happy Wheels HTML5 -> Flash
+        )
         const val PAGE = 120
         val ORDERS = listOf(
             "TITLE" to "Title", "DEVELOPER" to "Developer", "PUBLISHER" to "Publisher", "SERIES" to "Series",

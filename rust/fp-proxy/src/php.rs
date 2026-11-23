@@ -53,9 +53,76 @@ pub fn is_script(path: &str) -> bool {
     p.ends_with(".php") || p.ends_with(".php5") || p.ends_with(".phtml")
 }
 
+/// Extensions a game's `.htaccess` files hand to PHP (`AddHandler application/x-httpd-php .hw`
+/// or `AddType`), as Apache on desktop Flashpoint does: Happy Wheels' level server is `.hw`.
+/// Read once per mount, from every `.htaccess` in it.
+pub fn handler_exts(mount: &Mount) -> Vec<String> {
+    static SEEN: OnceLock<Mutex<HashMap<PathBuf, Vec<String>>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(v) = seen.lock().unwrap().get(&mount.path) {
+        return v.clone();
+    }
+    let mut exts = Vec::new();
+    let mut a = mount.reader();
+    for i in 0..a.len() {
+        let Ok(mut f) = a.by_index(i) else { continue };
+        let Ok(name) = f.name().map(|n| n.to_ascii_lowercase()) else { continue };
+        if !name.ends_with("/.htaccess") || f.size() > 256 * 1024 {
+            continue;
+        }
+        let mut text = String::new();
+        if f.read_to_string(&mut text).is_err() {
+            continue;
+        }
+        exts.extend(htaccess_php_exts(&text));
+    }
+    exts.sort();
+    exts.dedup();
+    if !exts.is_empty() {
+        log::info!("php: {} hands {:?} to PHP", mount.path.display(), exts);
+    }
+    seen.lock().unwrap().insert(mount.path.clone(), exts.clone());
+    exts
+}
+
+/// The extensions an `.htaccess` text maps to PHP ("hw", "html", ...).
+pub fn htaccess_php_exts(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if words.len() < 3 {
+            continue;
+        }
+        let directive = words[0].to_ascii_lowercase();
+        if (directive == "addhandler" || directive == "addtype") && words[1].to_ascii_lowercase().starts_with("application/x-httpd-php") {
+            out.extend(words[2..].iter().map(|e| e.trim_start_matches('.').to_ascii_lowercase()).filter(|e| !e.is_empty()));
+        }
+    }
+    out
+}
+
+/// A script by its extension or by its site's `.htaccess`.
+pub fn is_script_in(path: &str, extra: &[String]) -> bool {
+    if is_script(path) {
+        return true;
+    }
+    let p = path.split('?').next().unwrap_or("").to_ascii_lowercase();
+    let ext = p.rsplit('/').next().unwrap_or("").rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default();
+    !ext.is_empty() && extra.iter().any(|e| *e == ext)
+}
+
+/// Files up to this size are unpacked for scripts; bigger data is read from the zip.
+const SMALL_DATA: u64 = 4 << 20;
+
+/// Data a script may open as a file: databases and the like.
+fn is_data(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    [".sqlite", ".sqlite3", ".db", ".db3", ".dat", ".json", ".xml", ".txt", ".csv", ".bin"].iter().any(|e| n.ends_with(e))
+}
+
 /// What a script may need next to it: other scripts and the small files they read.
 fn is_companion(name: &str, size: u64) -> bool {
-    if size > 4 << 20 {
+    if size > SMALL_DATA {
         return false;
     }
     let n = name.to_ascii_lowercase();
@@ -69,8 +136,8 @@ fn is_companion(name: &str, size: u64) -> bool {
 /// The folder a mount's scripts were unpacked to (unpacking them the first time).
 pub fn unpacked(mount: &Mount) -> io::Result<PathBuf> {
     static DONE: OnceLock<Mutex<HashMap<PathBuf, PathBuf>>> = OnceLock::new();
-    let done = DONE.get_or_init(Default::default);
-    let mut done = done.lock().unwrap();
+    let extra = handler_exts(mount);
+    let mut done = DONE.get_or_init(Default::default).lock().unwrap();
     if let Some(d) = done.get(&mount.path) {
         return Ok(d.clone());
     }
@@ -85,7 +152,7 @@ pub fn unpacked(mount: &Mount) -> io::Result<PathBuf> {
     let dir = work.join("zips").join(id);
     let _ = std::fs::remove_dir_all(&dir);
     let mut a = mount.reader();
-    let mut n = 0;
+    let (mut n, mut big) = (0, 0);
     for i in 0..a.len() {
         let mut f = match a.by_index(i) {
             Ok(f) => f,
@@ -98,11 +165,22 @@ pub fn unpacked(mount: &Mount) -> io::Result<PathBuf> {
             Ok(n) => n.replace('\\', "/"),
             Err(_) => continue,
         };
-        if !name.to_ascii_lowercase().starts_with("content/") || !is_companion(&name, f.size()) {
+        if !name.to_ascii_lowercase().starts_with("content/") {
             continue;
         }
+        let script = is_script_in(&name, &extra);
         let Some(rel) = f.enclosed_name() else { continue };
         let dest = dir.join(rel);
+        if is_data(&name) && f.size() > SMALL_DATA {
+            // Too big to unpack (Happy Wheels' 18 GB level database): PHP reads it from the zip.
+            drop(f);
+            crate::zipseek::register(&mount.path, i, &dest, &work)?;
+            big += 1;
+            continue;
+        }
+        if !(is_companion(&name, f.size()) || (script && f.size() <= SMALL_DATA)) {
+            continue;
+        }
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -111,7 +189,7 @@ pub fn unpacked(mount: &Mount) -> io::Result<PathBuf> {
         std::fs::write(&dest, out)?;
         n += 1;
     }
-    log::info!("php: unpacked {n} scripts and files from {}", mount.path.display());
+    log::info!("php: unpacked {n} scripts and files ({big} read from the zip) from {}", mount.path.display());
     done.insert(mount.path.clone(), dir.clone());
     Ok(dir)
 }
@@ -169,6 +247,15 @@ pub async fn run(script: PathBuf, doc_root: PathBuf, req: Request<'_>) -> io::Re
             _ => env.push((format!("HTTP_{k}"), v.clone())),
         }
     }
+    if crate::zipseek::has_files() {
+        // Big data files read from the zip (see zipseek): the preloaded library serves them.
+        let lib = php.home.join("lib/libarmflash_zipfs.so");
+        if lib.is_file() {
+            env.push(("LD_PRELOAD".into(), lib.to_string_lossy().into()));
+            env.push(("ARMFLASH_VFILES".into(), crate::zipseek::manifest_path(&php.work).to_string_lossy().into()));
+            env.push(("ARMFLASH_ZIPREAD".into(), crate::zipseek::socket_path(&php.work).to_string_lossy().into()));
+        }
+    }
     if !req.body.is_empty() && !env.iter().any(|(k, _)| k == "CONTENT_LENGTH") {
         env.push(("CONTENT_LENGTH".into(), req.body.len().to_string()));
     }
@@ -192,7 +279,8 @@ pub async fn run(script: PathBuf, doc_root: PathBuf, req: Request<'_>) -> io::Re
         let _ = si.write_all(&body).await;
         drop(si);
     }
-    let out = match tokio::time::timeout(Duration::from_secs(180), child.wait_with_output()).await {
+    // A first request can wait on a big file's seek index (a minute or two for gigabytes).
+    let out = match tokio::time::timeout(Duration::from_secs(420), child.wait_with_output()).await {
         Ok(r) => r?,
         Err(_) => return Err(io::Error::new(io::ErrorKind::TimedOut, "php took too long")),
     };

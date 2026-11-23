@@ -440,7 +440,7 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
         listOf("default" to "Game default", "fit" to "Fit", "stretch" to "Stretch", "fill" to "Fill", "original" to "Original size"),
         st.layout.scale,
         description = "How the game fills the screen. Fit keeps its shape with bars, Stretch fills the screen and " +
-            "changes its shape, Fill keeps its shape and crops the edges.",
+            "changes its shape, Fill keeps its shape and crops the edges. On a browser game, Original size shows the whole web page.",
         first = !host.usesDriver,
     ) { set(scale = it) }
     HorizontalOptions(

@@ -228,6 +228,26 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     /** Wine draws this program's title bar and border itself (an unmanaged window). */
     private val ownFrame by lazy { program().substringAfterLast('\\').equals(WinRuntime.UNMANAGED_EXE, ignoreCase = true) }
 
+    /**
+     * The largest window below [parent] (absolute position, from [ox],[oy]) big enough to be a
+     * game: a browser plugin's window (Flash, Shockwave, Unity). Null when there is none, or
+     * when it is the whole page anyway.
+     */
+    private fun pluginWindow(c: XClient, parent: Int, ox: Int, oy: Int, topArea: Int, depth: Int): XClient.Rect? {
+        if (depth > 4) return null
+        var best: XClient.Rect? = null
+        for ((id, r) in c.children(parent)) {
+            val abs = XClient.Rect(ox + r.x, oy + r.y, r.w, r.h)
+            val deeper = pluginWindow(c, id, abs.x, abs.y, topArea, depth + 1)
+            for (cand in listOfNotNull(abs, deeper)) {
+                val area = cand.w * cand.h
+                if (cand.w >= 160 && cand.h >= 120 && area * 20 >= topArea && area * 100 < topArea * 97 &&
+                    (best == null || area > best.w * best.h)) best = cand
+            }
+        }
+        return best
+    }
+
     private fun watchWindows() {
         while (running) {
             xq.submit {
@@ -257,9 +277,17 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                             c.keycode(0xFFC8)?.let { kc -> c.focus(w.first); c.key(kc, true); c.key(kc, false) } // XK_F11
                         }
                     }
+                    // In a browser, Flash, Shockwave and Unity draw in their plugin's own window,
+                    // a separate X window inside the browser's: exactly the game, whatever the page
+                    // around it looks like. Pages without a plugin are trimmed by their colours.
+                    val plugin = if (isBrowser) runCatching { pluginWindow(c, w.first, top.x, top.y, top.w * top.h, 0) }.getOrNull() else null
                     // Flash Player's projector draws its stage in a corner of a bigger window, and
                     // Shockwave's centres it in one; other players size the window to the stage.
-                    crop = if (trimsWindow) trim(win) else win
+                    crop = when {
+                        plugin != null -> Rect(plugin.x.coerceAtLeast(0), plugin.y.coerceAtLeast(0), (plugin.x + plugin.w).coerceAtMost(SCREEN_W), (plugin.y + plugin.h).coerceAtMost(SCREEN_H))
+                        trimsWindow -> trim(win)
+                        else -> win
+                    }
                     val desc = "window 0x${w.first.toString(16)} at ${top.x},${top.y} ${top.w}x${top.h}" +
                         (inner?.let { ", child ${it.w}x${it.h} at ${it.x},${it.y}" } ?: "") + ", showing $crop"
                     if (desc != lastWindowLog) { lastWindowLog = desc; android.util.Log.i(WinRuntime.TAG, desc) }
