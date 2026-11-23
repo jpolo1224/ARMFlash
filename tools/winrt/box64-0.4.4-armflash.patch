@@ -1,3 +1,59 @@
+diff --git a/src/libtools/signals.c b/src/libtools/signals.c
+index 2745893..749c1f3 100644
+--- a/src/libtools/signals.c
++++ b/src/libtools/signals.c
+@@ -47,6 +47,38 @@
+ 
+ #include "signal_private.h"
+ 
++#if defined(__aarch64__) && defined(FLASHARM_NO_HOST_EXEC)
++// ARMFlash: whether the kernel says the faulting access was a write (ESR_EL1.WnR, kept in the
++// signal frame's esr_context record). write_opcode only guesses from the x86 bytes, and its
++// decoders for SSE opcodes with a 66, F2 or F3 prefix are empty, so a movdqa/movdqu/movsd/movss
++// store (or a native libc call writing for the guest) into a page Wine keeps read-only on purpose
++// (write watch, copy on write) reached Wine as a read fault, which Wine turns into an access
++// violation: Silverlight's .NET runtime died in its SSE2 memcpy on a write-watched GC page.
++// Trusted only when the frame's fault address is this signal's.
++static int armflash_fault_is_write(void* ucntx, void* fault_addr)
++{
++    if(!ucntx)
++        return 0;
++    ucontext_t* uc = (ucontext_t*)ucntx;
++    if((void*)uc->uc_mcontext.fault_address != fault_addr)
++        return 0;
++    uintptr_t p = (uintptr_t)uc->uc_mcontext.__reserved;
++    uintptr_t end = p + sizeof(uc->uc_mcontext.__reserved);
++    while(p + sizeof(struct _aarch64_ctx) <= end) {
++        struct _aarch64_ctx* ctx = (struct _aarch64_ctx*)p;
++        if(!ctx->magic || ctx->size < sizeof(struct _aarch64_ctx) || p + ctx->size > end)
++            break;
++        if(ctx->magic == 0x45535201 /* ESR_MAGIC */ && ctx->size >= 16) {
++            uint64_t esr = ((uint64_t*)p)[1];
++            uint32_t ec = (esr >> 26) & 0x3f;
++            return (ec == 0x24 || ec == 0x25) && ((esr >> 6) & 1);  // data abort, WnR set
++        }
++        p += ctx->size;
++    }
++    return 0;
++}
++#endif
++
+ static void sigstack_destroy(void* p)
+ {
+     x64_stack_t *ss = (x64_stack_t*)p;
+@@ -458,7 +490,11 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
+         } else {
+             sigcontext->uc_mcontext.gregs[X64_TRAPNO] = 14;
+             sigcontext->uc_mcontext.gregs[X64_ERR] = 4|((sysmapped && !(real_prot&PROT_READ))?0:1);
+-            if(write_opcode(sigcontext->uc_mcontext.gregs[X64_RIP], (uintptr_t)pc, (R_CS==0x23)))
++            int is_write = write_opcode(sigcontext->uc_mcontext.gregs[X64_RIP], (uintptr_t)pc, (R_CS==0x23));
++            #if defined(__aarch64__) && defined(FLASHARM_NO_HOST_EXEC)
++            is_write = is_write || armflash_fault_is_write(ucntx, info->si_addr);
++            #endif
++            if(is_write)
+                 sigcontext->uc_mcontext.gregs[X64_ERR] |= 2;
+         }
+         if(info->si_code == SEGV_ACCERR && old_code)
 diff --git a/src/wrapped/wrappedlib_init.h b/src/wrapped/wrappedlib_init.h
 index c861228..57d8b03 100644
 --- a/src/wrapped/wrappedlib_init.h
