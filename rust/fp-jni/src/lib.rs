@@ -62,6 +62,7 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_searchIndex(input: JString, opts: JSt
     => core::search_index(&input, &opts, page_size as i64));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_searchPage(input: JString, opts: JString), page_size: jint
     => core::search_page(&input, &opts, page_size as i64));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_searchTotal(opts: JString) => core::search_total(&opts));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_findGame(id: JString) => core::find_game(&id));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_platforms() => core::platforms());
 jfn!(Java_com_armsx_flashpoint_core_FpCore_platformsWithGames(opts: JString) => core::platforms_with_games(&opts));

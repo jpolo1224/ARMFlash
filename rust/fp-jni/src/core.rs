@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-use flashpoint_archive::game::search::{GameSearchDirection, GameSearchOffset, GameSearchSortable};
+use flashpoint_archive::game::search::{GameFilter, GameSearchDirection, GameSearchOffset, GameSearchSortable};
 use flashpoint_archive::game_data::PartialGameData;
 use flashpoint_archive::FlashpointArchive;
 use fp_proxy::{Config, GameServer, ProxyHandle};
@@ -116,8 +116,13 @@ fn build_search(fp: &FlashpointArchive, input: &str, opts: &SearchOpts, limit: i
     }
     if let Some(p) = &opts.platforms {
         if !p.is_empty() {
-            s.filter.exact_whitelist.platforms = Some(p.clone());
-            s.filter.match_any = s.filter.match_any || p.len() > 1;
+            // Any of these platforms, in a group of its own: the crate's match_any applies to
+            // the whole filter it is set on, so setting it here made every other condition
+            // optional too (games or Extreme tags OR one of the platforms).
+            let mut any = GameFilter::default();
+            any.exact_whitelist.platforms = Some(p.clone());
+            any.match_any = true;
+            s.filter.subfilters.push(any);
         }
     }
     if let Some(ids) = &opts.ids {
@@ -152,6 +157,16 @@ pub fn search_index(input: &str, opts_json: &str, page_size: i64) -> Res {
         let marks = rt().block_on(fp.search_games_index(&mut s, None)).map_err(e)?;
         let marks: Vec<_> = marks.into_iter().map(|m| json!({ "value": m.order_val, "title": m.title, "id": m.id })).collect();
         Ok(json!({ "total": total, "pageSize": page_size, "marks": marks }).to_string())
+    })
+}
+
+/// How many games these options find (Home's "N games").
+pub fn search_total(opts_json: &str) -> Res {
+    let opts: SearchOpts = serde_json::from_str(opts_json).unwrap_or_default();
+    with_db(|fp| {
+        let s = build_search(fp, "", &opts, 1);
+        let total = rt().block_on(fp.search_games_total(&s)).map_err(e)?;
+        Ok(json!({ "total": total }).to_string())
     })
 }
 
@@ -197,16 +212,21 @@ pub fn platforms() -> Res {
 
 /// The platforms with at least one game for these options (the tab and filters the grid uses),
 /// counted by the same search the grid runs, so no platform in the list leads to an empty grid.
+/// The options' own platforms are the ones to count (all of the database's when it has none).
 pub fn platforms_with_games(opts_json: &str) -> Res {
-    let opts: SearchOpts = serde_json::from_str(opts_json).unwrap_or_default();
+    let mut opts: SearchOpts = serde_json::from_str(opts_json).unwrap_or_default();
+    let wanted = opts.platforms.take().filter(|p| !p.is_empty());
     with_db(|fp| {
-        let all = rt().block_on(fp.find_all_platforms()).map_err(e)?;
+        let candidates = match &wanted {
+            Some(p) => p.clone(),
+            None => rt().block_on(fp.find_all_platforms()).map_err(e)?.into_iter().map(|t| t.name).collect(),
+        };
         let mut s = build_search(fp, "", &opts, 1);
         let mut names = Vec::new();
-        for p in all {
-            s.filter.exact_whitelist.platforms = Some(vec![p.name.clone()]);
+        for name in candidates {
+            s.filter.exact_whitelist.platforms = Some(vec![name.clone()]);
             if rt().block_on(fp.search_games_total(&s)).map_err(e)? > 0 {
-                names.push(p.name);
+                names.push(name);
             }
         }
         serde_json::to_string(&names).map_err(e)
@@ -392,6 +412,25 @@ mod tests {
 
         let g: serde_json::Value = serde_json::from_str(&find_game("id-0").unwrap()).unwrap();
         assert_eq!(g["title"], "Poptropica");
+
+        // Several platforms at once stay one condition among the others: an animation on Flash
+        // and a game on Unity both stay out of "games on Flash or HTML5".
+        with_db(|fp| {
+            let mut anim = game("id-anim", "Flash Cartoon", "Flash");
+            anim.library = Some("theatre".into());
+            rt().block_on(fp.create_game(&anim)).map_err(e)?;
+            rt().block_on(fp.create_game(&game("id-unity", "Unity Racer", "Unity"))).map_err(e)?;
+            Ok(())
+        })
+        .unwrap();
+        let r: serde_json::Value =
+            serde_json::from_str(&search_page("", r#"{"library":"arcade","platforms":["Flash","HTML5"]}"#, 50).unwrap()).unwrap();
+        assert_eq!(r.as_array().unwrap().len(), 5);
+        let r: serde_json::Value =
+            serde_json::from_str(&platforms_with_games(r#"{"library":"arcade","platforms":["Flash","Unity","Java"]}"#).unwrap()).unwrap();
+        assert_eq!(r, json!(["Flash", "Unity"]));
+        let r: serde_json::Value = serde_json::from_str(&search_total(r#"{"library":"arcade","platforms":["Flash","HTML5"]}"#).unwrap()).unwrap();
+        assert_eq!(r["total"], 5);
     }
 
     /// The Games tab's Popular query against a real database: FP_TEST_DB=<flashpoint.sqlite>
@@ -424,5 +463,15 @@ mod tests {
         let all: Vec<String> = serde_json::from_str(&platforms().unwrap()).unwrap_or_default();
         let arcade: Vec<String> = r.ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         eprintln!("all {} platforms; not in arcade: {:?}", all.len(), all.iter().filter(|p| !arcade.contains(p)).collect::<Vec<_>>());
+
+        // The app's six platforms: the list, the whole tab, and a typed search.
+        let opts = r#"{"library":"arcade","platforms":["Flash","HTML5","Java","Shockwave","Silverlight","PopCap Plugin"]}"#;
+        let t = std::time::Instant::now();
+        eprintln!("six: {:?} in {:?}", platforms_with_games(opts), t.elapsed());
+        for q in ["", "mario"] {
+            let t = std::time::Instant::now();
+            let idx: serde_json::Value = serde_json::from_str(&search_index(q, opts, 120).unwrap()).unwrap();
+            eprintln!("six-platform index {q:?}: {} games in {:?}", idx["total"], t.elapsed());
+        }
     }
 }

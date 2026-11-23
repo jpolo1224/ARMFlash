@@ -258,7 +258,7 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
             imp != null -> Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
             else -> {
                 Text(
-                    "ARMFlash needs Flashpoint's game database: the details of over 220,000 games and animations. " +
+                    "ARMFlash needs Flashpoint's game database: the details of over 170,000 games. " +
                         "Download it from Flashpoint Archive, or import flashpoint.sqlite from a desktop install. " +
                         "Games download on demand the first time you play them.",
                     color = Fp.Text, modifier = Modifier.widthIn(max = 560.dp),

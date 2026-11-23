@@ -168,7 +168,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("ARMFlash", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
-                    Text("${vm.dbGames} games and animations", color = Fp.TextDim, fontSize = 13.sp)
+                    Text("${"%,d".format(vm.dbGames)} games", color = Fp.TextDim, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -203,7 +203,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 }
             }
             LaunchedEffect(vm.recentTick) { vm.loadHomeRows(); if (allRecent || allInstalled) vm.loadHomeAll() }
-            // "View All" opens a row in full here on Home (games and animations together), rather
+            // "View All" opens a row in full here on Home, rather
             // than in a tab whose search then only looks inside that list.
             val rows: @Composable () -> Unit = {
                 if (vm.recent.isNotEmpty()) GameRow(vm, "Recently Played", if (allRecent) vm.recentAll.ifEmpty { vm.recent } else vm.recent, allRecent,

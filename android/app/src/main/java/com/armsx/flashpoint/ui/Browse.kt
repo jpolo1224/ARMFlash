@@ -152,7 +152,7 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
         item {
             SidebarRow("Import Playlist", on = false) { importer.launch(arrayOf("application/json", "*/*")) }
             Text(
-                "${vm.dbGames} games in database", color = Fp.TextDim, fontSize = 12.sp,
+                "${"%,d".format(vm.dbGames)} games", color = Fp.TextDim, fontSize = 12.sp,
                 modifier = Modifier.padding(14.dp),
             )
         }

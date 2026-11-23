@@ -26,6 +26,7 @@ object FpCore {
     @JvmStatic private external fun openDatabase(path: String): String
     @JvmStatic private external fun searchIndex(input: String, opts: String, pageSize: Int): String
     @JvmStatic private external fun searchPage(input: String, opts: String, pageSize: Int): String
+    @JvmStatic private external fun searchTotal(opts: String): String
     @JvmStatic private external fun findGame(id: String): String
     @JvmStatic private external fun platforms(): String
     @JvmStatic private external fun platformsWithGames(opts: String): String
@@ -64,6 +65,10 @@ object FpCore {
 
     fun index(query: String, opts: SearchOpts, pageSize: Int): SearchIndex =
         json.decodeFromJsonElement(SearchIndex.serializer(), check(searchIndex(query, json.encodeToString(SearchOpts.serializer(), opts), pageSize)))
+
+    /** How many games [opts] finds. */
+    fun total(opts: SearchOpts): Int =
+        (check(searchTotal(json.encodeToString(SearchOpts.serializer(), opts))) as JsonObject)["total"]!!.jsonPrimitive.int
 
     fun page(query: String, opts: SearchOpts, pageSize: Int): List<Game> =
         json.decodeFromJsonElement(GameListSerializer, check(searchPage(query, json.encodeToString(SearchOpts.serializer(), opts), pageSize)))

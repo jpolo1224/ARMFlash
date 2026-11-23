@@ -63,6 +63,9 @@ data class GameData(
     @SerialName("launch_command") val launchCommand: String = "",
 )
 
+/** The platforms ARMFlash offers: games on any other platform stay out of every list. */
+val OFFERED_PLATFORMS = listOf("Flash", "HTML5", "Java", "Shockwave", "Silverlight", "PopCap Plugin")
+
 @Serializable
 data class SearchOpts(
     val installed: Boolean? = null,
