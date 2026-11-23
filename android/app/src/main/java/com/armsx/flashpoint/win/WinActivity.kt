@@ -217,7 +217,12 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
      */
     private fun gameEnv(fpRoot: File): Map<String, String> {
         val env = LinkedHashMap<String, String>()
-        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) env += WinRuntime.JIT_SAFE
+        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
+            env += WinRuntime.JIT_SAFE
+            // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction
+            // Box64 cannot translate (reported at log level 1 only).
+            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "-all,err+all,+loaddll")
+        }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
             val eq = t.indexOf('=')
