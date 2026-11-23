@@ -34,10 +34,10 @@ index c995a0c..e778ccd 100644
          updateProtection((uintptr_t)addr, len, prot);
      }
 diff --git a/src/wrapped/wrappedlibx11.c b/src/wrapped/wrappedlibx11.c
-index 502cd85..6722704 100644
+index 502cd85..7a59db3 100644
 --- a/src/wrapped/wrappedlibx11.c
 +++ b/src/wrapped/wrappedlibx11.c
-@@ -1180,9 +1180,29 @@ EXPORT void* my_XSetIMValues(x64emu_t* emu, void* xim, uintptr_t* va) {
+@@ -1180,9 +1180,33 @@ EXPORT void* my_XSetIMValues(x64emu_t* emu, void* xim, uintptr_t* va) {
  #undef VA_CALL
  #undef SUPER
  
@@ -51,8 +51,12 @@ index 502cd85..6722704 100644
 +{
 +    (void)display;
 +    armflash_xerror_t* e = (armflash_xerror_t*)event;
-+    printf_log(LOG_NONE, "ARMFlash: ignored X error %d (request %d.%d) on 0x%lx\n",
-+        e->error_code, e->request_code, e->minor_code, e->resourceid);
++    // A program can repeat the same failing request every frame: log the first few, then rarely.
++    static unsigned long seen = 0;
++    ++seen;
++    if(seen<=8 || !(seen%1000))
++        printf_log(LOG_NONE, "ARMFlash: ignored X error %d (request %d.%d) on 0x%lx (%lu so far)\n",
++            e->error_code, e->request_code, e->minor_code, e->resourceid, seen);
 +    return 0;
 +}
 +#endif

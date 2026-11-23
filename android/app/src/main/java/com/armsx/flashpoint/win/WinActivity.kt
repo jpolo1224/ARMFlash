@@ -200,6 +200,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     /** Follow the game's window: the largest one on the virtual screen. */
+    private var lastWindowLog = ""
     private val trimsWindow by lazy { "flashplayer" in program().lowercase() }
 
     private fun watchWindows() {
@@ -220,6 +221,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                     // other players (Shockwave's projector) size the window to the stage, and
                     // trimming those zoomed in on whatever was busiest, an intro's logo say.
                     crop = if (trimsWindow) trim(win) else win
+                    val desc = "window 0x${w.first.toString(16)} at ${top.x},${top.y} ${top.w}x${top.h}" +
+                        (inner?.let { ", child ${it.w}x${it.h} at ${it.x},${it.y}" } ?: "") + ", showing $crop"
+                    if (desc != lastWindowLog) { lastWindowLog = desc; android.util.Log.i(WinRuntime.TAG, desc) }
                 }
             }.get()
             Thread.sleep(500)
