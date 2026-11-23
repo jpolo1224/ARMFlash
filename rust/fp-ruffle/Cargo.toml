@@ -52,6 +52,10 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
 
 [workspace]
 
+# wgpu-hal from the vendored copy (rust/vendor/wgpu-hal): command pools give back what a burst used.
+[patch.crates-io]
+wgpu-hal = { path = "../vendor/wgpu-hal" }
+
 # Ruffle from the vendored copy (rust/vendor/ruffle), which carries ARMFlash's patches.
 [patch."https://github.com/ruffle-rs/ruffle.git"]
 asc = { path = "../vendor/ruffle/tools/asc" }
