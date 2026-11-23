@@ -122,6 +122,12 @@ object SupportPacks {
         out.writeBytes(bytes)
     }
 
+    /** Any of these packs has Secure Player templates that run in Internet Explorer's browser control. */
+    fun needsBrowser(ctx: android.content.Context, ids: List<String>): Boolean {
+        val root = org.json.JSONObject(ctx.assets.open("flashpoint/supportpacks.json").bufferedReader().readText()).getJSONObject("packs")
+        return ids.any { root.optJSONObject(it)?.optJSONArray("web")?.let { a -> a.length() > 0 } == true }
+    }
+
     /** A Windows program or start script from a support pack (what desktop Flashpoint starts). */
     fun isWindowsProgram(applicationPath: String): Boolean {
         val p = applicationPath.replace('/', '\\')

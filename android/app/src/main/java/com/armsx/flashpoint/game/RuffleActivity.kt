@@ -84,6 +84,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // The game server must be up before super.onCreate starts the native player loop.
+        com.armsx.flashpoint.core.Php.ensure(this)
         try {
             val port = FpCore.startServer(
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),

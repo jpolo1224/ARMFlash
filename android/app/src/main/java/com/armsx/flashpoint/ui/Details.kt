@@ -177,6 +177,9 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             Text(" ${g.primaryPlatform}", color = Fp.Text, fontSize = 13.sp)
         }
         if (plan != null) Field("Runs with", plan.runner.label)
+        g.activeData?.takeIf { it.size > 0 }?.let { gd ->
+            Field("Data", sizeText(gd.size) + if (vm.library.zipFor(gd).isFile) " (downloaded)" else "")
+        }
         Field("Play Mode", g.playMode)
         Field("Status", g.status)
         Field("Version", g.version)

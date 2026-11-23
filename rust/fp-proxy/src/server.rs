@@ -79,7 +79,7 @@ pub fn start(server: Arc<GameServer>, port: u16) -> io::Result<ProxyHandle> {
                         tokio::spawn(async move {
                             let svc = hyper::service::service_fn(move |req| {
                                 let srv = srv.clone();
-                                async move { Ok::<_, Infallible>(handle(srv, port, req).await) }
+                                async move { Ok::<_, Infallible>(handle(srv, port, req, false).await) }
                             });
                             let _ = hyper::server::conn::http1::Builder::new()
                                 .keep_alive(true)
@@ -105,11 +105,11 @@ fn is_self(host: &str, port: u16) -> bool {
 }
 
 /// `handle` behind a box: the HTTPS path serves requests with `handle` from inside `handle`.
-fn handle_boxed(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Pin<Box<dyn std::future::Future<Output = Response<Body>> + Send>> {
-    Box::pin(handle(srv, port, req))
+fn handle_boxed(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: bool) -> Pin<Box<dyn std::future::Future<Output = Response<Body>> + Send>> {
+    Box::pin(handle(srv, port, req, https))
 }
 
-async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Response<Body> {
+async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: bool) -> Response<Body> {
     if req.method() == Method::CONNECT {
         // HTTPS: accept the tunnel, end TLS here, serve what's inside like http://.
         let host = req.uri().authority().map(|a| a.host().to_string()).unwrap_or_default();
@@ -124,7 +124,7 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Resp
             let Ok(tls) = acceptor.accept(TokioIo::new(upgraded)).await else { return };
             let svc = hyper::service::service_fn(move |req| {
                 let srv = srv.clone();
-                async move { Ok::<_, Infallible>(handle_boxed(srv, port, req).await) }
+                async move { Ok::<_, Infallible>(handle_boxed(srv, port, req, true).await) }
             });
             let _ = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(TokioIo::new(tls), svc).await;
         });
@@ -156,13 +156,26 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Resp
     let head = req.method() == Method::HEAD;
     let query = uri.query();
 
-    match srv.resolve(&key, query) {
+    let resolved = srv.resolve(&key, query);
+    // PHP pages run, as on desktop Flashpoint's Legacy server.
+    if crate::php::enabled() {
+        if let Some((script, root)) = php_script(&srv, &key, &resolved, query).await {
+            return php_page(script, root, &host, uri.path(), query.unwrap_or(""), https, req).await;
+        }
+    }
+    match resolved {
         Resolved::Zip { mount, index, size, name } => {
+            let mut ct = content_type(&name);
             let body = if head {
                 empty()
             } else if size <= SMALL {
                 match tokio::task::spawn_blocking(move || mount.read_all(index, size)).await {
-                    Ok(Ok(v)) => full(v.into()),
+                    Ok(Ok(v)) => {
+                        if ct == "application/octet-stream" {
+                            if let Some(t) = crate::sniff(&v[..v.len().min(512)]) { ct = t.to_string(); }
+                        }
+                        full(v.into())
+                    }
                     _ => return text(StatusCode::INTERNAL_SERVER_ERROR, "fp-proxy: zip read failed"),
                 }
             } else {
@@ -172,17 +185,23 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Resp
                     pump(&mut f, send)
                 })
             };
-            ok_file(&name, size, body)
+            file_response(&ct, size, body)
         }
         Resolved::Disk(p) => {
             let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
             let name = p.to_string_lossy().split('?').next().unwrap_or("").to_string();
+            let mut ct = content_type(&name);
+            if ct == "application/octet-stream" {
+                let mut buf = [0u8; 512];
+                let n = std::fs::File::open(&p).and_then(|mut f| f.read(&mut buf)).unwrap_or(0);
+                if let Some(t) = crate::sniff(&buf[..n]) { ct = t.to_string(); }
+            }
             let body = if head {
                 empty()
             } else {
                 stream_blocking(size, move |send| pump(&mut std::fs::File::open(&p)?, send))
             };
-            ok_file(&name, size, body)
+            file_response(&ct, size, body)
         }
         Resolved::AddSlash => {
             let mut loc = format!("{}/", uri.path());
@@ -205,6 +224,80 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>) -> Resp
             }
             None => text(StatusCode::NOT_FOUND, "fp-proxy: not found"),
         },
+    }
+}
+
+/// The script to run for this request and its site folder, when the file it resolved to (or the
+/// one the online Legacy server has for it) is a PHP script.
+async fn php_script(srv: &Arc<GameServer>, key: &Key, resolved: &Resolved, query: Option<&str>) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    match resolved {
+        Resolved::Zip { mount, index, .. } => {
+            let name = mount.reader().by_index_raw(*index).ok()?.name().ok()?.replace('\\', "/");
+            if !crate::php::is_script(&name) {
+                return None;
+            }
+            let m = mount.clone();
+            let dir = tokio::task::spawn_blocking(move || crate::php::unpacked(&m)).await.ok()?.ok()?;
+            let site: std::path::PathBuf = name.split('/').take(2).collect();
+            Some((dir.join(&name), dir.join(site)))
+        }
+        Resolved::Disk(p) => {
+            if !crate::php::is_script(&p.to_string_lossy()) {
+                return None;
+            }
+            let root = srv.config().htdocs.map(|h| h.join(&key.host)).unwrap_or_else(|| p.parent().map(|x| x.to_path_buf()).unwrap_or_default());
+            Some((p.clone(), root))
+        }
+        Resolved::NotFound if !key.dir && crate::php::is_script(&key.path) => {
+            // Only online: fetch the script (the Legacy server stores it as a file) and run it here.
+            let (bytes, _) = remote(srv, key, None).await?;
+            let cached = srv.config().htdocs.map(|h| h.join(key.htdocs_rel())).filter(|p| p.is_file());
+            let script = match cached {
+                Some(p) => p,
+                None => {
+                    let p = crate::php::work_dir()?.join("remote").join(key.htdocs_rel());
+                    std::fs::create_dir_all(p.parent()?).ok()?;
+                    std::fs::write(&p, &bytes).ok()?;
+                    p
+                }
+            };
+            let _ = query;
+            let root = script.ancestors().nth(key.htdocs_rel().matches('/').count()).map(|p| p.to_path_buf()).unwrap_or_default();
+            Some((script, root))
+        }
+        _ => None,
+    }
+}
+
+/// Run a PHP page for this request and answer with what it printed.
+async fn php_page(script: std::path::PathBuf, root: std::path::PathBuf, host: &str, path: &str, query: &str, https: bool, req: Request<Incoming>) -> Response<Body> {
+    let method = req.method().as_str().to_string();
+    let headers: Vec<(String, String)> = req.headers().iter()
+        .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), v.to_string())))
+        .collect();
+    let body = req.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+    let r = crate::php::Request { method: &method, host, path, query, https, headers, body };
+    match crate::php::run(script.clone(), root, r).await {
+        Ok(out) => {
+            let mut resp = Response::new(if method == "HEAD" { empty() } else { full(out.body) });
+            *resp.status_mut() = StatusCode::from_u16(out.status).unwrap_or(StatusCode::OK);
+            let mut typed = false;
+            for (k, v) in out.headers {
+                if let (Ok(k), Ok(v)) = (header::HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v)) {
+                    typed |= k == header::CONTENT_TYPE;
+                    resp.headers_mut().append(k, v);
+                }
+            }
+            if !typed {
+                resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html"));
+            }
+            resp.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+            resp
+        }
+        Err(e) => {
+            log::warn!("php {}: {e}", script.display());
+            text(StatusCode::INTERNAL_SERVER_ERROR, "fp-proxy: php failed")
+        }
     }
 }
 
@@ -396,7 +489,11 @@ fn with(status: StatusCode, ct: &str, body: Body) -> Response<Body> {
 }
 
 fn ok_file(name: &str, size: u64, body: Body) -> Response<Body> {
-    let mut r = with(StatusCode::OK, &content_type(name), body);
+    file_response(&content_type(name), size, body)
+}
+
+fn file_response(ct: &str, size: u64, body: Body) -> Response<Body> {
+    let mut r = with(StatusCode::OK, ct, body);
     r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(size));
     r
 }

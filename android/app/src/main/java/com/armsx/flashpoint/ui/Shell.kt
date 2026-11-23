@@ -172,6 +172,8 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 }
             }
             Spacer(Modifier.height(12.dp))
+            var allRecent by remember { mutableStateOf(false) }
+            var allInstalled by remember { mutableStateOf(false) }
             val left: @Composable () -> Unit = {
                 HomeBox("Quick Start") {
                     QuickLink("Looking for something to play? View ", "All Games") { go(Tab.GAMES) }
@@ -181,10 +183,10 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                 }
                 HomeBox("Extras") {
                     QuickLink("", "Favorites Playlist") { vm.pickShelf(Shelf.FAVORITES); go(Tab.GAMES) }
-                    QuickLink("", "Play History") { vm.pickShelf(Shelf.HISTORY); go(Tab.GAMES) }
+                    QuickLink("", "Play History") { allRecent = true; vm.loadHomeAll() }
                     Text("Filter by platform", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                        vm.platforms.take(24).forEach { p ->
+                        vm.gamePlatforms.take(24).forEach { p ->
                             Row(
                                 Modifier.padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(Fp.Field).clickable { vm.pickShelf(Shelf.ALL); vm.pickPlatform(p); go(Tab.GAMES) }.padding(6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -201,14 +203,14 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
                     Text("Don't forget to read the help page or manual if you're having issues.", color = Fp.Text, fontSize = 14.sp)
                 }
             }
-            LaunchedEffect(vm.recentTick) { vm.loadHomeRows() }
+            LaunchedEffect(vm.recentTick) { vm.loadHomeRows(); if (allRecent || allInstalled) vm.loadHomeAll() }
+            // "View All" opens a row in full here on Home (games and animations together), rather
+            // than in a tab whose search then only looks inside that list.
             val rows: @Composable () -> Unit = {
-                if (vm.recent.isNotEmpty()) GameRow(vm, "Recently Played", vm.recent, onAll = { vm.pickShelf(Shelf.HISTORY); go(Tab.GAMES) }) { g ->
-                    open(g)
-                }
-                if (vm.installedGames.isNotEmpty()) GameRow(vm, "Installed", vm.installedGames, onAll = { vm.pickShelf(Shelf.INSTALLED); go(Tab.GAMES) }) { g ->
-                    open(g)
-                }
+                if (vm.recent.isNotEmpty()) GameRow(vm, "Recently Played", if (allRecent) vm.recentAll.ifEmpty { vm.recent } else vm.recent, allRecent,
+                    onAll = { allRecent = !allRecent; if (allRecent) vm.loadHomeAll() }) { g -> open(g) }
+                if (vm.installedGames.isNotEmpty()) GameRow(vm, "Installed", if (allInstalled) vm.installedAll.ifEmpty { vm.installedGames } else vm.installedGames, allInstalled,
+                    onAll = { allInstalled = !allInstalled; if (allInstalled) vm.loadHomeAll() }) { g -> open(g) }
             }
             val right: @Composable () -> Unit = {
                 vm.gotd?.let { g -> GotdBox(vm, g, onPlay) }
@@ -275,11 +277,18 @@ private fun GotdBox(vm: BrowseVm, g: Gotd, onPlay: (Game) -> Unit) {
 }
 
 /** A Home row of games that scrolls sideways, with View All opening the matching shelf. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GameRow(vm: BrowseVm, title: String, games: List<Game>, onAll: () -> Unit, onPick: (Game) -> Unit) {
-    HomeBox(title, action = "View All" to onAll) {
-        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(games.size) { i -> MiniCard(vm, games[i]) { onPick(games[i]) } }
+private fun GameRow(vm: BrowseVm, title: String, games: List<Game>, expanded: Boolean, onAll: () -> Unit, onPick: (Game) -> Unit) {
+    HomeBox(title, action = (if (expanded) "Show Less" else "View All") to onAll) {
+        if (expanded) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                games.forEach { g -> MiniCard(vm, g) { onPick(g) } }
+            }
+        } else {
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(games.size) { i -> MiniCard(vm, games[i]) { onPick(games[i]) } }
+            }
         }
     }
 }

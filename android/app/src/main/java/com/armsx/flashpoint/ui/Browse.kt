@@ -290,11 +290,24 @@ private fun Grid(vm: BrowseVm, modifier: Modifier) {
         // Keys include the search, so the cards already on screen are rebuilt for new results
         // instead of keeping the previous search's games until scrolled away.
         val searchKey = System.identityHashCode(vm.index)
+        if (vm.showFeatured) {
+            item(key = "popular", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { GridHeader("Popular") }
+            items(vm.featured.size, key = { "popular:${vm.featured[it].id}" }) { i ->
+                val g = vm.featured[i]
+                GameCard(vm, g, selected = g.id == vm.selected?.id) { vm.select(g) }
+            }
+            item(key = "all", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { GridHeader("All Games, A to Z") }
+        }
         items(total, key = { "$searchKey:$it" }) { i ->
             val g = vm.gameAt(i)
             GameCard(vm, g, selected = g != null && g.id == vm.selected?.id) { if (g != null) vm.select(g) }
         }
     }
+}
+
+@Composable
+private fun GridHeader(text: String) {
+    Text(text, color = Fp.Text, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
 }
 
 @Composable

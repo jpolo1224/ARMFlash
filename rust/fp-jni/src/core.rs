@@ -195,6 +195,24 @@ pub fn platforms() -> Res {
     })
 }
 
+/// The platforms with at least one game for these options (the tab and filters the grid uses),
+/// counted by the same search the grid runs, so no platform in the list leads to an empty grid.
+pub fn platforms_with_games(opts_json: &str) -> Res {
+    let opts: SearchOpts = serde_json::from_str(opts_json).unwrap_or_default();
+    with_db(|fp| {
+        let all = rt().block_on(fp.find_all_platforms()).map_err(e)?;
+        let mut s = build_search(fp, "", &opts, 1);
+        let mut names = Vec::new();
+        for p in all {
+            s.filter.exact_whitelist.platforms = Some(vec![p.name.clone()]);
+            if rt().block_on(fp.search_games_total(&s)).map_err(e)? > 0 {
+                names.push(p.name);
+            }
+        }
+        serde_json::to_string(&names).map_err(e)
+    })
+}
+
 /// Record a downloaded data pack, like the launcher's import step.
 pub fn mark_data_on_disk(game_data_id: i64, path: &str) -> Res {
     with_db(|fp| {
@@ -296,6 +314,12 @@ fn with_server<T>(f: impl FnOnce(&GameServer) -> Result<T, String>) -> Result<T,
     let p = proxy().lock().map_err(|_| "proxy lock poisoned")?;
     let p = p.as_ref().ok_or("game server not started")?;
     f(&p.server)
+}
+
+/// Where PHP is, for the game server's PHP pages (empty `loader`: none).
+pub fn proxy_php(loader: &str, home: &str, work: &str) -> Res {
+    fp_proxy::php::set((!loader.is_empty()).then(|| fp_proxy::php::Php { loader: loader.into(), home: home.into(), work: work.into() }));
+    Ok(json!({ "php": !loader.is_empty() }).to_string())
 }
 
 pub fn proxy_mount(zip: &str) -> Res {

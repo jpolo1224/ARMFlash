@@ -185,6 +185,26 @@ private fun App(vm: BrowseVm) {
                 aboutPage = { AboutPage() },
             )
         }
+        vm.bigDownload?.let { big ->
+            val fits = big.free > big.bytes + (64L shl 20)
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { vm.bigDownload = null },
+                title = { Text("Big download") },
+                text = {
+                    Text(
+                        "${big.title} needs ${com.armsx.flashpoint.ui.sizeText(big.bytes)} of game data " +
+                            "(${com.armsx.flashpoint.ui.sizeText(big.free)} free). It downloads once, then plays offline. " +
+                            if (fits) "A download that gets cut off picks up where it stopped." else "There is not enough free space for it.",
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = big.go, enabled = fits) { Text("Download") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { vm.bigDownload = null }) { Text("Cancel") }
+                },
+            )
+        }
         if (vm.status.isNotBlank()) {
             LaunchedEffect(vm.status) { delay(4000); vm.status = "" }
             Box(

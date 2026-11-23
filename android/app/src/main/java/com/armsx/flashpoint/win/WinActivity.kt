@@ -148,7 +148,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         Thread(::boot, "win-boot").start()
     }
 
-    private fun say(s: String) = runOnUiThread { status.text = s; status.visibility = if (s.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
+    private fun say(s: String) = runOnUiThread {
+        if (s.isNotEmpty()) android.util.Log.i(WinRuntime.TAG, "screen: $s")
+        status.text = s; status.visibility = if (s.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
 
     /** Game server, X server, Wine prefix, then the game's own program. */
     private fun boot() {
@@ -158,7 +160,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val fpRoot = File(intent.getStringExtra(EXTRA_ROOT) ?: (application as com.armsx.flashpoint.FpApp).library.root.path)
         if (File(fpRoot, "FPSoftware").isDirectory) say("Moving the Windows players…")
         val drive = SupportPacks.drive(this, fpRoot)
-        for (id in SupportPacks.needed(this, program(), intent.getStringExtra(EXTRA_PLATFORM).orEmpty())) {
+        val packs = SupportPacks.needed(this, program(), intent.getStringExtra(EXTRA_PLATFORM).orEmpty())
+        for (id in packs) {
             if (SupportPacks.installed(drive, id)) continue
             val name = id.removePrefix("supportpack-").removePrefix("common-")
             say("Downloading $name…")
@@ -167,6 +170,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             } catch (e: Exception) { say("Could not get $name: ${e.message}"); return }
         }
         runCatching { SupportPacks.placeSecurePlayer(this, drive) }.onFailure { android.util.Log.w(WinRuntime.TAG, "secure player: ${it.message}") }
+        com.armsx.flashpoint.core.Php.ensure(this)
         try {
             FpCore.startServer(
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),
@@ -185,6 +189,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
         rt.ensureMfc42(::say)
+        if (SupportPacks.needsBrowser(this, packs) && !rt.ensureGecko(::say)) return
         val fp = drive
         rt.mapDrive('f', fp)
         val app = program()
@@ -206,9 +211,19 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Follow the game's window: the largest one on the virtual screen. */
     private var lastWindowLog = ""
-    private val trimsWindow by lazy { "flashplayer" in program().lowercase() || ownFrame || isBrowser }
-    /** A Flash or plugin game in its own browser (Flashpoint Navigator and the like). */
-    private val isBrowser by lazy { program().lowercase().let { "fpnavigator" in it || "basilisk" in it || "firefox" in it } }
+    private val trimsWindow get() = "flashplayer" in program().lowercase() || ownFrame || isBrowser
+    /**
+     * A Flash or plugin game in a browser (Flashpoint Navigator, Basilisk, Firefox, Netscape, or
+     * Secure Player's Internet Explorer window), however it was started (a start script, Secure
+     * Player): known from the program's name or, once its window is up, the window's class,
+     * which Wine names after the Windows program.
+     */
+    private val isBrowser get() = browserProgram || browserWindow
+    private val browserProgram by lazy { program().lowercase().let { "fpnavigator" in it || "basilisk" in it || "firefox" in it } }
+    @Volatile private var browserWindow = false
+    /** Browsers that take F11 for full screen (Secure Player's window is full screen already). */
+    private val takesF11 get() = browserProgram || f11Window
+    @Volatile private var f11Window = false
     @Volatile private var fullscreenSent = false
     /** Wine draws this program's title bar and border itself (an unmanaged window). */
     private val ownFrame by lazy { program().substringAfterLast('\\').equals(WinRuntime.UNMANAGED_EXE, ignoreCase = true) }
@@ -226,10 +241,16 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                     val r = if (inner != null && inner.w * inner.h * 2 > top.w * top.h)
                         XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
                     val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
-                    if (w.first != gameWin) { gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("") }
+                    if (w.first != gameWin) {
+                        gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("")
+                        val cls = runCatching { c.wmClass(w.first).lowercase() }.getOrDefault("")
+                        if (listOf("navigator", "basilisk", "firefox", "netscape", "iexplore", "flashpointsecureplayer").any { it in cls }) browserWindow = true
+                        if (listOf("navigator", "basilisk", "firefox").any { it in cls }) f11Window = true
+                        android.util.Log.i(WinRuntime.TAG, "game window class: $cls")
+                    }
                     // A browser shows its page full screen, as Flashpoint's own window does: no
                     // toolbars, the page laid out for the whole screen, then cropped to the game.
-                    if (isBrowser && !fullscreenSent && top.w > 320 && top.h > 240) {
+                    if (takesF11 && !fullscreenSent && top.w > 320 && top.h > 240) {
                         fullscreenSent = true
                         xq.execute {
                             Thread.sleep(1500)
@@ -303,6 +324,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         if (top < 0 || left < 0) return if (content.isEmpty) win else Rect(content)
         val found = Rect(left, top, right.coerceAtMost(area.right), bottom.coerceAtMost(area.bottom))
+        // A few pixels of startup paint are not the game yet: keep the whole window until it is.
+        if (found.width() < 32 || found.height() < 32) return if (content.isEmpty) win else Rect(content)
         recent.addLast(found)
         while (recent.size > 6) recent.removeFirst()
         content = Rect(recent.first()).apply { recent.forEach { union(it) } }

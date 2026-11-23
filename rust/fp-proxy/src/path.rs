@@ -61,8 +61,8 @@ impl Key {
 }
 
 /// Index documents tried for a directory request, in the order the game server lists them.
-/// The game server lets the last match win; here the first match wins so `index.html`
-/// beats `index.php`, which nothing on a phone can execute yet.
+/// The first match wins, so `index.html` beats `index.php`, as the desktop router lists
+/// `html` and `htm` first.
 pub const INDEX_FILES: &[&str] = &[
     "index.html", "index.htm", "index.php", "index.php5", "index.phtml", "index.asp", "index.aspx",
     "index.jsp", "index.jspx",

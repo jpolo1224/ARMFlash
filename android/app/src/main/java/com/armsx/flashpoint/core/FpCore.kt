@@ -28,6 +28,7 @@ object FpCore {
     @JvmStatic private external fun searchPage(input: String, opts: String, pageSize: Int): String
     @JvmStatic private external fun findGame(id: String): String
     @JvmStatic private external fun platforms(): String
+    @JvmStatic private external fun platformsWithGames(opts: String): String
     @JvmStatic private external fun markDataOnDisk(path: String, gameDataId: Long): String
     @JvmStatic private external fun markDataOffDisk(gameDataId: Long): String
     @JvmStatic private external fun unpackTarZst(src: String, dest: String): String
@@ -39,6 +40,7 @@ object FpCore {
     @JvmStatic private external fun addSeconds(id: String, seconds: Long): String
     @JvmStatic private external fun proxyStart(htdocs: String, legacy: String, live: String, port: Int, cache: Boolean): String
     @JvmStatic private external fun proxyMount(zip: String): String
+    @JvmStatic private external fun proxyPhp(loader: String, home: String, work: String): String
     @JvmStatic private external fun proxyUnmountAll(): String
     @JvmStatic private external fun syncStart(base: String, after: String): String
     @JvmStatic private external fun syncStatus(): String
@@ -72,6 +74,10 @@ object FpCore {
 
     fun platformNames(): List<String> =
         json.decodeFromJsonElement(StringListSerializer, check(platforms()))
+
+    /** The platforms that have games under [opts] (a tab and its filters). */
+    fun platformsWithGames(opts: SearchOpts): List<String> =
+        json.decodeFromJsonElement(StringListSerializer, check(platformsWithGames(json.encodeToString(SearchOpts.serializer(), opts))))
 
     fun markOnDisk(gameDataId: Long, path: String) {
         check(markDataOnDisk(path, gameDataId))
@@ -110,6 +116,11 @@ object FpCore {
     /** [liveDomains]: the game's own sites the live web may be asked for (empty: off). */
     fun startServer(htdocs: String, legacyBase: String, cacheRemote: Boolean, liveDomains: List<String>, port: Int = 0): Int =
         (check(proxyStart(htdocs, legacyBase, liveDomains.joinToString(","), port, cacheRemote)) as JsonObject)["port"]!!.jsonPrimitive.int
+
+    /** Let the game server run PHP pages with the PHP at [home], started by [loader]. */
+    fun setPhp(loader: String, home: String, work: String) {
+        check(proxyPhp(loader, home, work))
+    }
 
     fun mount(zip: String) {
         check(proxyMount(zip))

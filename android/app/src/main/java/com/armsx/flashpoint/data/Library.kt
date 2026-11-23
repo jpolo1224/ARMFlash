@@ -183,22 +183,65 @@ class Library(private val ctx: Context) {
         throw last ?: IOException("no game data source")
     }
 
+    /** A download of this data was started and not finished (it resumes). */
+    fun hasPartial(gd: GameData): Boolean = File(games, fileName(gd) + ".temp").isFile
+
     private fun downloadFrom(base: String, gd: GameData, progress: (done: Long, total: Long) -> Unit): File {
         val dest = File(games, fileName(gd))
         if (dest.isFile) return dest
         val tmp = File(games, dest.name + ".temp")
         val url = URL(base.trimEnd('/') + "/" + dest.name)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            setRequestProperty("User-Agent", "ARMFlash/0.1")
+        // The archive's server throttles each connection (64 MB took two minutes on one and
+        // nine seconds on four), so anything big comes down in ranges over several at once,
+        // resuming where it stopped. A one-byte range asks for the size and whether ranges work.
+        val (total, ranges) = probe(url) ?: (gd.size to false)
+        if (ranges && total >= SEGMENTED_FROM) {
+            segmented(url, tmp, total, progress)
+        } else {
+            single(url, tmp, total.takeIf { it > 0 } ?: gd.size, progress)
         }
+        progress(total, total)
+        if (gd.sha256.isNotBlank()) {
+            val got = sha256(tmp)
+            if (!got.equals(gd.sha256, ignoreCase = true)) {
+                tmp.delete(); partsFile(tmp).delete()
+                throw IOException("checksum mismatch for ${dest.name}")
+            }
+        }
+        if (!tmp.renameTo(dest)) throw IOException("could not move ${dest.name} into place")
+        partsFile(tmp).delete()
+        runCatching { FpCore.markOnDisk(gd.id, dest.name) }
+        return dest
+    }
+
+    private fun connect(url: URL, range: String?): HttpURLConnection = (url.openConnection() as HttpURLConnection).apply {
+        instanceFollowRedirects = true
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        setRequestProperty("User-Agent", "ARMFlash/0.1")
+        if (range != null) setRequestProperty("Range", "bytes=$range")
+    }
+
+    /** The file's size and whether the server serves ranges of it, or null if it cannot say. */
+    private fun probe(url: URL): Pair<Long, Boolean>? {
+        val c = connect(url, "0-0")
+        return try {
+            when (c.responseCode) {
+                206 -> c.getHeaderField("Content-Range")?.substringAfterLast('/')?.trim()?.toLongOrNull()?.let { it to true }
+                200 -> c.contentLengthLong.takeIf { it > 0 }?.let { it to false }
+                else -> throw IOException("HTTP ${c.responseCode} for $url")
+            }
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    /** One connection, start to end (small files, or a server without ranges). */
+    private fun single(url: URL, tmp: File, total: Long, progress: (Long, Long) -> Unit) {
+        val c = connect(url, null)
         try {
-            if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode} for $url")
-            val total = conn.contentLengthLong.takeIf { it > 0 } ?: gd.size
-            val sha = MessageDigest.getInstance("SHA-256")
-            conn.inputStream.use { input ->
+            if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode} for $url")
+            c.inputStream.use { input ->
                 tmp.outputStream().use { out ->
                     val buf = ByteArray(1 shl 18)
                     var done = 0L
@@ -207,30 +250,105 @@ class Library(private val ctx: Context) {
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
-                        sha.update(buf, 0, n)
                         done += n
-                        if (done - last > (1 shl 20) || done == total) {
-                            progress(done, total)
-                            last = done
-                        }
+                        if (done - last > (1 shl 20)) { progress(done, total); last = done }
                     }
                 }
             }
-            val got = sha.digest().joinToString("") { "%02x".format(it) }
-            if (gd.sha256.isNotBlank() && !got.equals(gd.sha256, ignoreCase = true)) {
-                tmp.delete()
-                throw IOException("checksum mismatch for ${dest.name}")
-            }
-            if (!tmp.renameTo(dest)) throw IOException("could not move ${dest.name} into place")
+        } catch (e: IOException) {
+            tmp.delete()
+            throw e
         } finally {
-            conn.disconnect()
-            if (tmp.exists() && !dest.exists()) tmp.delete()
+            c.disconnect()
         }
-        runCatching { FpCore.markOnDisk(gd.id, dest.name) }
-        return dest
+    }
+
+    private fun partsFile(tmp: File) = File(tmp.path + ".parts")
+
+    /**
+     * [total] bytes in up to [CONNECTIONS] ranges at once, written into place in [tmp]. Each
+     * range's progress is saved next to it, so a failed or interrupted download (the app closed,
+     * the network dropped) picks up where it was the next time.
+     */
+    private fun segmented(url: URL, tmp: File, total: Long, progress: (Long, Long) -> Unit) {
+        val n = (total / SEGMENT_MIN).coerceIn(1, CONNECTIONS.toLong()).toInt()
+        val size = (total + n - 1) / n
+        val starts = LongArray(n) { it * size }
+        val ends = LongArray(n) { minOf(total, (it + 1) * size) }
+        val parts = partsFile(tmp)
+        // Resume only a download of the same file split the same way.
+        val saved = runCatching { parts.readText().trim().split(' ').map { it.toLong() } }.getOrNull()
+        val done = java.util.concurrent.atomic.AtomicLongArray(n)
+        if (tmp.isFile && tmp.length() == total && saved != null && saved.size == n + 1 && saved[0] == total) {
+            for (i in 0 until n) done.set(i, saved[i + 1].coerceIn(0, ends[i] - starts[i]))
+        } else {
+            tmp.delete()
+            java.io.RandomAccessFile(tmp, "rw").use { it.setLength(total) }
+        }
+        fun save() = runCatching { parts.writeText("$total " + (0 until n).joinToString(" ") { done.get(it).toString() }) }
+        val failure = java.util.concurrent.atomic.AtomicReference<IOException?>(null)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(n)
+        for (i in 0 until n) pool.execute {
+            var tries = 0
+            java.io.RandomAccessFile(tmp, "rw").use { raf ->
+                while (failure.get() == null) {
+                    val pos = starts[i] + done.get(i)
+                    if (pos >= ends[i]) break
+                    val c = connect(url, "$pos-${ends[i] - 1}")
+                    try {
+                        if (c.responseCode != 206) throw IOException("HTTP ${c.responseCode} for a range of $url")
+                        c.inputStream.use { input ->
+                            val buf = ByteArray(1 shl 18)
+                            var at = pos
+                            while (at < ends[i]) {
+                                val r = input.read(buf, 0, minOf(buf.size.toLong(), ends[i] - at).toInt())
+                                if (r < 0) break
+                                raf.seek(at); raf.write(buf, 0, r)
+                                at += r
+                                done.addAndGet(i, r.toLong())
+                            }
+                        }
+                        tries = 0
+                    } catch (e: IOException) {
+                        // A dropped connection: try this range again from where it stopped.
+                        if (++tries > 8) { failure.compareAndSet(null, e); break }
+                        Thread.sleep(minOf(30_000L, 1_000L shl tries))
+                    } finally {
+                        c.disconnect()
+                    }
+                }
+            }
+        }
+        pool.shutdown()
+        var lastSave = 0L
+        while (!pool.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+            var sum = 0L
+            for (i in 0 until n) sum += done.get(i)
+            progress(sum, total)
+            val now = System.currentTimeMillis()
+            if (now - lastSave > 2_000) { save(); lastSave = now }
+        }
+        save()
+        failure.get()?.let { throw it }
+        var sum = 0L
+        for (i in 0 until n) sum += done.get(i)
+        if (sum != total) throw IOException("download stopped short (${sum shr 20} of ${total shr 20} MB); it continues next time")
+    }
+
+    private fun sha256(f: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { input ->
+            val buf = ByteArray(1 shl 20)
+            while (true) { val r = input.read(buf); if (r < 0) break; md.update(buf, 0, r) }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     companion object {
+        /** Files this big or bigger download in ranges over several connections. */
+        private const val SEGMENTED_FROM = 16L shl 20
+        private const val SEGMENT_MIN = 8L shl 20
+        private const val CONNECTIONS = 8
         /** Checked 2026-11-22: serves <gameId>-<ms>.zip (download.unstable.life mirrors it). */
         const val DEFAULT_GAME_DATA_SOURCE = "https://download.flashpointarchive.org/gib-roms/Games/"
         const val MIRROR_GAME_DATA_SOURCE = "https://download.unstable.life/gib-roms/Games/"

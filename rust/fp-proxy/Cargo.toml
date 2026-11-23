@@ -6,7 +6,7 @@ license.workspace = true
 description = "Flashpoint-compatible game server: serves game files straight out of data-pack zips"
 
 [dependencies]
-tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time"] }
+tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time", "process"] }
 hyper = { version = "1.12", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1.21", features = ["tokio", "client-legacy", "http1"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "tls12", "ring", "webpki-roots"] }

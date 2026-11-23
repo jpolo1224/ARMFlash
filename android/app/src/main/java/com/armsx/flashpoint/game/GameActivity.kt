@@ -125,6 +125,8 @@ class GameActivity : ComponentActivity() {
         val url = intent.getStringExtra(EXTRA_URL) ?: return finish()
         val zips = intent.getStringArrayExtra(EXTRA_ZIPS).orEmpty()
 
+        // PHP pages (unpacked by the launcher before the game started; here it is only pointed to).
+        com.armsx.flashpoint.core.Php.ensure(this)
         val port = try {
             val p = FpCore.startServer(
                 htdocs = intent.getStringExtra(EXTRA_HTDOCS).orEmpty(),

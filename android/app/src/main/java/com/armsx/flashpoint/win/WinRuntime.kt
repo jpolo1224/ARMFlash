@@ -82,8 +82,9 @@ class WinRuntime(private val ctx: Context) {
             // Debugging aid: r/tmp/.winedebug, when present, replaces the channels.
             "WINEDEBUG" to (runCatching { File(root, "tmp/.winedebug").readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() } ?: "-all,err+all"),
             "DISPLAY" to ":$DISPLAY_NO",
-            // No Wine Mono or Gecko: their first-run download prompt blocks every later process.
-            "WINEDLLOVERRIDES" to "mscoree,mshtml=",
+            // No Wine Mono, and no Gecko until ensureGecko put it in: their first-run download
+            // prompt blocks every later process.
+            "WINEDLLOVERRIDES" to if (hasGecko) "mscoree=" else "mscoree,mshtml=",
             // Every Java player (AppletViewer, Java in the browser, Web Start): a heap a 32-bit
             // process can reserve here (the default asked for 620 MB and failed), Java2D's
             // software pipeline (Wine has no Direct3D without OpenGL), and Windows' own random
@@ -226,6 +227,54 @@ class WinRuntime(private val ctx: Context) {
         }.onFailure { Log.w(TAG, "mfc42: ${it.message}") }
     }
 
+    /** Wine Gecko is in the prefix: Internet Explorer's engine (mshtml) can run. */
+    val hasGecko: Boolean get() = File(prefix, ".armflash-gecko").isFile
+
+    /**
+     * Internet Explorer's engine for games that run in its browser control (Secure Player's
+     * WEB_BROWSER templates: ActiveX games, WildTangent, Hypercosm, Viscape and others): Wine
+     * Gecko, the version this Wine uses, installed once with Wine's msiexec. Until it is there,
+     * mshtml stays off (WINEDLLOVERRIDES), or Wine would stop every program to offer it. Also
+     * lets pages run their ActiveX controls without asking, as Secure Player's browser does.
+     */
+    fun ensureGecko(log: (String) -> Unit): Boolean {
+        if (hasGecko) return true
+        return runCatching {
+            log("Getting Internet Explorer support (once, 55 MB)…")
+            val tmp = File(prefix, "drive_c/windows/temp/armflash-gecko").apply { deleteRecursively(); mkdirs() }
+            val msi = File(tmp, "wine-gecko-x86.msi")
+            val conn = java.net.URL(GECKO_URL).openConnection() as java.net.HttpURLConnection
+            conn.setRequestProperty("User-Agent", "ARMFlash"); conn.connectTimeout = 20_000; conn.readTimeout = 60_000
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val total = conn.contentLengthLong
+            conn.inputStream.use { ins -> msi.outputStream().use { out ->
+                val buf = ByteArray(1 shl 16); var done = 0L
+                while (true) {
+                    val n = ins.read(buf); if (n < 0) break
+                    out.write(buf, 0, n); md.update(buf, 0, n); done += n
+                    if (total > 0 && done % (4 shl 20) < n) log("Getting Internet Explorer support… ${done * 100 / total}%")
+                }
+            } }
+            val got = md.digest().joinToString("") { "%02x".format(it) }
+            check(got == GECKO_SHA256) { "checksum $got" }
+            log("Installing Internet Explorer support…")
+            val code = run(listOf("msiexec", "/i", "C:\\windows\\temp\\armflash-gecko\\wine-gecko-x86.msi", "/q"), null).waitFor()
+            tmp.deleteRecursively()
+            check(code == 0) { "msiexec exited with $code" }
+            // Every zone (local, intranet, trusted, internet, restricted): ActiveX controls and
+            // plugins run and scripts may use them, with no prompt.
+            for (zone in 0..4) {
+                val key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Zones\\$zone"
+                for (action in listOf("1001", "1004", "1200", "1201", "1208", "1209", "120A", "120B", "1405", "2000", "2201")) {
+                    run(listOf("reg", "add", key, "/v", action, "/t", "REG_DWORD", "/d", "0", "/f"), null).waitFor()
+                }
+            }
+            File(prefix, ".armflash-gecko").writeText(GECKO_SHA256)
+            Log.i(TAG, "gecko: installed")
+            true
+        }.getOrElse { Log.w(TAG, "gecko: ${it.message}"); log("Could not set up Internet Explorer support: ${it.message}"); false }
+    }
+
     /** Map Windows drive F: to [dir] (the Flashpoint folder), as desktop Flashpoint's paths expect. */
     fun mapDrive(letter: Char, dir: File) {
         link(dir.path, File(prefix, "dosdevices/${letter.lowercaseChar()}:"))
@@ -281,6 +330,9 @@ class WinRuntime(private val ctx: Context) {
         /** Microsoft's Visual C++ 6 runtime (winetricks' source for MFC 4.2). */
         const val VC6_URL = "https://download.microsoft.com/download/vc60pro/Update/2/W9XNT4/EN-US/VC6RedistSetup_deu.exe"
         const val VC6_SHA256 = "c2eb91d9c4448d50e46a32fecbcc3b418706d002beab9b5f4981de552098cee7"
+        /** Wine Gecko, the version Wine 10 uses (32-bit: the ActiveX controls are). */
+        const val GECKO_URL = "https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86.msi"
+        const val GECKO_SHA256 = "26cecc47706b091908f7f814bddb074c61beb8063318e9efc5a7f789857793d6"
         /** ARMFlash-3d-1.tar.zst (tools/winrt/pack3d.py). */
         const val GRAPHICS_SHA256 = "2ac35e8bd4ab011f83c1041608806603273f236d7d83f88111b72b3212ee0260"
         const val DISPLAY_NO = 1

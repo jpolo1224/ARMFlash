@@ -10,16 +10,19 @@
  * and wait for it. Behaviour follows Flashpoint Secure Player's source
  * (FlashpointProject/FlashpointSecureTools, MIT, by tomysshadow); no code is taken from it.
  *
- * Left out, as the virtual Windows exists only for games: reverting the registry afterwards,
- * the Old CPU Simulator (the program runs at full speed), single-instance prompts, downloads
- * ahead of time, and WEB_BROWSER mode (Internet Explorer's control).
+ * WEB_BROWSER mode shows the page in Internet Explorer's browser control (Wine's, with Wine
+ * Gecko) in a bare full-screen window. Left out, as the virtual Windows exists only for games:
+ * reverting the registry afterwards, the Old CPU Simulator (the program runs at full speed),
+ * single-instance prompts and downloads ahead of time.
  *
- * Build: python3 -m ziglang cc -target x86_64-windows-gnu -O2 -municode fsp.c \
- *        -o FlashpointSecurePlayer.exe -ladvapi32 -lshell32
+ * Build (32-bit, for the 32-bit ActiveX controls its browser mode hosts):
+ *   python3 -m ziglang cc -target x86-windows-gnu -O2 -municode fsp.c \
+ *        -o FlashpointSecurePlayer.exe -ladvapi32 -lshell32 -lole32 -luser32
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include <ole2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,6 +211,36 @@ static void set_htdocs(const wchar_t *startup, const wchar_t *url) {
     SetEnvironmentVariableW(L"FP_HTDOCS_FILE_DIR", full);
 }
 
+/* ---- WEB_BROWSER mode: Internet Explorer's browser control in a bare full-screen window --- */
+
+/* Flashpoint Secure Player shows these pages in a WinForms WebBrowser (Internet Explorer's
+   control) with no toolbars, maximized. Wine's ATL does the same with a window of class
+   AtlAxWin named after the URL: it hosts the browser control and navigates there. ActiveX
+   controls on the page load into this process, so it is a 32-bit program. */
+static int web_browser(const wchar_t *tpl, const wchar_t *url) {
+    HMODULE atl = LoadLibraryW(L"atl.dll");
+    BOOL (WINAPI *init)(void) = atl ? (BOOL (WINAPI *)(void))GetProcAddress(atl, "AtlAxWinInit") : NULL;
+    if (!init || !init()) { say(L"%ls: no browser control (atl.dll)", tpl); return 2; }
+    OleInitialize(NULL);
+    int w = GetSystemMetrics(SM_CXSCREEN), h = GetSystemMetrics(SM_CYSCREEN);
+    say(L"%ls: browser on %ls (%dx%d)", tpl, url, w, h);
+    HWND win = CreateWindowExW(0, L"AtlAxWin", url, WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0, w, h, NULL, NULL, GetModuleHandleW(NULL), NULL);
+    if (!win) { say(L"%ls: could not open the browser window (error %lu)", tpl, GetLastError()); return 1; }
+    for (;;) {
+        MSG msg;
+        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) goto done;
+            TranslateMessage(&msg); DispatchMessageW(&msg);
+        }
+        if (!IsWindow(win)) break;
+        MsgWaitForMultipleObjects(0, NULL, FALSE, 250, QS_ALLINPUT);
+    }
+done:
+    say(L"%ls ended (browser closed)", tpl);
+    OleUninitialize();
+    return 0;
+}
+
 int wmain(int argc, wchar_t **argv) {
     (void)argv;
     const wchar_t *cl = GetCommandLineW();
@@ -295,10 +328,15 @@ int wmain(int argc, wchar_t **argv) {
         for (const wchar_t *r = rs; (r = next_tag(r, rend, L"registryState")); r++) set_registry(r, view);
     }
 
-    /* The mode: SOFTWARE starts its program; WEB_BROWSER needs Internet Explorer's control. */
+    /* The mode: SOFTWARE starts its program; WEB_BROWSER (the default) shows the page in
+       Internet Explorer's browser control. */
     const wchar_t *mode = next_tag(tpl, tend, L"mode");
     wchar_t *mname = mode ? attr(mode, L"name") : NULL;
-    if (!mode || !mname || _wcsicmp(mname, L"SOFTWARE")) { say(L"template %ls uses a web browser mode, which ARMFlash does not have", wargv[1]); return 2; }
+    if (!mode || !mname || _wcsicmp(mname, L"SOFTWARE")) {
+        wchar_t *wdir = mode ? attr(mode, L"workingDirectory") : NULL;
+        if (wdir && *wdir) { wchar_t *x = expand(wdir); SetCurrentDirectoryW(x); free(x); }
+        return web_browser(wargv[1], wargv[2]);
+    }
     wchar_t *cmd = attr(mode, L"commandLine"), *wd = attr(mode, L"workingDirectory"), *hide = attr(mode, L"hideWindow");
     if (!cmd) { say(L"template %ls has no command line", wargv[1]); return 1; }
     wchar_t *xcmd = expand(cmd);

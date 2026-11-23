@@ -64,6 +64,7 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_searchPage(input: JString, opts: JStr
     => core::search_page(&input, &opts, page_size as i64));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_findGame(id: JString) => core::find_game(&id));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_platforms() => core::platforms());
+jfn!(Java_com_armsx_flashpoint_core_FpCore_platformsWithGames(opts: JString) => core::platforms_with_games(&opts));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOnDisk(path: JString), game_data_id: jlong
     => core::mark_data_on_disk(game_data_id, &path));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_markDataOffDisk(), game_data_id: jlong
@@ -79,6 +80,7 @@ jfn!(Java_com_armsx_flashpoint_core_FpCore_addSeconds(id: JString), seconds: jlo
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyStart(htdocs: JString, legacy: JString, live: JString), port: jint, cache: jboolean
     => core::proxy_start(port as u16, &htdocs, &legacy, cache != 0, &live).map(|p| serde_json::json!({ "port": p }).to_string()));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyMount(zip: JString) => core::proxy_mount(&zip));
+jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyPhp(loader: JString, home: JString, work: JString) => core::proxy_php(&loader, &home, &work));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_proxyUnmountAll() => { core::proxy_unmount_all(); Ok("{}".into()) });
 jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStart(base: JString, after: JString) => sync::start(&base, &after));
 jfn!(Java_com_armsx_flashpoint_core_FpCore_syncStatus() => sync::status());

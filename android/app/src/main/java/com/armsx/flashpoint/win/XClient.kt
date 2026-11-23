@@ -111,6 +111,17 @@ class XClient private constructor(private val sock: LocalSocket) {
         }.sortedByDescending { it.second.w * it.second.h }
     }
 
+    /** A window's WM_CLASS ("instance class"): Wine names its windows after the Windows program. */
+    fun wmClass(window: Int): String {
+        // GetProperty: window, WM_CLASS (67), type STRING (31), from 0, up to 64 words.
+        send(le(24).put(20).put(0).putShort(6).putInt(window).putInt(67).putInt(31).putInt(0).putInt(64))
+        val r = reply() ?: return ""
+        val n = r.getInt(16)
+        if (n <= 0 || r.capacity() < 32 + n) return ""
+        val b = ByteArray(n); r.position(32); r.get(b)
+        return String(b, Charsets.ISO_8859_1).replace('\u0000', ' ').trim()
+    }
+
     fun focus(window: Int) {
         // SetInputFocus, revert-to Parent, CurrentTime.
         send(le(12).put(42).put(2).putShort(3).putInt(window).putInt(0))

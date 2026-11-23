@@ -32,6 +32,19 @@ data class Download(val done: Long, val total: Long)
 data class Ready(val game: Game, val plan: LaunchPlan, val zips: List<String>, val winApp: String? = null, val winArgs: String = "")
 
 /** Flashpoint's usual Flash Player (most Flash games name it as their program). */
+/** The most a Home row shows when opened in full. */
+const val HOME_ALL = 500
+
+/** Game data this big or bigger is asked about before downloading. */
+const val BIG_DOWNLOAD = 300L shl 20
+
+/** "8.8 GB", "640 MB", "12 KB". */
+fun sizeText(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes / 1073741824.0)
+    bytes >= 1L shl 20 -> "%d MB".format(bytes shr 20)
+    else -> "%d KB".format(maxOf(1, bytes shr 10))
+}
+
 const val DEFAULT_FLASH_PLAYER = "FPSoftware\\Flash\\flashplayer_32_sa.exe"
 
 class BrowseVm(app: Application) : AndroidViewModel(app) {
@@ -77,7 +90,14 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     var descending by mutableStateOf(prefs.getBoolean("desc", false))
         private set
 
+    /** The platform filter's choices: the platforms with entries in the current tab. */
     var platforms by mutableStateOf<List<String>>(emptyList())
+        private set
+    /** Home's "Filter by platform" (it opens the Games tab): the platforms with games. */
+    var gamePlatforms by mutableStateOf<List<String>>(emptyList())
+        private set
+    /** Per tab ("arcade", "theatre"), under the current Extreme setting. */
+    private var platformsFor = mapOf<String, List<String>>()
     var index by mutableStateOf<SearchIndex?>(null)
     private val pages = mutableStateMapOf<Int, List<Game>>()
     private val loading = HashSet<Int>()
@@ -102,7 +122,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         status = "Opening database"
         try {
             dbGames = withContext(Dispatchers.IO) { FpCore.open(library.database.path) }
-            platforms = withContext(Dispatchers.IO) { FpCore.platformNames().filter { it.isNotBlank() }.sorted() }
+            loadPlatforms()
+            loadFeatured()
             dbReady = true
             status = ""
             refresh(immediate = true)
@@ -246,13 +267,43 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun refreshAll() {
         refresh(immediate = true)
         rerollPicks()
+        loadPlatforms()
+        loadFeatured()
     }
 
     fun showLibrary(l: String) {
         if (lib == l) return
         lib = l
         clearSelection()
+        applyPlatforms()
         refresh(immediate = true)
+    }
+
+    /**
+     * Each tab's platforms, counted with the search the grid runs (its tab and the Extreme
+     * filter): a platform shows up only where it has entries. Flashpoint's platform list has
+     * many that are only animations (Flick, Sizzler) or only games (MapGuide, ChemDraw), which
+     * otherwise led to an empty grid in the other tab.
+     */
+    private fun loadPlatforms() = viewModelScope.launch {
+        val bl = tagBlacklist()
+        platformsFor = withContext(Dispatchers.IO) {
+            listOf("arcade", "theatre").associateWith { l ->
+                runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl)) }
+                    .getOrElse { FpCore.platformNames() }.filter { it.isNotBlank() }.sorted()
+            }
+        }
+        applyPlatforms()
+    }
+
+    private fun applyPlatforms() {
+        platforms = platformsFor[lib].orEmpty()
+        gamePlatforms = platformsFor["arcade"].orEmpty()
+        // A platform picked in the other tab that has nothing here: show the whole tab.
+        if (platform != null && platforms.isNotEmpty() && platform !in platforms) {
+            platform = null
+            refresh(immediate = true)
+        }
     }
 
     /** Tags hidden while "Show Extreme Filters" is off (the launcher's Extreme tag filter group). */
@@ -280,6 +331,22 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
         installedGames = withContext(Dispatchers.IO) {
             runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), 12) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Home's rows in full ("View All" opens them on Home itself, games and animations together). */
+    var recentAll by mutableStateOf<List<Game>>(emptyList())
+        private set
+    var installedAll by mutableStateOf<List<Game>>(emptyList())
+        private set
+
+    fun loadHomeAll() = viewModelScope.launch {
+        val bl = tagBlacklist()
+        recentAll = withContext(Dispatchers.IO) {
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), HOME_ALL) }.getOrDefault(emptyList())
+        }
+        installedAll = withContext(Dispatchers.IO) {
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl), HOME_ALL) }.getOrDefault(emptyList())
         }
     }
 
@@ -421,7 +488,28 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         plan.runner == com.armsx.flashpoint.game.Runner.WEB && game.primaryPlatform.equals("Flash", ignoreCase = true) &&
             com.armsx.flashpoint.win.SupportPacks.isWindowsProgram(game.applicationPath)
 
-    fun prepare(game: Game, onReady: (Ready) -> Unit) = viewModelScope.launch {
+    /** The Games tab's popular titles ([FEATURED_GAMES]), as the database has them. */
+    var featured by mutableStateOf<List<Game>>(emptyList())
+        private set
+
+    /** Popular titles lead the list: Games tab, All Games, no search, filter or custom sort. */
+    val showFeatured: Boolean
+        get() = lib == "arcade" && shelf == Shelf.ALL && playlist == null && platform == null &&
+            query.isBlank() && order == "TITLE" && !descending && featured.isNotEmpty()
+
+    private fun loadFeatured() = viewModelScope.launch {
+        val bl = tagBlacklist()
+        featured = withContext(Dispatchers.IO) {
+            runCatching { FpCore.page("", SearchOpts(ids = FEATURED_GAMES, order = "CUSTOM", tagBlacklist = bl), FEATURED_GAMES.size) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** A game whose data is big enough to ask about before it downloads (see [prepare]). */
+    data class BigDownload(val title: String, val bytes: Long, val free: Long, val go: () -> Unit)
+    var bigDownload by mutableStateOf<BigDownload?>(null)
+    private val bigOk = HashSet<String>()
+
+    fun prepare(game: Game, onReady: (Ready) -> Unit): kotlinx.coroutines.Job = viewModelScope.launch {
         val plan = Launch.plan(game)
         if (!plan.runner.ready) {
             status = "${plan.runner.label} games are not playable on Android yet."
@@ -432,6 +520,13 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         if (gd != null) {
             var zip: File = library.zipFor(gd)
             if (!zip.isFile) {
+                // Some games carry gigabytes (Happy Wheels with its archived levels is 8.8 GB):
+                // say how big before starting. A download that was started and cut off resumes.
+                if (gd.size >= BIG_DOWNLOAD && game.id !in bigOk && !library.hasPartial(gd)) {
+                    val free = withContext(Dispatchers.IO) { library.games.apply { mkdirs() }.usableSpace }
+                    bigDownload = BigDownload(game.title, gd.size, free) { bigOk += game.id; bigDownload = null; prepare(game, onReady) }
+                    return@launch
+                }
                 downloads[game.id] = Download(0, gd.size)
                 try {
                     zip = withContext(Dispatchers.IO) {
@@ -480,6 +575,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // PHP for the game server's PHP pages: unpacked here, off the main thread, the first time.
+        withContext(Dispatchers.IO) { com.armsx.flashpoint.core.Php.ensure(ctx) }
         val args = if (flashPlayer && "flashplayer" !in game.applicationPath.lowercase()) plan.url else game.launchCommand
         onReady(Ready(game, plan, zips, winApp, args))
     }

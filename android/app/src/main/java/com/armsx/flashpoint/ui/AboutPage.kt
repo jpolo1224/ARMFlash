@@ -228,6 +228,11 @@ private val APP_CREDITS = listOf(
     "Custom drivers" to "libadrenotools by Billy Laws (BSD 2-Clause).",
     "Cursors" to "Modern Mac: Capitaine Cursors by Keefer Rourke and others (LGPL-3.0). Linux: DMZ-White by Novell (CC BY-SA 3.0).",
     "Windows players" to "Box64 by ptitSeb and contributors (MIT); Wine (LGPL-2.1); Winlator's base system by brunodev85 (LGPL-2.1); Xvfb from X.Org (MIT) as built by Termux; players from Flashpoint's support packs.",
+    "Secure Player" to "ARMFlash's own stand-in, following Flashpoint Secure Player by tomysshadow (MIT).",
+    "Internet Explorer support" to "Wine Gecko (MPL-2.0), downloaded from WineHQ when a game needs it.",
+    "Windows libraries" to "MFC 4.2 from Microsoft's Visual C++ 6 runtime, downloaded from Microsoft when a game needs it.",
+    "3D for Windows players" to "Mesa with llvmpipe (MIT), LLVM (Apache-2.0 with LLVM exceptions), libglvnd (MIT) and ICU (Unicode license), from Ubuntu's packages.",
+    "PHP" to "PHP 7.4 (PHP License 3.01) from Debian, with libxml2 and libxslt (MIT), ICU (Unicode license), OpenSSL (OpenSSL and SSLeay licenses), Oniguruma (BSD), PCRE2 (BSD), SQLite (public domain), libsodium (ISC), Argon2 (CC0), zlib, bzip2, XZ (public domain), libmagic (BSD), libgcrypt and libgpg-error (LGPL-2.1), ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1).",
     "Native libraries" to "tokio, hyper, rustls, ring, zip, rusqlite with SQLite (public domain) and other crates under MIT or Apache-2.0.",
 )
 

@@ -14,6 +14,7 @@
 mod mount;
 mod path;
 mod pfile;
+pub mod php;
 mod server;
 mod tls;
 
@@ -184,6 +185,33 @@ pub fn split_url(url: &str) -> Option<(&str, &str, Option<&str>)> {
         None => (pathq, None),
     };
     Some((hostport, path, query))
+}
+
+/// The type of a file whose name says nothing (no extension, or one nobody registered), from its
+/// first bytes, as desktop Flashpoint's game server finds it (Go's content sniffing): Happy
+/// Wheels' HTML5 page is `happy_wheels.tjf`, and the browser only shows it as a page.
+pub fn sniff(head: &[u8]) -> Option<&'static str> {
+    let mut h = head;
+    if h.starts_with(&[0xEF, 0xBB, 0xBF]) { h = &h[3..]; }
+    let starts = |sig: &[u8]| h.len() >= sig.len() && &h[..sig.len()] == sig;
+    if starts(b"GIF87a") || starts(b"GIF89a") { return Some("image/gif"); }
+    if starts(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) { return Some("image/png"); }
+    if starts(&[0xFF, 0xD8, 0xFF]) { return Some("image/jpeg"); }
+    if starts(b"FWS") || starts(b"CWS") || starts(b"ZWS") { return Some("application/x-shockwave-flash"); }
+    if starts(b"%PDF-") { return Some("application/pdf"); }
+    if starts(b"OggS") { return Some("audio/ogg"); }
+    if starts(b"ID3") { return Some("audio/mpeg"); }
+    if starts(b"RIFF") && h.len() >= 12 && &h[8..12] == b"WAVE" { return Some("audio/wav"); }
+    let t: Vec<u8> = h.iter().skip_while(|b| b.is_ascii_whitespace()).take(16).map(|b| b.to_ascii_lowercase()).collect();
+    if t.starts_with(b"<?xml") { return Some("text/xml"); }
+    const TAGS: &[&[u8]] = &[b"<!doctype html", b"<html", b"<head", b"<script", b"<iframe", b"<h1", b"<div", b"<font",
+        b"<table", b"<a", b"<style", b"<title", b"<b", b"<body", b"<br", b"<p", b"<!--", b"<meta", b"<center"];
+    for tag in TAGS {
+        if t.starts_with(tag) && (tag == b"<!--" || t.get(tag.len()).is_none_or(|c| *c == b' ' || *c == b'>' || *c == b'\t' || *c == b'\n' || *c == b'\r')) {
+            return Some("text/html");
+        }
+    }
+    None
 }
 
 /// MIME type for a served file. Plugin formats first; the browser picks the player by them.

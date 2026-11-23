@@ -5,7 +5,7 @@ component index: every support pack's dependencies, title and top-level files an
 ARMFlash uses it to find the packs a game's start script, program folder or platform needs.
 
 Usage: python3 -I tools/winrt/supportpacks_map.py <out.json>"""
-import io, json, sys, urllib.request, zipfile, xml.etree.ElementTree as ET, concurrent.futures as cf
+import io, json, re, sys, urllib.request, zipfile, xml.etree.ElementTree as ET, concurrent.futures as cf
 
 BASE = 'https://nexus-dev.unstable.life/repository/stable/'
 UA = {'User-Agent': 'ARMFlash'}
@@ -41,9 +41,22 @@ def main(out):
     walk(root, [])
     def top(fid):
         z = zipfile.ZipFile(io.BufferedReader(Remote(BASE + fid + '.zip'), buffer_size=1 << 16))
-        return fid, sorted({n.split('/')[0] for n in z.namelist() if n.split('/')[0] and n.split('/')[0] != 'FlashpointSecurePlayerConfigs'})
+        names = z.namelist()
+        # Secure Player templates that run in Internet Explorer's browser control (WEB_BROWSER,
+        # the default mode): their games need Wine's Gecko. Secure Player's own generic
+        # "internetexplorer" template is left out, as every pack depends on that pack.
+        web = []
+        for n in names:
+            if n.startswith('FlashpointSecurePlayerConfigs/') and n.endswith('.config') and fid != 'supportpack-common-secureplayer':
+                t = z.read(n).decode('utf-8', 'replace')
+                modes = [m for m in re.findall(r'<mode\b[^>]*>', t)]
+                if not modes or any('SOFTWARE' not in m for m in modes):
+                    web.append(n.split('/')[-1][:-7])
+        return fid, sorted({n.split('/')[0] for n in names if n.split('/')[0] and n.split('/')[0] != 'FlashpointSecurePlayerConfigs'}), sorted(web)
     with cf.ThreadPoolExecutor(8) as ex:
-        for fid, t in ex.map(top, packs): packs[fid]['top'] = t
+        for fid, t, web in ex.map(top, packs):
+            packs[fid]['top'] = t
+            if web: packs[fid]['web'] = web
     json.dump({'packs': packs}, open(out, 'w'), separators=(',', ':'), sort_keys=True)
     print(len(packs), 'packs')
 
