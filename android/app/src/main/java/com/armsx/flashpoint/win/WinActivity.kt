@@ -182,6 +182,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
+        rt.ensureUnmanaged()
         val fp = drive
         rt.mapDrive('f', fp)
         val app = program()
@@ -201,7 +202,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Follow the game's window: the largest one on the virtual screen. */
     private var lastWindowLog = ""
-    private val trimsWindow by lazy { "flashplayer" in program().lowercase() }
+    private val trimsWindow by lazy { "flashplayer" in program().lowercase() || ownFrame }
+    /** Wine draws this program's title bar and border itself (an unmanaged window). */
+    private val ownFrame by lazy { program().substringAfterLast('\\').equals(WinRuntime.UNMANAGED_EXE, ignoreCase = true) }
 
     private fun watchWindows() {
         while (running) {
@@ -217,9 +220,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                         XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
                     val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
                     if (w.first != gameWin) { gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("") }
-                    // Only Flash Player's projector draws its stage in a corner of a bigger window;
-                    // other players (Shockwave's projector) size the window to the stage, and
-                    // trimming those zoomed in on whatever was busiest, an intro's logo say.
+                    // Flash Player's projector draws its stage in a corner of a bigger window, and
+                    // Shockwave's centres it in one; other players size the window to the stage.
                     crop = if (trimsWindow) trim(win) else win
                     val desc = "window 0x${w.first.toString(16)} at ${top.x},${top.y} ${top.w}x${top.h}" +
                         (inner?.let { ", child ${it.w}x${it.h} at ${it.x},${it.y}" } ?: "") + ", showing $crop"
@@ -251,19 +253,34 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             .groupingBy { it }.eachCount().maxBy { it.value }.key
         val step = 2
         fun busy(n: Int, of: Int) = n * step * 4 > of // over a quarter not background
-        var top = -1; var bottom = -1; var left = -1; var right = -1
-        for (y in win.top until win.bottom step step) {
-            var n = 0
-            for (x in win.left until win.right step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
-            if (busy(n, win.width())) { if (top < 0) top = y; bottom = y + step }
+        // A frame Wine drew itself: skip its border, and the title bar (rows of one colour at
+        // the top that is not the background), so only the game's own pixels count.
+        var area = Rect(win)
+        if (ownFrame) {
+            area = Rect(win.left + 6, win.top, win.right - 6, win.bottom - 6)
+            // The client area starts at the first row that is mostly background; without one
+            // (a stage flush with the top), below Wine's usual title bar and border.
+            fun backgroundRow(y: Int): Boolean {
+                var n = 0; var k = 0
+                for (x in area.left until area.right step step) { n++; if (px.get(y * stride + x) and 0xffffff == bg) k++ }
+                return k * 10 >= n * 7
+            }
+            area.top = (win.top until minOf(win.top + 64, area.bottom) step step).firstOrNull(::backgroundRow) ?: (win.top + 29)
+            if (area.width() < 16 || area.height() < 16) return win
         }
-        for (x in win.left until win.right step step) {
+        var top = -1; var bottom = -1; var left = -1; var right = -1
+        for (y in area.top until area.bottom step step) {
             var n = 0
-            for (y in win.top until win.bottom step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
-            if (busy(n, win.height())) { if (left < 0) left = x; right = x + step }
+            for (x in area.left until area.right step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
+            if (busy(n, area.width())) { if (top < 0) top = y; bottom = y + step }
+        }
+        for (x in area.left until area.right step step) {
+            var n = 0
+            for (y in area.top until area.bottom step step) if (px.get(y * stride + x) and 0xffffff != bg) n++
+            if (busy(n, area.height())) { if (left < 0) left = x; right = x + step }
         }
         if (top < 0 || left < 0) return if (content.isEmpty) win else Rect(content)
-        val found = Rect(left, top, right.coerceAtMost(win.right), bottom.coerceAtMost(win.bottom))
+        val found = Rect(left, top, right.coerceAtMost(area.right), bottom.coerceAtMost(area.bottom))
         recent.addLast(found)
         while (recent.size > 6) recent.removeFirst()
         content = Rect(recent.first()).apply { recent.forEach { union(it) } }

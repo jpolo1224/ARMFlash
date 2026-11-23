@@ -145,6 +145,22 @@ class WinRuntime(private val ctx: Context) {
         if (ok) mark.writeText("")
     }
 
+    /**
+     * Let Wine place its windows itself. There is no window manager on the virtual screen, and
+     * Wine hands "managed" windows' moves and resizes to one and waits: a Shockwave projector
+     * resized its window to the stage while the X window stayed at its first size, so only a
+     * quarter of the game showed.
+     */
+    fun ensureUnmanaged() {
+        val mark = File(prefix, ".armflash-unmanaged")
+        if (mark.isFile) return
+        // For the Shockwave projector (every PJ version is SPR.exe), where it was seen; Wine
+        // then draws the window's title bar itself, which the game screen crops off.
+        val key = "HKCU\\Software\\Wine\\AppDefaults\\$UNMANAGED_EXE\\X11 Driver"
+        val ok = run(listOf("reg", "add", key, "/v", "Managed", "/t", "REG_SZ", "/d", "N", "/f"), null).waitFor() == 0
+        if (ok) mark.writeText("")
+    }
+
     /** Map Windows drive F: to [dir] (the Flashpoint folder), as desktop Flashpoint's paths expect. */
     fun mapDrive(letter: Char, dir: File) {
         link(dir.path, File(prefix, "dosdevices/${letter.lowercaseChar()}:"))
@@ -190,6 +206,8 @@ class WinRuntime(private val ctx: Context) {
     }
 
     companion object {
+        /** Programs Wine places windows for itself (see [ensureUnmanaged]). */
+        const val UNMANAGED_EXE = "SPR.exe"
         const val TAG = "ARMFlashWin"
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
