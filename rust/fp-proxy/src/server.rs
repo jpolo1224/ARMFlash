@@ -438,7 +438,8 @@ async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, r
         Client::builder(TokioExecutor::new()).build(https)
     });
     let mut url = format!("https://{rel}{q}");
-    for _ in 0..4 {
+    let mut empty_answers = 0;
+    for _ in 0..6 {
         let uri: hyper::Uri = url.parse().ok()?;
         let mut b = Request::builder().method(method.clone()).uri(uri.clone());
         for name in [header::CONTENT_TYPE, header::COOKIE, header::ACCEPT, header::USER_AGENT, header::ACCEPT_LANGUAGE] {
@@ -465,6 +466,13 @@ async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, r
         let cookies: Vec<HeaderValue> = resp.headers().get_all(header::SET_COOKIE).iter().cloned().collect();
         let bytes = resp.into_body().collect().await.ok()?.to_bytes();
         log::info!("live {method} {url}: {status} ({} bytes)", bytes.len());
+        if status == StatusCode::OK && bytes.is_empty() && empty_answers < 2 && ask_again_when_empty(rel, &body) {
+            empty_answers += 1;
+            tokio::time::sleep(std::time::Duration::from_millis(500 * empty_answers)).await;
+            continue;
+        }
+        log::debug!("live {method} sent {:?}; got {:?}", String::from_utf8_lossy(&body[..body.len().min(400)]),
+            String::from_utf8_lossy(&bytes[..bytes.len().min(300)]));
         let mut r = with(status, "application/octet-stream", full(bytes));
         if let Some(ct) = ct {
             r.headers_mut().insert(header::CONTENT_TYPE, ct);
@@ -475,6 +483,13 @@ async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, r
         return Some(r);
     }
     None
+}
+
+/// Happy Wheels' level server answers a level search with nothing now and then (about one in
+/// six, checked 2026-11-23), and the game then shows no levels: such a search is asked again.
+/// Searches only (action=get_...): asking again changes nothing on the server.
+fn ask_again_when_empty(rel: &str, body: &[u8]) -> bool {
+    rel.ends_with("get_level.hw") && String::from_utf8_lossy(body).split('&').any(|kv| kv.starts_with("action=get_"))
 }
 
 /// Fetch from the remote Legacy server, then (if allowed) the original site, and cache into htdocs.
@@ -714,7 +729,16 @@ pub async fn http_get(url: &str) -> io::Result<Bytes> {
 
 #[cfg(test)]
 mod live_tests {
-    use super::{live_allowed, tracker};
+    use super::{ask_again_when_empty, live_allowed, tracker};
+
+    #[test]
+    fn happy_wheels_level_searches_are_asked_again() {
+        let lv = "totaljerkface.com/get_level.hw";
+        assert!(ask_again_when_empty(lv, b"action=get_all&page=1&sortby=newest&uploaded=week"));
+        assert!(ask_again_when_empty(lv, b"page=1&action=get_featured"));
+        assert!(!ask_again_when_empty(lv, b"action=rate_level&level_id=1&rating=5"));
+        assert!(!ask_again_when_empty("totaljerkface.com/submit_level.hw", b"action=get_all"));
+    }
 
     #[test]
     fn live_web_only_for_the_games_own_site() {
