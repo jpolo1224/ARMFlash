@@ -124,7 +124,9 @@ async fn handle(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: 
         allow_origin(&mut r, origin);
         return r;
     }
+    let (method, uri) = (req.method().clone(), req.uri().clone());
     let mut r = serve(srv, port, req, https).await;
+    log::debug!("{method} {uri} -> {}", r.status().as_u16());
     allow_origin(&mut r, origin);
     r
 }

@@ -199,6 +199,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         say("Starting the game…")
         // A start script (startUnity.bat and the like) runs in Wine's cmd, as Windows would.
         val command = if (app.endsWith(".bat", ignoreCase = true)) listOf("cmd", "/c", "F:\\$app") else listOf("F:\\$app")
+        rt.extra = gameEnv(fpRoot)
         val p = rt.run(command + args, cwd.takeIf { it.isDirectory })
         xq.execute {
             runCatching { x = XClient.connect(rt.socket.path) }.onFailure { say("Could not reach the virtual screen: ${it.message}") }
@@ -207,6 +208,23 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         Thread(::watchWindows, "win-windows").start()
         // When the program ends, so does the game.
         Thread { p.waitFor(); if (running) runOnUiThread { quit() } }.start()
+    }
+
+    /**
+     * This game's settings on top of the usual ones: Box64's JIT settings for Silverlight's .NET
+     * runtime, then wine_env.txt in the Flashpoint folder (KEY=VALUE lines, "#" for comments), a
+     * debugging aid like ARMSX3's driver_env.txt that overrides anything.
+     */
+    private fun gameEnv(fpRoot: File): Map<String, String> {
+        val env = LinkedHashMap<String, String>()
+        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) env += WinRuntime.JIT_SAFE
+        runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
+            val t = line.trim()
+            val eq = t.indexOf('=')
+            if (!t.startsWith("#") && eq > 0) env[t.substring(0, eq).trim()] = t.substring(eq + 1).trim()
+        }
+        if (env.isNotEmpty()) android.util.Log.i(WinRuntime.TAG, "game settings: $env")
+        return env
     }
 
     /** Follow the game's window: the largest one on the virtual screen. */

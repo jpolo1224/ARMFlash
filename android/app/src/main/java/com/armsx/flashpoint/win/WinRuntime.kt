@@ -26,6 +26,8 @@ class WinRuntime(private val ctx: Context) {
     /** The audio server's socket name (abstract namespace), one per game process. */
     val audioName = "armflash.audio.${android.os.Process.myPid()}"
     private var wine: Process? = null
+    /** This game's settings, on top of the usual ones (see WinActivity.gameEnv). */
+    var extra: Map<String, String> = emptyMap()
 
     /**
      * Install the runtime archive (tools/winrt/pack.py's winrt-N.tar.zst) from [src], checking
@@ -286,6 +288,7 @@ class WinRuntime(private val ctx: Context) {
         val pb = ProcessBuilder(listOf("$lib/libbox64.so", "${root.path}/opt/wine/bin/wine") + args).redirectErrorStream(true)
         if (cwd != null) pb.directory(cwd)
         pb.environment().putAll(env)
+        pb.environment().putAll(extra)
         return pb.start().also { if (wine == null) wine = it; drain(it, "wine") }
     }
 
@@ -324,6 +327,13 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
+        /**
+         * Box64's translation for a program that compiles its own code as it runs (a JIT): what
+         * Box64 switches to by itself when it sees Mono or Java's libjvm load
+         * (src/librarian/library.c). It only looks at Linux libraries, so a Windows runtime under
+         * Wine never gets it: Silverlight's .NET runtime.
+         */
+        val JIT_SAFE = mapOf("BOX64_DYNAREC_BIGBLOCK" to "0", "BOX64_DYNAREC_STRONGMEM" to "1")
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"
