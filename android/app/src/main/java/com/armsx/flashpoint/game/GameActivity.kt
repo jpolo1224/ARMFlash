@@ -475,6 +475,11 @@ object RufflePage {
             pinned = e; saved = { __w: nw, __h: nh };
             for (var i = 0; i < PROPS.length; i++) saved[PROPS[i]] = [e.style.getPropertyValue(PROPS[i]), e.style.getPropertyPriority(PROPS[i])];
             var root = document.documentElement, body = document.body;
+            // The page at 1:1: a page wider than the screen is otherwise zoomed out to fit, and the
+            // screen is then more than the page's own viewport (the game came out too small).
+            var vp = document.querySelector('meta[name=viewport]');
+            if (!vp) { vp = document.createElement('meta'); vp.name = 'viewport'; (document.head || root).appendChild(vp); }
+            vp.setAttribute('content', 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no');
             root.style.background = '#000'; body.style.background = '#000';
             root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
             window.scrollTo(0, 0);
@@ -517,17 +522,22 @@ object RufflePage {
             if (pinned && !document.contains(pinned)) { pinned = null; saved = null; key = ''; }
             var e = pick();
             if (!e) return;
-            var vw = window.innerWidth, vh = window.innerHeight;
+            // What is on screen: the visual viewport (and where it sits in the page's viewport).
+            var vv = window.visualViewport;
+            var vw = vv ? vv.width : window.innerWidth, vh = vv ? vv.height : window.innerHeight;
+            var ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0;
             if (selfScaling(e)) {
-              if (pinned === e) return;
+              var sk = [vw, vh, ox, oy].join();
+              if (pinned === e && sk === key) return;
               hold(e);
-              set(e, { position: 'fixed', left: '0', top: '0', right: 'auto', bottom: 'auto', width: '100vw', height: '100vh',
+              key = sk;
+              set(e, { position: 'fixed', left: ox + 'px', top: oy + 'px', right: 'auto', bottom: 'auto', width: vw + 'px', height: vh + 'px',
                 'max-width': 'none', 'max-height': 'none', margin: '0', border: '0', transform: 'none', 'z-index': '2147483647' });
               return;
             }
             var b = pinned && pinned.contains(e) ? pinned : box(e);
             if (pinned === b) {
-              if ([b.offsetWidth, b.offsetHeight, vw, vh, m].join() === key) return;
+              if ([b.offsetWidth, b.offsetHeight, vw, vh, ox, oy, m].join() === key) return;
               // Its size changed (the game laid itself out again): look again, unpinned.
               unpin();
             }
@@ -541,15 +551,16 @@ object RufflePage {
             var kx = vw / w, ky = vh / h, ax = Math.min(kx, ky), ay = ax;
             if (m === 'stretch') { ax = kx; ay = ky; }
             else if (m === 'fill') { ax = ay = Math.max(kx, ky); }
-            var tx = (vw - w * ax) / 2, ty = (vh - h * ay) / 2;
+            var tx = ox + (vw - w * ax) / 2, ty = oy + (vh - h * ay) / 2;
             hold(b);
             set(b, { position: 'fixed', left: '0', top: '0', right: 'auto', bottom: 'auto', margin: '0',
               'transform-origin': '0 0', transform: 'translate(' + tx + 'px,' + ty + 'px) scale(' + ax + ',' + ay + ')', 'z-index': '2147483647' });
             // Measured as pinned, so a size that only differs because of the pinning is not a change.
-            key = [b.offsetWidth, b.offsetHeight, vw, vh, m].join();
+            key = [b.offsetWidth, b.offsetHeight, vw, vh, ox, oy, m].join();
           }
           window.addEventListener('load', fit);
           window.addEventListener('resize', function() { key = ''; fit(); });
+          if (window.visualViewport) window.visualViewport.addEventListener('resize', function() { key = ''; fit(); });
           setInterval(fit, 1000);
         })();
     """.trimIndent()
