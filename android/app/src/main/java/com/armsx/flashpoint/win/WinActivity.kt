@@ -185,17 +185,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             .onFailure { android.util.Log.w(WinRuntime.TAG, "audio: ${it.message}") }.getOrNull()
         say("Starting the virtual screen…")
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
-        // This game's settings before the first Wine command: Wine's server and every program
-        // must agree on some of them (WINEESYNC), and setup commands below start the server.
+        // This game's settings before the first Wine command, so Wine's server and the setup
+        // commands below run with them too.
         rt.extra = gameEnv(fpRoot)
-        // TEST: Silverlight on one core. The Xbox Avatar Editor's controls load their XAML while
-        // other threads already work, and .NET's resource reader then fails without a word
-        // (ResourceManager.GetStream throws NotSupportedException, Silverlight swallows it), so a
-        // control comes up empty and the editor stops. It ran when Silverlight was slowed down.
-        if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
-            rt.cpuMask = WinRuntime.fastestCpuMask()
-            android.util.Log.i(WinRuntime.TAG, "Silverlight on CPU mask ${rt.cpuMask}")
-        }
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
@@ -233,11 +225,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction Box64
             // cannot translate (reported at log level 1 only).
             env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,warn+seh")
-            // TEST: Wine's events, mutexes and waits through eventfd (esync) instead of a round
-            // trip to its server each time. The Xbox Avatar Editor loses a race between its UI
-            // thread and its worker threads when waking a thread is that slow (it ran with
-            // Silverlight's own code slowed down instead); Winlator runs this Wine with it on.
-            env += mapOf("WINEESYNC" to "1")
+            // TEST: Box64's call/return shortcut off. With it on, Silverlight's .NET code now and
+            // then reads its own resources wrong: the Xbox Avatar Editor stops with "currently
+            // experiencing problems" and draws noise for the floor, other apps crash at start. The
+            // one run that worked had it off (Box64's instruction checker turns it off everywhere).
+            env += mapOf("BOX64_DYNAREC_CALLRET" to "0")
         }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
