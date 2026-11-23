@@ -192,9 +192,13 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
     let head = req.method() == Method::HEAD;
     let query = uri.query();
 
-    // A pack's .htaccess may send the request elsewhere first.
+    // A pack's .htaccess may send the request elsewhere first. A redirect to a copy kept in
+    // another pack (Happy Wheels HTML5's level server is in its Flash release's 9 GB pack) only
+    // when that pack is here: otherwise the request stays, for the game's own site to answer.
     let mounts = srv.mounts.read().unwrap().clone();
-    if let Some((code, to)) = crate::rewrite::redirect(&mounts, &key, query) {
+    if let Some((code, to)) = crate::rewrite::redirect(&mounts, &key, query)
+        .filter(|(_, to)| in_mounts(&mounts, to) || !live_allowed(&srv.config().live_domains, &key.htdocs_rel()))
+    {
         log::info!("rewrite: {host}{} -> {to} ({code})", uri.path());
         let mut r = text(StatusCode::from_u16(code).unwrap_or(StatusCode::FOUND), "");
         if let Ok(v) = HeaderValue::from_str(&to) {
@@ -258,6 +262,21 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
             let mut r = text(StatusCode::MOVED_PERMANENTLY, "");
             r.headers_mut().insert(header::LOCATION, HeaderValue::from_str(&loc).unwrap_or(HeaderValue::from_static("/")));
             r
+        }
+        // A POST and the like to the game's own site (a level server's API): passed on live, as
+        // the game's web version does, when nothing here has it.
+        Resolved::NotFound if req.method() != Method::GET && !head && {
+            let rel = key.htdocs_rel();
+            live_allowed(&srv.config().live_domains, &rel) && !tracker(&rel)
+        } => {
+            let method = req.method().clone();
+            let headers = req.headers().clone();
+            let body = req.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+            let rel = utf8_percent_encode(&key.htdocs_rel(), PATH_ESC).to_string();
+            let q = query.filter(|q| !q.is_empty()).map(|q| format!("?{q}")).unwrap_or_default();
+            live_forward(method, &headers, body, &rel, &q)
+                .await
+                .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"))
         }
         Resolved::NotFound => match remote(&srv, &key, query).await {
             Some((bytes, ct)) => {
@@ -367,6 +386,62 @@ fn client() -> &'static Client<Https, Empty<Bytes>> {
             .build();
         Client::builder(TokioExecutor::new()).build(https)
     })
+}
+
+/// Whether a URL (a redirect's target) is in one of the mounted packs.
+fn in_mounts(mounts: &[Arc<crate::Mount>], url: &str) -> bool {
+    let Ok(uri) = url.parse::<hyper::Uri>() else { return false };
+    let Some(key) = uri.host().and_then(|h| Key::new(h, uri.path())) else { return false };
+    let zk = key.zip_key();
+    mounts.iter().any(|m| m.file(&zk).is_some())
+}
+
+/// Pass a request (method, content type, cookies, body) to the game's own site and its answer
+/// back, following redirects (http to https above all) with the same request.
+async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, rel: &str, q: &str) -> Option<Response<Body>> {
+    static C: OnceLock<Client<Https, Full<Bytes>>> = OnceLock::new();
+    let client = C.get_or_init(|| {
+        let https = hyper_rustls::HttpsConnectorBuilder::new().with_webpki_roots().https_or_http().enable_http1().build();
+        Client::builder(TokioExecutor::new()).build(https)
+    });
+    let mut url = format!("https://{rel}{q}");
+    for _ in 0..4 {
+        let uri: hyper::Uri = url.parse().ok()?;
+        let mut b = Request::builder().method(method.clone()).uri(uri.clone());
+        for name in [header::CONTENT_TYPE, header::COOKIE, header::ACCEPT, header::USER_AGENT, header::ACCEPT_LANGUAGE] {
+            for v in headers.get_all(&name) {
+                b = b.header(&name, v.clone());
+            }
+        }
+        let resp = match client.request(b.body(Full::new(body.clone())).ok()?).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("live {method} failed: {url}: {e}");
+                return None;
+            }
+        };
+        if resp.status().is_redirection() {
+            let loc = resp.headers().get(header::LOCATION)?.to_str().ok()?.to_string();
+            url = if loc.starts_with("http") { loc } else {
+                format!("{}://{}{}", uri.scheme_str().unwrap_or("https"), uri.authority()?.as_str(), loc)
+            };
+            continue;
+        }
+        let status = resp.status();
+        let ct = resp.headers().get(header::CONTENT_TYPE).cloned();
+        let cookies: Vec<HeaderValue> = resp.headers().get_all(header::SET_COOKIE).iter().cloned().collect();
+        let bytes = resp.into_body().collect().await.ok()?.to_bytes();
+        log::info!("live {method} {url}: {status} ({} bytes)", bytes.len());
+        let mut r = with(status, "application/octet-stream", full(bytes));
+        if let Some(ct) = ct {
+            r.headers_mut().insert(header::CONTENT_TYPE, ct);
+        }
+        for c in cookies {
+            r.headers_mut().append(header::SET_COOKIE, c);
+        }
+        return Some(r);
+    }
+    None
 }
 
 /// Fetch from the remote Legacy server, then (if allowed) the original site, and cache into htdocs.

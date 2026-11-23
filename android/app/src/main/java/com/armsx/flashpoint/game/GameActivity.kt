@@ -433,98 +433,110 @@ object RufflePage {
     """.trimIndent()
 
     /**
-     * Browser games as the game, not the web page around it: the page is scaled (a CSS transform
-     * on the root, so positions games read through getBoundingClientRect stay right) until its
-     * game element, the largest canvas, plugin, video or frame, fills the screen, and everything
-     * outside it is blacked out. A page whose game already fills the window is left alone. A game
-     * in a frame (Happy Wheels HTML5 sits in a 900 x 500 iframe on its site's page) gets the whole
-     * screen instead: the frame is pinned over the page at the screen's size, so the game lays
-     * itself out for it, as in a browser's full screen. The Scale setting picks the fit: keep the
-     * shape (Game default, Fit), Stretch, Fill, or the page as its site laid it out (Original
-     * size). Kept up as the game resizes or appears.
+     * Browser games as the game, not the web page around it. The game element (the largest
+     * canvas, video, frame or plugin) is pinned over the page; the page itself is never scaled,
+     * so engines that size themselves from the page around them (Phaser, Construct, ...) and
+     * pages that zoom do not fight it:
+     *  - a frame or a plugin (Happy Wheels HTML5's iframe, Flash through Ruffle) gets the whole
+     *    screen and lays out or scales its own content, as in a browser's full screen;
+     *  - a canvas or video (with a wrapper its own size, overlays included) is scaled to the
+     *    screen with a transform on it alone, which pointer positions follow.
+     * A game that already fills the window is left alone. The Scale setting picks the fit: keep
+     * the shape (Game default, Fit), Stretch, Fill, or the page as its site laid it out
+     * (Original size). Kept up as the game resizes or appears.
      */
     val PAGE_FIT = """
         (function(){
           if (window.top !== window || window.__fpmFit) return;
           window.__fpmFit = true;
           function mode() { return (window.__fpmDisplay && window.__fpmDisplay.pageFit) || 'fit'; }
-          var pinned = null;
-          var PIN = ';position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;' +
-            'width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;' +
-            'margin:0!important;padding:0!important;border:0!important;transform:none!important;z-index:2147483647!important;background:#000';
-          function pin(e) {
-            if (pinned === e) return;
-            unpin();
-            pinned = e;
-            e.__fpmStyle = e.getAttribute('style');
-            e.setAttribute('style', (e.__fpmStyle || '') + PIN);
-            var root = document.documentElement, body = document.body;
-            root.style.background = '#000'; root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
-            window.scrollTo(0, 0);
+          var PROPS = ['position', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height',
+            'margin', 'border', 'transform', 'transform-origin', 'z-index'];
+          var pinned = null, saved = null, key = '';
+          function set(e, v) {
+            for (var k in v) e.style.setProperty(k, v[k], 'important');
           }
           function unpin() {
             if (!pinned) return;
-            if (pinned.__fpmStyle == null) pinned.removeAttribute('style'); else pinned.setAttribute('style', pinned.__fpmStyle);
-            pinned = null;
+            for (var i = 0; i < PROPS.length; i++) {
+              var o = saved[PROPS[i]];
+              if (o[0]) pinned.style.setProperty(PROPS[i], o[0], o[1]); else pinned.style.removeProperty(PROPS[i]);
+            }
+            pinned = null; saved = null; key = '';
           }
-          var cur = { x: 0, y: 0, s: 1, t: 1 }, last = '';
+          function hold(e) {
+            if (pinned === e) return;
+            unpin();
+            pinned = e; saved = {};
+            for (var i = 0; i < PROPS.length; i++) saved[PROPS[i]] = [e.style.getPropertyValue(PROPS[i]), e.style.getPropertyPriority(PROPS[i])];
+            var root = document.documentElement, body = document.body;
+            root.style.background = '#000'; body.style.background = '#000';
+            root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
+            window.scrollTo(0, 0);
+          }
+          function selfScaling(e) {
+            var t = e.tagName;
+            return t === 'IFRAME' || t === 'FRAME' || t === 'EMBED' || t === 'OBJECT' || t.indexOf('RUFFLE-') === 0;
+          }
           function pick() {
             var best = null, area = 0;
-            var all = document.querySelectorAll('canvas, iframe, embed, object, video, ruffle-player, ruffle-embed, ruffle-object');
+            var all = document.querySelectorAll('canvas, video, iframe, frame, embed, object, ruffle-player, ruffle-embed, ruffle-object');
             for (var i = 0; i < all.length; i++) {
-              var r = all[i].getBoundingClientRect();
-              var w = r.width / cur.s, h = r.height / cur.t;
+              var w = all[i].offsetWidth, h = all[i].offsetHeight;
               if (w < 160 || h < 120) continue;
               if (w * h > area) { area = w * h; best = all[i]; }
             }
             return best;
           }
+          // A canvas's wrapper of its own size (with the game's overlays) moves with it.
+          function box(e) {
+            var b = e, w = e.offsetWidth, h = e.offsetHeight;
+            for (var p = e.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+              if (p.offsetWidth > w * 1.08 + 4 || p.offsetHeight > h * 1.08 + 4 || p.offsetWidth < w - 4) break;
+              b = p;
+            }
+            return b;
+          }
           function fit() {
-            var root = document.documentElement, body = document.body;
-            if (!root || !body) return;
+            if (!document.body) return;
             var m = mode();
-            if (m === 'off') {
-              unpin();
-              if (last) { root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 }; last = ''; }
-              return;
-            }
-            var e = pinned || pick();
+            if (m === 'off') { unpin(); return; }
+            if (pinned && !document.contains(pinned)) { pinned = null; saved = null; key = ''; }
+            var e = pick();
             if (!e) return;
-            if (e.tagName === 'IFRAME' || e.tagName === 'FRAME') {
-              // A game in a frame: the frame gets the screen, no scaling of the page around it.
-              if (last) { root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 }; last = ''; }
-              if (!document.contains(e)) { pinned = null; return; }
-              pin(e);
+            var vw = window.innerWidth, vh = window.innerHeight;
+            if (selfScaling(e)) {
+              if (pinned === e) return;
+              hold(e);
+              set(e, { position: 'fixed', left: '0', top: '0', right: 'auto', bottom: 'auto', width: '100vw', height: '100vh',
+                'max-width': 'none', 'max-height': 'none', margin: '0', border: '0', transform: 'none', 'z-index': '2147483647' });
               return;
             }
-            var r = e.getBoundingClientRect();
-            // Back to page coordinates (undoing the transform already applied).
-            var w = r.width / cur.s, h = r.height / cur.t;
-            var x = (r.left - cur.x) / cur.s + window.scrollX, y = (r.top - cur.y) / cur.t + window.scrollY;
-            var vw = window.innerWidth, vh = window.innerHeight;
-            var fills = x <= 2 && y <= 2 && w >= vw * 0.94 && h >= vh * 0.94;
+            var b = pinned && pinned.contains(e) ? pinned : box(e);
+            if (pinned === b) {
+              if ([b.offsetWidth, b.offsetHeight, vw, vh, m].join() === key) return;
+              // Its size changed (the game laid itself out again): look again, unpinned.
+              unpin();
+            }
+            var w = b.offsetWidth, h = b.offsetHeight;
+            // Already fitted to the window by the game itself (on screen, centred, filling it one
+            // way, as TurboWarp's Scratch player and Phaser's FIT do): nothing to do.
+            var r = b.getBoundingClientRect();
+            var inside = r.left >= -2 && r.top >= -2 && r.right <= vw + 2 && r.bottom <= vh + 2;
+            var centred = Math.abs(r.left + r.width / 2 - vw / 2) <= vw * 0.06 && Math.abs(r.top + r.height / 2 - vh / 2) <= vh * 0.1;
+            if (inside && centred && (r.width >= vw * 0.85 || r.height >= vh * 0.85)) return;
             var kx = vw / w, ky = vh / h, ax = Math.min(kx, ky), ay = ax;
             if (m === 'stretch') { ax = kx; ay = ky; }
             else if (m === 'fill') { ax = ay = Math.max(kx, ky); }
-            if (fills) { ax = 1; ay = 1; x = 0; y = 0; w = vw; h = vh; }
-            var tx = (vw - w * ax) / 2 - x * ax, ty = (vh - h * ay) / 2 - y * ay;
-            var key = [tx, ty, ax, ay, w, h].map(function(n) { return n.toFixed(1); }).join();
-            if (key === last) return;
-            last = key;
-            if (fills) {
-              root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 };
-              return;
-            }
-            window.scrollTo(0, 0);
-            root.style.transformOrigin = '0 0';
-            root.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + ax + ',' + ay + ')';
-            root.style.clipPath = 'inset(' + y + 'px ' + Math.max(0, root.scrollWidth - x - w) + 'px ' + Math.max(0, root.scrollHeight - y - h) + 'px ' + x + 'px)';
-            root.style.background = '#000';
-            root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
-            cur = { x: tx, y: ty, s: ax, t: ay };
+            var tx = (vw - w * ax) / 2, ty = (vh - h * ay) / 2;
+            hold(b);
+            set(b, { position: 'fixed', left: '0', top: '0', right: 'auto', bottom: 'auto', margin: '0',
+              'transform-origin': '0 0', transform: 'translate(' + tx + 'px,' + ty + 'px) scale(' + ax + ',' + ay + ')', 'z-index': '2147483647' });
+            // Measured as pinned, so a size that only differs because of the pinning is not a change.
+            key = [b.offsetWidth, b.offsetHeight, vw, vh, m].join();
           }
           window.addEventListener('load', fit);
-          window.addEventListener('resize', function() { last = ''; fit(); });
+          window.addEventListener('resize', function() { key = ''; fit(); });
           setInterval(fit, 1000);
         })();
     """.trimIndent()
