@@ -241,6 +241,23 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
             };
             file_response(&ct, size, body)
         }
+        // A POST and the like to the game's own site (a level server's API): passed on live, as
+        // the game's web version does, unless a pack has it. Never answered from the folder of
+        // fetched files: a copy there is of the address, not of its answer (an empty
+        // totaljerkface.com/get_level.hw saved there once hid Happy Wheels' levels).
+        Resolved::NotFound | Resolved::Disk(_) if req.method() != Method::GET && !head && {
+            let rel = key.htdocs_rel();
+            live_allowed(&srv.config().live_domains, &rel) && !tracker(&rel)
+        } => {
+            let method = req.method().clone();
+            let headers = req.headers().clone();
+            let body = req.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+            let rel = utf8_percent_encode(&key.htdocs_rel(), PATH_ESC).to_string();
+            let q = query.filter(|q| !q.is_empty()).map(|q| format!("?{q}")).unwrap_or_default();
+            live_forward(method, &headers, body, &rel, &q)
+                .await
+                .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"))
+        }
         Resolved::Disk(p) => {
             let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
             let name = p.to_string_lossy().split('?').next().unwrap_or("").to_string();
@@ -266,21 +283,6 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
             let mut r = text(StatusCode::MOVED_PERMANENTLY, "");
             r.headers_mut().insert(header::LOCATION, HeaderValue::from_str(&loc).unwrap_or(HeaderValue::from_static("/")));
             r
-        }
-        // A POST and the like to the game's own site (a level server's API): passed on live, as
-        // the game's web version does, when nothing here has it.
-        Resolved::NotFound if req.method() != Method::GET && !head && {
-            let rel = key.htdocs_rel();
-            live_allowed(&srv.config().live_domains, &rel) && !tracker(&rel)
-        } => {
-            let method = req.method().clone();
-            let headers = req.headers().clone();
-            let body = req.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
-            let rel = utf8_percent_encode(&key.htdocs_rel(), PATH_ESC).to_string();
-            let q = query.filter(|q| !q.is_empty()).map(|q| format!("?{q}")).unwrap_or_default();
-            live_forward(method, &headers, body, &rel, &q)
-                .await
-                .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"))
         }
         Resolved::NotFound => match remote(&srv, &key, query).await {
             Some((bytes, ct)) => {
@@ -461,11 +463,15 @@ async fn remote(srv: &GameServer, key: &Key, query: Option<&str>) -> Option<(Byt
         let url = format!("{}{}{q}", if base.ends_with('/') { base.to_string() } else { format!("{base}/") }, rel);
         found = fetch(&url, "legacy").await;
     }
+    // Only the archive's files are kept: a live site's answers change (and an empty one, as an
+    // API address fetched as a page gives, would hide the real answer from then on).
+    let mut keep = found.is_some();
     if found.is_none() && live_allowed(&cfg.live_domains, &rel) && !tracker(&rel) {
         found = fetch(&format!("http://{rel}{q}"), "live").await;
+        keep = false;
     }
     let (bytes, ct) = found?;
-    if cfg.cache_remote {
+    if cfg.cache_remote && keep && !bytes.is_empty() {
         if let Some(root) = cfg.htdocs {
             let dest = root.join(key.htdocs_rel());
             let b = bytes.clone();
