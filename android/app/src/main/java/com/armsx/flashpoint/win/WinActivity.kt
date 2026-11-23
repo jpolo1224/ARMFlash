@@ -248,11 +248,25 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         return best
     }
 
+    // Each window's WM_CLASS (Wine names it after the Windows program), asked once per window.
+    private val windowClasses = HashMap<Int, String>()
+
+    /**
+     * Flashpoint Navigator's portable launcher (fpnavigator.exe) maps a blank window the size of
+     * the screen a few seconds in, while its browser (flashpointnavigator.exe) shows the game:
+     * never follow it instead of the browser (the view became that whole blank window, with the
+     * game in a corner and the controls aimed at the wrong window).
+     */
+    private fun launcherWindow(c: XClient, id: Int): Boolean =
+        windowClasses.getOrPut(id) { runCatching { c.wmClass(id).lowercase() }.getOrDefault("") }
+            .split(' ').any { it == "fpnavigator.exe" }
+
     private fun watchWindows() {
         while (running) {
             xq.submit {
                 val c = x ?: return@submit
-                val w = runCatching { c.windows().firstOrNull() }.getOrNull()
+                val all = runCatching { c.windows() }.getOrDefault(emptyList())
+                val w = all.firstOrNull { !launcherWindow(c, it.first) } ?: all.firstOrNull()
                 if (w != null) {
                     // The game's client area: Wine draws it as the largest child window, without
                     // the title bar and menu (Flash Player's File / View / Control / Help).
