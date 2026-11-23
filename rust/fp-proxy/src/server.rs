@@ -191,6 +191,10 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
     };
     let head = req.method() == Method::HEAD;
     let query = uri.query();
+    // Games' server calls (POSTs to level servers and the like) are few and worth seeing.
+    if req.method() != Method::GET && !head {
+        log::info!("{} {host}{}{}", req.method(), uri.path(), query.map(|q| format!("?{q}")).unwrap_or_default());
+    }
 
     // A pack's .htaccess may send the request elsewhere first. A redirect to a copy kept in
     // another pack (Happy Wheels HTML5's level server is in its Flash release's 9 GB pack) only
