@@ -19,7 +19,11 @@ object FlashPrefs {
     fun setGameBackend(ctx: Context, id: String, v: String) = prefs(ctx).edit().putString("flashBackend.$id", v).apply()
 
     /** "native" or "web" for this game. */
-    fun player(ctx: Context, id: String) = gamePlayer(ctx, id).ifEmpty { prefs(ctx).getString("flashPlayer", "native")!! }
+    fun player(ctx: Context, id: String, page: Boolean = false) = gamePlayer(ctx, id).ifEmpty {
+        // A Flash game desktop Flashpoint runs as a page in its browser: its browser with the
+        // Flash plugin, as there (Ruffle in a page leaves some, like Poptropica, at a blank page).
+        if (page) "flashplayer" else prefs(ctx).getString("flashPlayer", "native")!!
+    }
 
     /** "auto", "vulkan" or "gl" for this game. */
     fun backend(ctx: Context, id: String) = gameBackend(ctx, id).ifEmpty { prefs(ctx).getString("flashBackend", "auto")!! }

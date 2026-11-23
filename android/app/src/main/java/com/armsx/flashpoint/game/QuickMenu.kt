@@ -469,7 +469,7 @@ private fun RendererCard(host: OverlayHost) {
     SectionCard("Renderer") {
         // Ruffle reported errors running this game: suggest the desktop's own player.
         val trouble = remember { host.flashTrouble() }
-        if (trouble > 0 && FlashPrefs.player(ctx, host.gameId) != "flashplayer") {
+        if (trouble > 0 && FlashPrefs.player(ctx, host.gameId, host.isFlashPage) != "flashplayer") {
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), modifier = Modifier.fillMaxWidth()) {
                 Text(
                     "Ruffle ran into trouble with this game ($trouble ${if (trouble == 1L) "error" else "errors"}). " +
@@ -486,7 +486,9 @@ private fun RendererCard(host: OverlayHost) {
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        val players = if (host.isFlashPage) FlashPrefs.players.filter { it.first != "native" } else FlashPrefs.players
+        // A page game has no native player, and its default is Flash Player (in its browser).
+        val players = if (host.isFlashPage) FlashPrefs.players.filter { it.first != "native" }
+            .map { if (it.first.isEmpty()) "" to "Default (Flash Player)" else it } else FlashPrefs.players
         HorizontalOptions("Player", players, player, onSelect = { player = it; FlashPrefs.setGamePlayer(ctx, host.gameId, it) })
         if (!host.isFlashPage && FlashPrefs.player(ctx, host.gameId) == "native") {
             Spacer(Modifier.height(6.dp))

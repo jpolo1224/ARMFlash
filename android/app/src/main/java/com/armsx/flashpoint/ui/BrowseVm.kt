@@ -448,7 +448,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         val flashPage = isFlashPage(game, plan)
         val flashPlayer = (plan.runner == com.armsx.flashpoint.game.Runner.FLASH || flashPage) &&
-            com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id) == "flashplayer"
+            com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id, flashPage) == "flashplayer"
         val winApp = when {
             plan.runner == com.armsx.flashpoint.game.Runner.WINDOWS -> game.applicationPath
             // Its own browser with the Flash plugin, as on the desktop.

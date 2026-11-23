@@ -63,7 +63,7 @@ class GameActivity : ComponentActivity() {
         override fun keyboard() = showKeyboard()
         override fun restart() {
             // A Flash game switched to the native player starts over there.
-            val player = FlashPrefs.player(this@GameActivity, gameId)
+            val player = FlashPrefs.player(this@GameActivity, gameId, isFlashPage)
             if (isFlash && player == "flashplayer") {
                 // Flash Player under Wine: the standalone player for a SWF, the game's own browser
                 // with the plugin for a page (its program came along in the intent).

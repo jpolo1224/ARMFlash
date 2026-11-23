@@ -158,12 +158,15 @@ class WinRuntime(private val ctx: Context) {
      * quarter of the game showed.
      */
     fun ensureUnmanaged() {
-        val mark = File(prefix, ".armflash-unmanaged")
+        val mark = File(prefix, ".armflash-unmanaged-2")
         if (mark.isFile) return
-        // For the Shockwave projector (every PJ version is SPR.exe), where it was seen; Wine
-        // then draws the window's title bar itself, which the game screen crops off.
-        val key = "HKCU\\Software\\Wine\\AppDefaults\\$UNMANAGED_EXE\\X11 Driver"
-        val ok = run(listOf("reg", "add", key, "/v", "Managed", "/t", "REG_SZ", "/d", "N", "/f"), null).waitFor() == 0
+        // Where it was seen: the Shockwave projector (every PJ version is SPR.exe) and
+        // Flashpoint Navigator (FPNavigator.exe starts flashpointnavigator.exe). Wine then draws
+        // their title bars itself, which the game screen crops off.
+        val ok = UNMANAGED_EXES.all { exe ->
+            val key = "HKCU\\Software\\Wine\\AppDefaults\\$exe\\X11 Driver"
+            run(listOf("reg", "add", key, "/v", "Managed", "/t", "REG_SZ", "/d", "N", "/f"), null).waitFor() == 0
+        }
         if (ok) mark.writeText("")
     }
 
@@ -214,6 +217,7 @@ class WinRuntime(private val ctx: Context) {
     companion object {
         /** Programs Wine places windows for itself (see [ensureUnmanaged]). */
         const val UNMANAGED_EXE = "SPR.exe"
+        val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""

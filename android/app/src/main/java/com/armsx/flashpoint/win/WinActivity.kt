@@ -205,7 +205,10 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     /** Follow the game's window: the largest one on the virtual screen. */
     private var lastWindowLog = ""
-    private val trimsWindow by lazy { "flashplayer" in program().lowercase() || ownFrame }
+    private val trimsWindow by lazy { "flashplayer" in program().lowercase() || ownFrame || isBrowser }
+    /** A Flash or plugin game in its own browser (Flashpoint Navigator and the like). */
+    private val isBrowser by lazy { program().lowercase().let { "fpnavigator" in it || "basilisk" in it || "firefox" in it } }
+    @Volatile private var fullscreenSent = false
     /** Wine draws this program's title bar and border itself (an unmanaged window). */
     private val ownFrame by lazy { program().substringAfterLast('\\').equals(WinRuntime.UNMANAGED_EXE, ignoreCase = true) }
 
@@ -223,6 +226,15 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                         XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
                     val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
                     if (w.first != gameWin) { gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("") }
+                    // A browser shows its page full screen, as Flashpoint's own window does: no
+                    // toolbars, the page laid out for the whole screen, then cropped to the game.
+                    if (isBrowser && !fullscreenSent && top.w > 320 && top.h > 240) {
+                        fullscreenSent = true
+                        xq.execute {
+                            Thread.sleep(1500)
+                            c.keycode(0xFFC8)?.let { kc -> c.focus(w.first); c.key(kc, true); c.key(kc, false) } // XK_F11
+                        }
+                    }
                     // Flash Player's projector draws its stage in a corner of a bigger window, and
                     // Shockwave's centres it in one; other players size the window to the stage.
                     crop = if (trimsWindow) trim(win) else win
