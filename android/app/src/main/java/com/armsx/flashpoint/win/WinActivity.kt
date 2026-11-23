@@ -221,10 +221,6 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     private val isBrowser get() = browserProgram || browserWindow
     private val browserProgram by lazy { program().lowercase().let { "fpnavigator" in it || "basilisk" in it || "firefox" in it } }
     @Volatile private var browserWindow = false
-    /** Browsers that take F11 for full screen (Secure Player's window is full screen already). */
-    private val takesF11 get() = browserProgram || f11Window
-    @Volatile private var f11Window = false
-    @Volatile private var fullscreenSent = false
     /** Wine draws this program's title bar and border itself (an unmanaged window). */
     private val ownFrame by lazy { program().substringAfterLast('\\').equals(WinRuntime.UNMANAGED_EXE, ignoreCase = true) }
 
@@ -279,18 +275,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                         gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("")
                         val cls = runCatching { c.wmClass(w.first).lowercase() }.getOrDefault("")
                         if (listOf("navigator", "basilisk", "firefox", "netscape", "iexplore", "flashpointsecureplayer").any { it in cls }) browserWindow = true
-                        if (listOf("navigator", "basilisk", "firefox").any { it in cls }) f11Window = true
                         android.util.Log.i(WinRuntime.TAG, "game window class: $cls")
                     }
-                    // A browser shows its page full screen, as Flashpoint's own window does: no
-                    // toolbars, the page laid out for the whole screen, then cropped to the game.
-                    if (takesF11 && !fullscreenSent && top.w > 320 && top.h > 240) {
-                        fullscreenSent = true
-                        xq.execute {
-                            Thread.sleep(1500)
-                            c.keycode(0xFFC8)?.let { kc -> c.focus(w.first); c.key(kc, true); c.key(kc, false) } // XK_F11
-                        }
-                    }
+                    // No F11 for browsers: their full screen is a new window the size of the
+                    // screen (the view followed it, with the game in a corner), and the crop to
+                    // the game below already leaves the toolbars out.
                     // In a browser, Flash, Shockwave and Unity draw in their plugin's own window,
                     // a separate X window inside the browser's: exactly the game, whatever the page
                     // around it looks like. Pages without a plugin are trimmed by their colours.
