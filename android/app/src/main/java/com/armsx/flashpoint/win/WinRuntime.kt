@@ -360,16 +360,6 @@ class WinRuntime(private val ctx: Context) {
          * Wine never gets it: Silverlight's .NET runtime.
          */
         val JIT_SAFE = mapOf("BOX64_DYNAREC_BIGBLOCK" to "0", "BOX64_DYNAREC_STRONGMEM" to "1")
-        /**
-         * TEST (keep only if the Avatar Editor needs it): x86 exactly where Box64's defaults trade
-         * it for speed, for .NET's 32-bit JIT code: x87 float to int conversions in the program's
-         * rounding mode, x86 NaNs, x87 math in double precision only, flags at every call and
-         * return, and the division by zero exception .NET turns into DivideByZeroException.
-         */
-        val DOTNET_EXACT = mapOf(
-            "BOX64_DYNAREC_FASTROUND" to "0", "BOX64_DYNAREC_FASTNAN" to "0", "BOX64_DYNAREC_X87DOUBLE" to "1",
-            "BOX64_DYNAREC_SAFEFLAGS" to "2", "BOX64_DYNAREC_DIV0" to "1",
-        )
         /** Where the runtime downloads from (ARMFlash's GitHub releases), once it is published. */
         const val RUNTIME_URL = ""
         const val RUNTIME_SHA256 = "cf540f0bbf70e717389dbd871d3af2f1f4683fd46831be07ad922d528d9ec2e5"

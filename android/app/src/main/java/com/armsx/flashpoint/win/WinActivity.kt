@@ -220,11 +220,15 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val env = LinkedHashMap<String, String>()
         if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
             env += WinRuntime.JIT_SAFE
-            env += WinRuntime.DOTNET_EXACT
             // TEST (remove once Silverlight runs): how far it loads, any x86 instruction Box64
             // cannot translate (reported at log level 1 only), and every exception Wine dispatches
             // with its address, parameters (.NET's carry the exception's HRESULT) and registers.
             env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,+seh")
+            // TEST: every instruction of Silverlight's agcore.dll (code at 0x76E51000-0x774AB000,
+            // where it always loads here) run by both Box64's translator and its interpreter, and
+            // each place they disagree logged once: the Avatar Editor's PNG textures fail to
+            // decode here and not on the Mac (Rosetta), so its renderer never starts.
+            env += mapOf("BOX64_DYNAREC_TEST" to "0x76E51000-0x774AB000", "BOX64_DYNAREC_TEST_NODUP" to "1")
         }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
