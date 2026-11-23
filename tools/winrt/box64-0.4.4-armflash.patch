@@ -6,7 +6,7 @@ index c995a0c..e778ccd 100644
      return !memcmp(magic, "PE\0\0", sizeof(magic));
  }
  
-+// ARMFlash: Android (apps targeting API 29+) refuses PROT_EXEC on mappings of files the app
++// FlashARM: Android (apps targeting API 29+) refuses PROT_EXEC on mappings of files the app
 +// wrote, which is where Wine's PE images live. Guest x86 pages are never executed by the host
 +// (the dynarec translates them into its own memory), so the host mapping does not need
 +// PROT_EXEC; Box64 still records the guest protection, which is what it acts on.
@@ -33,3 +33,37 @@ index c995a0c..e778ccd 100644
      if(!ret && len) {
          updateProtection((uintptr_t)addr, len, prot);
      }
+diff --git a/src/wrapped/wrappedlibx11.c b/src/wrapped/wrappedlibx11.c
+index 502cd85..6722704 100644
+--- a/src/wrapped/wrappedlibx11.c
++++ b/src/wrapped/wrappedlibx11.c
+@@ -1180,9 +1180,29 @@ EXPORT void* my_XSetIMValues(x64emu_t* emu, void* xim, uintptr_t* va) {
+ #undef VA_CALL
+ #undef SUPER
+ 
++#ifdef FLASHARM_NO_HOST_EXEC
++// ARMFlash: Xlib's default error handler prints the error and exits. Wine hands every X error
++// it did not expect to the handler it replaced, so a harmless one (unmapping a window its X
++// connection already lost) ended the whole game. Programs get this logger in its place.
++typedef struct { int type; void* display; unsigned long resourceid; unsigned long serial;
++                 unsigned char error_code, request_code, minor_code; } armflash_xerror_t;
++static int armflash_soft_xerror(void* display, void* event)
++{
++    (void)display;
++    armflash_xerror_t* e = (armflash_xerror_t*)event;
++    printf_log(LOG_NONE, "ARMFlash: ignored X error %d (request %d.%d) on 0x%lx\n",
++        e->error_code, e->request_code, e->minor_code, e->resourceid);
++    return 0;
++}
++#endif
+ EXPORT void* my_XSetErrorHandler(x64emu_t* emu, XErrorHandler handler)
+ {
+     void* ret = my->XSetErrorHandler(finderror_handlerFct(handler));
++    #ifdef FLASHARM_NO_HOST_EXEC
++    static void* xlib_default = NULL;
++    if(!xlib_default) xlib_default = dlsym(my_lib->w.lib, "_XDefaultError");
++    if(!ret || ret==xlib_default) ret = armflash_soft_xerror;
++    #endif
+     return reverse_error_handlerFct(my_lib, ret);
+ }
+ 

@@ -13,8 +13,8 @@ the small plugins) inside ARMFlash, Play-compliant (target SDK stays current).
 ## The chain that works
 1. glibc's loader ships as `libldlinux.so` (from the base system, paths relocated).
 2. Box64 0.4.4, built with Zig (`zcc`, aarch64-linux-gnu.2.36) and
-   `box64-0.4.4-no-host-exec.patch` (`-DFLASHARM_NO_HOST_EXEC`: guest pages never get host
-   PROT_EXEC; the dynarec only reads them), ships as `libbox64.so` with its ELF interpreter set
+   `box64-0.4.4-armflash.patch` (`-DFLASHARM_NO_HOST_EXEC`: guest pages never get host
+   PROT_EXEC; the dynarec only reads them; and X errors Wine did not expect are logged instead of ending the program), ships as `libbox64.so` with its ELF interpreter set
    (patchelf) to `/data/data/com.armsx.flasharm/r/ld`, a link the app makes to `libldlinux.so`.
    Box64 can then start, and re-start itself for every Wine process.
 3. The glibc base system with Wine 10.10 (WoW64) lives in `<data>/r`. Today it is Winlator's

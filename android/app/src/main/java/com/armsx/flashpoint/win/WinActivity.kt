@@ -200,6 +200,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     /** Follow the game's window: the largest one on the virtual screen. */
+    private val trimsWindow by lazy { "flashplayer" in program().lowercase() }
+
     private fun watchWindows() {
         while (running) {
             xq.submit {
@@ -214,7 +216,10 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
                         XClient.Rect(top.x + inner.x, top.y + inner.y, inner.w, inner.h) else top
                     val win = Rect(r.x.coerceAtLeast(0), r.y.coerceAtLeast(0), (r.x + r.w).coerceAtMost(SCREEN_W), (r.y + r.h).coerceAtMost(SCREEN_H))
                     if (w.first != gameWin) { gameWin = w.first; content = Rect(); recent.clear(); c.focus(w.first); say("") }
-                    crop = trim(win)
+                    // Only Flash Player's projector draws its stage in a corner of a bigger window;
+                    // other players (Shockwave's projector) size the window to the stage, and
+                    // trimming those zoomed in on whatever was busiest, an intro's logo say.
+                    crop = if (trimsWindow) trim(win) else win
                 }
             }.get()
             Thread.sleep(500)
