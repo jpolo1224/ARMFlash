@@ -5,7 +5,7 @@ package com.armsx.flashpoint.ui
  * (Papa's games, Gravity Guy, Poptropica, Fancy Pants, Super Mario 63, Ultimate Flash Sonic,
  * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run, Fireboy & Watergirl by Oslo Albet
  * and Jan Villanueva, Learn to Fly by Light Bringer, Jetpack Joyride, Angry Birds, Plants vs.
- * Zombies 1 and 2, and Club Penguin's games). By Flashpoint game id, in this order; Happy
+ * Zombies, and Club Penguin's games). By Flashpoint game id, in this order; Happy
  * Wheels is its HTML5 release by its own makers.
  */
 val FEATURED_GAMES = listOf(
@@ -62,7 +62,6 @@ val FEATURED_GAMES = listOf(
     "3a4abbc9-0dba-4c8b-b6db-cbb484f3acfc", // Jetpack Joyride
     "dbcc7433-ecfd-c820-8263-e60cd4eb0a1a", // Angry Birds
     "da6b3cb4-78a7-e998-fcf4-cb26a7950754", // Plants vs. Zombies
-    "e11fa6dd-ab4e-41e5-ba87-cdaa63f6b320", // Plants vs Zombies 2
     "f2c3eb37-444a-4f1f-9f24-e4f9442ddcb7", // Bits & Bolts
     "e33d57cc-8bb2-406e-a21c-b282d6e8f0ee", // Blaster Game
     "05383ad0-70c4-4ef4-99bc-b807b18a4866", // CLUB PENGUIN ISLAND - THE MEDIEVAL TEXT ADVENTURE
