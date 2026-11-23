@@ -61,6 +61,8 @@ ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1). Source: Debi
 ## App libraries
 
 - **libadrenotools** (custom GPU drivers): BSD 2-Clause, Billy Laws. https://github.com/bylaws/libadrenotools
+- **Discord Social SDK** (Discord presence and friends): Discord's SDK, used under Discord's developer terms.
+  https://discord.com/developers/docs/discord-social-sdk/overview
 - **AndroidX, Jetpack Compose, Kotlin and kotlinx libraries**: Apache-2.0.
 - **Rust crates** (tokio, hyper, rustls, ring, zip, rusqlite with SQLite and others): MIT, Apache-2.0,
   ISC or similar permissive licenses, as listed in each crate.
