@@ -120,5 +120,8 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:exported="false" />
+        <!-- Discord sign-in and switches asked for from a game's quick menu, run in the launcher's
+             process, which keeps the sign-in. -->
+        <receiver android:name=".discord.DiscordControlReceiver" android:exported="false" />
     </application>
 </manifest>

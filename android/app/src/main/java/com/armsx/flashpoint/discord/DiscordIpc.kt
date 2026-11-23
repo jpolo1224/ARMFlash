@@ -74,6 +74,9 @@ object DiscordIpc {
     const val DATA_AUTH_EXPIRED = "authExpired"
     const val DATA_AVAILABLE = "available"
     const val DATA_IDLE = "idle"
+    // On MSG_QUERY: a look only (a game's Friends tab). The one-shot sign-in results stay for the
+    // launcher, which keeps the sign-in.
+    const val DATA_PEEK = "peek"
 
     /** Must match kFieldSep / kRecordSep in cpp/discord_bridge.cpp. */
     const val FIELD_SEP = ''

@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.armsx.flashpoint.discord.DiscordIpc
@@ -48,21 +49,23 @@ import com.armsx.flashpoint.discord.DiscordIpc
 data class DiscordFriend(
     val name: String,
     val game: String,
+    /** The platform they are playing on (Flash, HTML5, ...): ARMFlash publishes it as the serial. */
     val serial: String,
     val avatarUrl: String,
+    /** Their presence's large image as Discord hands it back: the game's Flashpoint logo. */
+    val cover: String = "",
 ) {
     /** In ARMFlash but not in a game. Distinct from being in a game we could not name. */
     val inLibrary: Boolean get() = game.isBlank() && serial.isBlank()
 
     /**
-     * Cover art for what they are playing, resolved the same way the library resolves its own.
+     * The art for what they are playing, resolved the way the library resolves its own.
      *
-     * Derived from the serial here rather than read out of their presence assets: Discord may hand
-     * back a proxied form of an image URL, and re-deriving keeps a friend's row looking exactly like
-     * the same game does on the home screen — including honouring the 2D/3D preference, which is
-     * this device's choice to make, not theirs.
+     * Their large image is the game's Flashpoint logo, and Discord may hand it back proxied
+     * ("mp:external/..."), so the game id is read out of it and the logo URL rebuilt from this
+     * device's image settings; a URL with no id in it is used as it is.
      */
-    val coverUrl: String? get() = null
+    val coverUrl: String? get() = DiscordPresence.artFor(cover)
 }
 
 /** The game ARMFlash is running, for presence: its title, platform and Flashpoint logo. */
@@ -123,8 +126,122 @@ object DiscordPresence {
         sendIdle()
     }
 
-    private fun sendIdle() =
-        send(DiscordIpc.MSG_IDLE, Bundle().apply { putBoolean(DiscordIpc.DATA_IDLE, !foreground.value) })
+    private fun sendIdle() {
+        if (!viewer) send(DiscordIpc.MSG_IDLE, Bundle().apply { putBoolean(DiscordIpc.DATA_IDLE, !foreground.value) })
+    }
+
+    // ---- the game process: friends only -------------------------------------------------------
+    //
+    // Games run in :game, and the launcher (which owns sign-in and presence) stops asking the
+    // helper while it is out of sight. So the game process asks for itself: the friends list for
+    // the quick menu's Friends tab and the "came online" banner over the game. It never signs in,
+    // never publishes presence and never wakes the helper: it binds only to a helper the launcher
+    // already runs, so with Discord off the SDK stays unloaded.
+
+    /** True in the game process: read the friends list, touch nothing else. */
+    private var viewer = false
+    private var viewerJob: Job? = null
+
+    /**
+     * Start following friends from a game screen. A no-op when already watching, and with Discord
+     * off unless [force] (Connect was just pressed in the quick menu).
+     */
+    fun watchFriends(force: Boolean = false) {
+        if (viewerJob != null || started) return
+        if (!force && !runCatching { prefs.getBoolean(PREF_ENABLED, false) }.getOrDefault(false)) return
+        viewer = true
+        notifyState.value = notifyInGame
+        showGameState.value = showGameName
+        val ctx = appContext
+        if (!bound) bound = runCatching {
+            ctx.bindService(Intent(ctx, com.armsx.flashpoint.discord.DiscordService::class.java), connection, 0)
+        }.getOrDefault(false)
+        viewerJob = scope.launch {
+            while (true) {
+                send(DiscordIpc.MSG_QUERY, Bundle().apply { putBoolean(DiscordIpc.DATA_PEEK, true) })
+                delay(1500)
+                val snap = lastState ?: continue
+                helperAvailable = snap.getBoolean(DiscordIpc.DATA_AVAILABLE, true)
+                val s = snap.getInt(DiscordIpc.DATA_STATUS, DISABLED)
+                status.value = s
+                if (s != CONNECTED) continue
+                val current = parseFriends(snap.getString(DiscordIpc.DATA_FRIENDS).orEmpty())
+                announceArrivals(current)
+                friends.value = current
+                if (self.value == null) {
+                    val f = snap.getString(DiscordIpc.DATA_SELF).orEmpty().split(FIELD_SEP)
+                    f.getOrNull(0)?.takeIf { it.isNotBlank() }?.let { name ->
+                        self.value = DiscordFriend(name, "", "", f.getOrNull(1).orEmpty())
+                    }
+                }
+            }
+        }
+    }
+
+    fun stopWatchingFriends() {
+        viewerJob?.cancel()
+        viewerJob = null
+        if (viewer) unbindHelper()
+    }
+
+    // The quick menu's buttons, from a game: carried out by the launcher's process (see
+    // DiscordControlReceiver), and shown here at once.
+
+    fun connectFromGame() {
+        DiscordControlReceiver.send(appContext, DiscordControlReceiver.ACTION_CONNECT)
+        status.value = AUTHORIZING
+        error.value = null
+        watchFriends(force = true)
+    }
+
+    fun disconnectFromGame() {
+        DiscordControlReceiver.send(appContext, DiscordControlReceiver.ACTION_DISCONNECT)
+        status.value = DISCONNECTED
+        friends.value = emptyList()
+        self.value = null
+    }
+
+    fun setNotifyFromGame(on: Boolean) {
+        DiscordControlReceiver.send(appContext, DiscordControlReceiver.ACTION_NOTIFY, on)
+        notifyState.value = on
+    }
+
+    fun setShowGameFromGame(on: Boolean) {
+        DiscordControlReceiver.send(appContext, DiscordControlReceiver.ACTION_SHOW_GAME, on)
+        showGameState.value = on
+    }
+
+    // Connect pressed in a game: sign in here (the launcher's process), and keep asking the helper
+    // while the launcher is out of sight until the sign-in lands, so the new login gets saved.
+    @Volatile private var authorizeOnConnect = false
+    private val signingIn = MutableStateFlow(false)
+    private var signingInUntil = 0L
+
+    fun authorizeForGame() {
+        signingInUntil = android.os.SystemClock.uptimeMillis() + 5 * 60_000L
+        signingIn.value = true
+        // The helper may not be bound yet: then the sign-in goes out once it is.
+        authorizeOnConnect = helper == null
+        authorize()
+    }
+
+    /**
+     * A friend's game art from their presence's large image: the Flashpoint logo of the game, which
+     * Discord may hand back proxied ("mp:external/<hash>/https/host/path"). The game id in it gives
+     * this device's own logo URL for that game.
+     */
+    fun artFor(raw: String): String? {
+        if (raw.isBlank()) return null
+        Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").find(raw)?.let { m ->
+            runCatching { com.armsx.flashpoint.data.Library(appContext).logoUrl(m.value.lowercase()) }
+                .getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return when {
+            raw.startsWith("http://") || raw.startsWith("https://") -> raw
+            raw.startsWith("mp:external/") -> "https://media.discordapp.net/external/" + raw.removePrefix("mp:external/")
+            else -> null
+        }
+    }
 
     // ---- helper-process link -------------------------------------------------------------
     //
@@ -148,9 +265,15 @@ object DiscordPresence {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             helper = service?.let { Messenger(it) }
             Log.i(TAG, "helper process connected")
+            // The game process only reads: sign-in and presence are the launcher's.
+            if (viewer) return
             // Re-issue whatever the helper needs to know: a reconnect means a fresh process that
             // remembers nothing, so anything set before the bind has to be replayed.
             send(DiscordIpc.MSG_START, savedSignIn())
+            if (authorizeOnConnect) {
+                authorizeOnConnect = false
+                send(DiscordIpc.MSG_AUTHORIZE)
+            }
             pushPresence()
             sendIdle()
         }
@@ -264,6 +387,7 @@ object DiscordPresence {
     }
 
     private fun pushPresence() {
+        if (viewer) return
         val game = currentGame.value
         lastRaPresence = raPresence()
         val party = remotePlay.value
@@ -469,8 +593,10 @@ object DiscordPresence {
             // and some games update their RA line every few seconds.
             var sinceRaCheck = 0
             while (true) {
-                // Nothing to show while out of sight, so wait here instead of asking every second.
-                foreground.first { it }
+                // Nothing to show while out of sight, so wait here instead of asking every second;
+                // except while a sign-in started from a game is landing.
+                if (signingIn.value && android.os.SystemClock.uptimeMillis() > signingInUntil) signingIn.value = false
+                combine(foreground, signingIn) { fg, signing -> fg || signing }.first { it }
                 // No pump here any more: the SDK's callback queue is drained inside the helper, on
                 // the thread that created the client. This loop only asks for a snapshot.
                 bindHelper()
@@ -517,6 +643,8 @@ object DiscordPresence {
                     sinceRetry = 0
                     retryAfter = 5
                 }
+                // A game's sign-in has landed (or failed): back to asking only while in sight.
+                if (signingIn.value && (s == CONNECTED && savedToken.isNotBlank() || s == FAILED || signInExpired)) signingIn.value = false
 
                 // Only touch the friends list while actually connected. A drop reports nobody
                 // online, and letting that through would clear the known set — so reconnecting
@@ -576,6 +704,7 @@ object DiscordPresence {
                 game = f.getOrNull(1).orEmpty(),
                 serial = f.getOrNull(2).orEmpty(),
                 avatarUrl = f.getOrNull(3).orEmpty(),
+                cover = f.getOrNull(4).orEmpty(),
             )
         }
     }
@@ -591,7 +720,8 @@ object DiscordPresence {
             seededFriends = true
             return
         }
-        if (!notifyInGame) return
+        // A game's process keeps the switch in [notifyState]: its copy of the settings is not written.
+        if (!(if (viewer) notifyState.value else notifyInGame)) return
 
         val arrivals = current.filterNot { it.name in previous }
         if (arrivals.isEmpty()) return

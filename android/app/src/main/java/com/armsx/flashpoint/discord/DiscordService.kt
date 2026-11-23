@@ -143,7 +143,7 @@ class DiscordService : Service() {
                 started = false
             }
 
-            DiscordIpc.MSG_QUERY -> reply(msg.replyTo)
+            DiscordIpc.MSG_QUERY -> reply(msg.replyTo, msg.data?.getBoolean(DiscordIpc.DATA_PEEK, false) == true)
 
             DiscordIpc.MSG_IDLE -> {
                 val wasIdle = idle
@@ -197,7 +197,7 @@ class DiscordService : Service() {
     }
 
     /** One snapshot, on request. Everything the app's UI renders comes through here. */
-    private fun reply(to: Messenger?) {
+    private fun reply(to: Messenger?, peek: Boolean = false) {
         val target = to ?: return
         val data = Bundle().apply {
             putBoolean(
@@ -209,6 +209,7 @@ class DiscordService : Service() {
                 putString(DiscordIpc.DATA_FRIENDS, runCatching { DiscordNative.friends() }.getOrDefault(""))
                 putString(DiscordIpc.DATA_SELF, runCatching { DiscordNative.self() }.getOrDefault(""))
                 putString(DiscordIpc.DATA_ERROR, runCatching { DiscordNative.error() }.getOrNull())
+                if (peek) return@apply
                 // Surfaces exactly once, right after a successful sign-in; the app persists it so
                 // the browser is a one-time cost rather than a per-launch one.
                 putString(DiscordIpc.DATA_FRESH_TOKEN, runCatching { DiscordNative.takeToken() }.getOrDefault(""))

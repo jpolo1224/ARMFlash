@@ -216,6 +216,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         OsdOverlay(host::frames, Modifier.align(osdAt).padding(top = if (OsdPrefs.corner.value == OsdPrefs.Corner.TOP_RIGHT) 56.dp else 0.dp))
         if (st.menu) QuickMenu(st, host)
         WelcomeBannerOverlay(this)
+        com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))
         if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
         if (st.picking) KeyPicker(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }

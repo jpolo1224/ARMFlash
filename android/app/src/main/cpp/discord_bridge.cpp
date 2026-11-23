@@ -143,6 +143,7 @@ namespace
 		std::string game;   // title they are playing; empty means sitting in the library
 		std::string serial; // for cover art on our side; empty when they are in the library
 		std::string avatar; // their Discord avatar
+		std::string cover;  // their large image: the game's Flashpoint logo (as Discord hands it back)
 	};
 
 	// Record/field separators for the friends list handed to Kotlin. Deliberately control
@@ -367,7 +368,10 @@ namespace
 					// cover art the moment one side updates.
 					std::string large;
 					if (const auto a = activity->Assets(); a.has_value())
+					{
 						large = a->LargeText().value_or(std::string());
+						f.cover = a->LargeImage().value_or(std::string());
+					}
 					const std::string candidate = !large.empty() ? large : *state;
 					if (candidate != "-" && candidate != f.game && candidate != "ARMFlash")
 						f.serial = candidate;
@@ -798,6 +802,8 @@ Java_com_armsx_flashpoint_discord_DiscordNative_friends(JNIEnv* env, jclass)
 			joined += f.serial;
 			joined.push_back(kFieldSep);
 			joined += f.avatar;
+			joined.push_back(kFieldSep);
+			joined += f.cover;
 		}
 	}
 	return env->NewStringUTF(joined.c_str());

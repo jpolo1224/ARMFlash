@@ -39,11 +39,14 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         SleepWake.onResume()
         overlay.padConnected = gamepadAttached()
         PauseMusic.setForeground(true, act, overlay.menu)
+        // Discord friends for the quick menu's Friends tab and the "is now online" banner.
+        com.armsx.flashpoint.discord.DiscordPresence.watchFriends()
     }
 
     fun onPause() {
         SleepWake.onPause(act)
         PauseMusic.setForeground(false, act, overlay.menu)
+        com.armsx.flashpoint.discord.DiscordPresence.stopWatchingFriends()
         pad()?.reset()
         if (!act.isFinishing && !overlay.menu) { overlay.editing = false; overlay.menu = true }
     }

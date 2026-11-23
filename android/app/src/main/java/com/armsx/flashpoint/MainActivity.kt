@@ -56,7 +56,15 @@ class MainActivity : ComponentActivity() {
         UiMusic.load(this)
         com.armsx.flashpoint.discord.DiscordPresence.attachActivity(this)
         com.armsx.flashpoint.discord.DiscordPresence.start()
-        setContent { FpTheme { App(vm) } }
+        setContent {
+            FpTheme {
+                Box(Modifier.fillMaxSize()) {
+                    App(vm)
+                    // A Discord friend coming online, over the library.
+                    com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(androidx.compose.ui.Alignment.TopCenter))
+                }
+            }
+        }
         vm.pendingGame = Frontend.gameId(this, intent)
     }
 

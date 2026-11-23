@@ -4,8 +4,8 @@ package com.armsx.flashpoint.ui
  * The Games tab's first screen: well-known titles before the A to Z list, picked by jpolo1224
  * (Papa's games, Gravity Guy, Poptropica, Fancy Pants, Super Mario 63, Ultimate Flash Sonic,
  * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run, Fireboy & Watergirl by Oslo Albet
- * and Jan Villanueva, and Club Penguin's games). By Flashpoint game id, in this order; Happy
- * Wheels is its HTML5 release by its own makers.
+ * and Jan Villanueva, Learn to Fly by Light Bringer, and Club Penguin's games). By Flashpoint
+ * game id, in this order; Happy Wheels is its HTML5 release by its own makers.
  */
 val FEATURED_GAMES = listOf(
     "279b23ca-c7f3-4f56-a02f-3752ec7c5c5d", // Papa's Pizzeria
@@ -55,6 +55,9 @@ val FEATURED_GAMES = listOf(
     "aedea00b-4e68-446d-b847-cad06d9d49b0", // Fireboy and Watergirl 4: In The Crystal Temple
     "462cb01d-38d9-4f75-98d1-01794c387eec", // Fireboy & Watergirl: Elements
     "d1ca652b-06a3-4da0-9027-40f2e9dc15dd", // Fireboy & Watergirl: Fairy Tales
+    "11ee16a3-dadb-4d54-84dd-a3dcf124ee1d", // Learn to Fly
+    "891ac9f2-93da-4141-bd51-6a61c4aeea38", // Learn 2 Fly
+    "95b9df8c-59ce-45d1-ae0b-696e190d9e14", // Learn to Fly 3
     "f2c3eb37-444a-4f1f-9f24-e4f9442ddcb7", // Bits & Bolts
     "e33d57cc-8bb2-406e-a21c-b282d6e8f0ee", // Blaster Game
     "05383ad0-70c4-4ef4-99bc-b807b18a4866", // CLUB PENGUIN ISLAND - THE MEDIEVAL TEXT ADVENTURE

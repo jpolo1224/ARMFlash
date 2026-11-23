@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -91,7 +92,10 @@ enum class MenuTab(val label: String, val glyph: String) {
     DISPLAY("Display", "🖥️"),
     CONTROLS("Controls", "🎮"),
     OPTIONS("Options", "⚙"),
+    FRIENDS("Friends", "👥"),
 }
+
+private fun menuTabs(): List<MenuTab> = MenuTab.entries
 
 // ---- colours: Flashpoint's (ARMFlash's launcher theme) in ARMSX2's menu ------------------
 
@@ -265,6 +269,7 @@ private fun MenuPageBody(st: OverlayState, host: OverlayHost, compact: Boolean, 
                 MenuTab.DISPLAY -> DisplayPane(st, host)
                 MenuTab.CONTROLS -> ControlsPane(st, host)
                 MenuTab.OPTIONS -> OptionsPane(host, left, onLeft)
+                MenuTab.FRIENDS -> FriendsPane()
             }
         }
     }
@@ -275,7 +280,7 @@ private fun CompactMenuTabs(selected: MenuTab, onSelect: (MenuTab) -> Unit) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) { MenuTab.entries.forEach { MenuTabChip(it, it == selected, onSelect) } }
+    ) { menuTabs().forEach { MenuTabChip(it, it == selected, onSelect) } }
 }
 
 @Composable
@@ -285,7 +290,7 @@ private fun MenuRail(selected: MenuTab, onSelect: (MenuTab) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
     ) {
-        MenuTab.entries.forEach { tab ->
+        menuTabs().forEach { tab ->
             val active = tab == selected
             Surface(
                 onClick = { onSelect(tab) },
@@ -748,6 +753,72 @@ private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> U
         MenuSwitchRow("Menu sounds", MenuSfx.enabled.value) { MenuSfx.set(ctx, it) }
         Spacer(Modifier.height(6.dp))
         MenuSwitchRow("Pause menu music", PauseMusic.enabled.value) { PauseMusic.set(ctx, it, menuOpen = true) }
+    }
+}
+
+/**
+ * ARMSX2's in-game Friends panel: connect Discord here or in the launcher, who is signed in, the
+ * two switches, and which Discord friends are in ARMFlash right now with what they are playing
+ * (title, platform and the game's logo).
+ */
+@Composable
+private fun FriendsPane() {
+    val presence = com.armsx.flashpoint.discord.DiscordPresence
+    val status by presence.status
+    val friends by presence.friends
+    val notify by presence.notifyState
+    val showGame by presence.showGameState
+    val first = LocalFirstFocus.current
+    if (!com.armsx.flashpoint.BuildConfig.DISCORD || !presence.available()) {
+        // Built without the Discord SDK: say so plainly instead of a button that cannot work.
+        SectionCard("Discord") {
+            Text("This build was made without the Discord SDK.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    SectionCard("Discord") {
+        Text(
+            "Link Discord to show what you're playing and see which friends are in ARMFlash. Uses your existing Discord friends. ARMFlash keeps no account and runs no server.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        when (status) {
+            presence.CONNECTED -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    com.armsx.flashpoint.discord.SelfChip()
+                    Text("Discord connected", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box(first?.let { Modifier.focusRequester(it) } ?: Modifier) {
+                    CompactButton("Disconnect") { presence.disconnectFromGame() }
+                }
+            }
+            presence.AUTHORIZING, presence.CONNECTING -> Text("Connecting to Discord…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            else -> Box(first?.let { Modifier.focusRequester(it) } ?: Modifier) {
+                CompactButton("Connect Discord") { presence.connectFromGame() }
+            }
+        }
+        presence.error.value?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (status != presence.CONNECTED) return
+    SectionCard("Notifications") {
+        MenuSwitchRow("Notify me in game", notify) { presence.setNotifyFromGame(it) }
+        Spacer(Modifier.height(6.dp))
+        MenuSwitchRow("Show the game in my status", showGame) { presence.setShowGameFromGame(it) }
+    }
+    SectionCard("In ARMFlash now") {
+        if (friends.isEmpty()) {
+            // Empty is a real answer, not a failure: say which one it is.
+            Text("None of your Discord friends are in ARMFlash right now.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            friends.forEach { f ->
+                com.armsx.flashpoint.discord.FriendRow(
+                    f, Modifier.menuFocus(RoundedCornerShape(12.dp)).focusable().padding(horizontal = 4.dp),
+                )
+            }
+        }
     }
 }
 

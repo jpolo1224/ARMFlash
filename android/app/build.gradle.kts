@@ -32,6 +32,9 @@ android {
         }
         // The sign-in return link: discord-<application id>, as registered in the developer portal.
         manifestPlaceholders["discordScheme"] = "discord-" + (discordAppId ?: "0")
+        // Whether this build has Discord at all: the game's Friends tab says so instead of offering
+        // a Connect that cannot work.
+        buildConfigField("boolean", "DISCORD", haveDiscord.toString())
     }
 
     buildTypes {
