@@ -436,15 +436,37 @@ object RufflePage {
      * Browser games as the game, not the web page around it: the page is scaled (a CSS transform
      * on the root, so positions games read through getBoundingClientRect stay right) until its
      * game element, the largest canvas, plugin, video or frame, fills the screen, and everything
-     * outside it is blacked out. A page whose game already fills the window is left alone. The
-     * Scale setting picks the fit: keep the shape (Game default, Fit), Stretch, Fill, or the
-     * page as its site laid it out (Original size). Kept up as the game resizes or appears.
+     * outside it is blacked out. A page whose game already fills the window is left alone. A game
+     * in a frame (Happy Wheels HTML5 sits in a 900 x 500 iframe on its site's page) gets the whole
+     * screen instead: the frame is pinned over the page at the screen's size, so the game lays
+     * itself out for it, as in a browser's full screen. The Scale setting picks the fit: keep the
+     * shape (Game default, Fit), Stretch, Fill, or the page as its site laid it out (Original
+     * size). Kept up as the game resizes or appears.
      */
     val PAGE_FIT = """
         (function(){
           if (window.top !== window || window.__fpmFit) return;
           window.__fpmFit = true;
           function mode() { return (window.__fpmDisplay && window.__fpmDisplay.pageFit) || 'fit'; }
+          var pinned = null;
+          var PIN = ';position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;' +
+            'width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;' +
+            'margin:0!important;padding:0!important;border:0!important;transform:none!important;z-index:2147483647!important;background:#000';
+          function pin(e) {
+            if (pinned === e) return;
+            unpin();
+            pinned = e;
+            e.__fpmStyle = e.getAttribute('style');
+            e.setAttribute('style', (e.__fpmStyle || '') + PIN);
+            var root = document.documentElement, body = document.body;
+            root.style.background = '#000'; root.style.overflow = 'hidden'; body.style.overflow = 'hidden';
+            window.scrollTo(0, 0);
+          }
+          function unpin() {
+            if (!pinned) return;
+            if (pinned.__fpmStyle == null) pinned.removeAttribute('style'); else pinned.setAttribute('style', pinned.__fpmStyle);
+            pinned = null;
+          }
           var cur = { x: 0, y: 0, s: 1, t: 1 }, last = '';
           function pick() {
             var best = null, area = 0;
@@ -462,11 +484,19 @@ object RufflePage {
             if (!root || !body) return;
             var m = mode();
             if (m === 'off') {
+              unpin();
               if (last) { root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 }; last = ''; }
               return;
             }
-            var e = pick();
+            var e = pinned || pick();
             if (!e) return;
+            if (e.tagName === 'IFRAME' || e.tagName === 'FRAME') {
+              // A game in a frame: the frame gets the screen, no scaling of the page around it.
+              if (last) { root.style.transform = ''; root.style.clipPath = ''; cur = { x: 0, y: 0, s: 1, t: 1 }; last = ''; }
+              if (!document.contains(e)) { pinned = null; return; }
+              pin(e);
+              return;
+            }
             var r = e.getBoundingClientRect();
             // Back to page coordinates (undoing the transform already applied).
             var w = r.width / cur.s, h = r.height / cur.t;
