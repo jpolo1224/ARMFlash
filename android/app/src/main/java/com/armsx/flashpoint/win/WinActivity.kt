@@ -220,9 +220,11 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val env = LinkedHashMap<String, String>()
         if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
             env += WinRuntime.JIT_SAFE
-            // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction
-            // Box64 cannot translate (reported at log level 1 only).
-            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,warn+seh")
+            env += WinRuntime.DOTNET_EXACT
+            // TEST (remove once Silverlight runs): how far it loads, any x86 instruction Box64
+            // cannot translate (reported at log level 1 only), and every exception Wine dispatches
+            // with its address, parameters (.NET's carry the exception's HRESULT) and registers.
+            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,+seh")
         }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
