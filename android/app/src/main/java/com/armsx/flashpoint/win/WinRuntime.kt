@@ -174,11 +174,6 @@ class WinRuntime(private val ctx: Context) {
         if (ok) mark.writeText("")
     }
 
-    /** TEST (remove once Silverlight runs): the only calls a +relay trace logs. */
-    fun relayOnly(calls: List<String>) {
-        run(listOf("reg", "add", "HKCU\\Software\\Wine\\Debug", "/v", "RelayInclude", "/t", "REG_SZ", "/d", calls.joinToString(";"), "/f"), null).waitFor()
-    }
-
     /**
      * Let Wine place its windows itself. There is no window manager on the virtual screen, and
      * Wine hands "managed" windows' moves and resizes to one and waits: a Shockwave projector
@@ -194,6 +189,32 @@ class WinRuntime(private val ctx: Context) {
         val ok = UNMANAGED_EXES.all { exe ->
             val key = "HKCU\\Software\\Wine\\AppDefaults\\$exe\\X11 Driver"
             run(listOf("reg", "add", key, "/v", "Managed", "/t", "REG_SZ", "/d", "N", "/f"), null).waitFor() == 0
+        }
+        if (ok) mark.writeText("")
+    }
+
+    /**
+     * A Verdana for Silverlight. Its default text font draws Latin letters with Verdana, Arial,
+     * Arial Unicode MS, Lucida Sans Unicode or Lucida Grande, and with none of them installed (never
+     * the case on Windows, always here) every Silverlight app stops with error 1001 before it
+     * starts: the Xbox Avatar Editor stayed blank. Wine's own Tahoma (Verdana's narrower sibling,
+     * by the same designer) goes into Windows' Fonts folder under the name Verdana, listed in the
+     * registry, which is where Silverlight looks for font files. The value names are ARMFlash's
+     * own, so Wine's start-up refresh of the fonts it found itself never removes them.
+     */
+    fun ensureVerdana() {
+        val mark = File(prefix, ".armflash-verdana-1")
+        if (mark.isFile) return
+        val fonts = File(prefix, "drive_c/windows/Fonts").apply { mkdirs() }
+        val key = "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"
+        val ok = listOf("Regular" to "tahoma.ttf", "Bold" to "tahomabd.ttf").all { (style, from) ->
+            val name = if (style == "Regular") "armflash-verdana.ttf" else "armflash-verdanab.ttf"
+            runCatching {
+                val src = File(root, "opt/wine/share/wine/fonts/$from").readBytes()
+                File(fonts, name).writeBytes(FontRename.rename(src, "Verdana", style))
+            }.onFailure { Log.w(TAG, "verdana: ${it.message}") }.isSuccess &&
+                run(listOf("reg", "add", key, "/v", "ARMFlash Verdana${if (style == "Regular") "" else " Bold"} (TrueType)",
+                    "/t", "REG_SZ", "/d", "C:\\windows\\Fonts\\$name", "/f"), null).waitFor() == 0
         }
         if (ok) mark.writeText("")
     }
@@ -298,12 +319,7 @@ class WinRuntime(private val ctx: Context) {
     }
 
     private fun drain(p: Process, tag: String) = Thread {
-        // TEST (remove once Silverlight runs): a +relay trace's window and hook callbacks stay out of the log.
-        runCatching {
-            p.inputStream.bufferedReader().forEachLine {
-                if (RELAY_NOISE.none { n -> n in it } || SILVERLIGHT_CODE.containsMatchIn(it)) Log.i(TAG, "$tag: $it")
-            }
-        }
+        runCatching { p.inputStream.bufferedReader().forEachLine { Log.i(TAG, "$tag: $it") } }
     }.apply { isDaemon = true }.start()
 
     /** Every process this app started under Wine or X (they outlive their parents). */
@@ -337,9 +353,6 @@ class WinRuntime(private val ctx: Context) {
         const val UNMANAGED_EXE = "SPR.exe"
         val UNMANAGED_EXES = listOf(UNMANAGED_EXE, "FPNavigator.exe", "flashpointnavigator.exe")
         const val TAG = "ARMFlashWin"
-        private val RELAY_NOISE = listOf("window proc ", "hook proc ", "winevent hook", "PE DLL (", "GlobalMemoryStatusEx() retval", "USER32.PostMessageW")
-        /** TEST: window procedures in, and calls from, agcore.dll and npctrl.dll (0x76E50000 to 0x77670000 here). */
-        private val SILVERLIGHT_CODE = Regex("""(window proc |ret=)7(6[eEfF]|7[0-6])[0-9a-fA-F]{5}\b""")
         /**
          * Box64's translation for a program that compiles its own code as it runs (a JIT): what
          * Box64 switches to by itself when it sees Mono or Java's libjvm load
