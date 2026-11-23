@@ -317,10 +317,14 @@ class WinRuntime(private val ctx: Context) {
     fun run(args: List<String>, cwd: File?): Process {
         prepareLinks()
         val cmd = listOf("$lib/libbox64.so", "${root.path}/opt/wine/bin/wine") + args
-        val pb = ProcessBuilder(cpuMask?.let { listOf("/system/bin/taskset", it) + cmd } ?: cmd).redirectErrorStream(true)
+        val all = env + extra
+        // Android's own taskset and env would load the base system's glibc through
+        // LD_LIBRARY_PATH and refuse to start ("bad ELF magic"), so env sets it just for Box64.
+        val pinned = cpuMask?.let { listOf("/system/bin/taskset", it, "/system/bin/env", "LD_LIBRARY_PATH=${all["LD_LIBRARY_PATH"].orEmpty()}") + cmd }
+        val pb = ProcessBuilder(pinned ?: cmd).redirectErrorStream(true)
         if (cwd != null) pb.directory(cwd)
-        pb.environment().putAll(env)
-        pb.environment().putAll(extra)
+        pb.environment().putAll(all)
+        if (pinned != null) pb.environment().remove("LD_LIBRARY_PATH")
         return pb.start().also { if (wine == null) wine = it; drain(it, "wine") }
     }
 
