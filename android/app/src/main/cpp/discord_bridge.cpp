@@ -49,7 +49,7 @@
 // is foregrounded. Polling a snapshot behind a mutex has none of that, and "once a second while a
 // screen is open" is not a budget worth optimising.
 //
-// Everything is behind ARMFlash_HAS_DISCORD. A tree without the SDK staged still builds; every entry
+// Everything is behind FLASHARM_HAS_DISCORD. A tree without the SDK staged still builds; every entry
 // point below has a stub that reports "unavailable", so the Kotlin side needs no build-flavour
 // awareness at all.
 
@@ -61,7 +61,7 @@
 #define DLOGI(...) __android_log_print(ANDROID_LOG_INFO, DTAG, __VA_ARGS__)
 #define DLOGW(...) __android_log_print(ANDROID_LOG_WARN, DTAG, __VA_ARGS__)
 
-#ifdef ARMFlash_HAS_DISCORD
+#ifdef FLASHARM_HAS_DISCORD
 
 // discordpp.h is a single-header library: everything below its DISCORDPP_IMPLEMENTATION guard is
 // the C++ wrapper's bodies, and the shipped .so exports ONLY the C API (Discord_*) — checked with
@@ -839,7 +839,7 @@ Java_com_armsx_flashpoint_discord_DiscordNative_stop(JNIEnv*, jclass)
 
 } // extern "C"
 
-#else // !ARMFlash_HAS_DISCORD
+#else // !FLASHARM_HAS_DISCORD
 
 // SDK not staged. Every entry point still exists so the Kotlin side is identical either way; it
 // simply reports Disabled and does nothing.
@@ -859,4 +859,4 @@ JNIEXPORT void JNICALL Java_com_armsx_flashpoint_discord_DiscordNative_pump(JNIE
 JNIEXPORT void JNICALL Java_com_armsx_flashpoint_discord_DiscordNative_stop(JNIEnv*, jclass) {}
 }
 
-#endif // ARMFlash_HAS_DISCORD
+#endif // FLASHARM_HAS_DISCORD

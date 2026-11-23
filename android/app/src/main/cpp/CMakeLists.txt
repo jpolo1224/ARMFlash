@@ -22,6 +22,7 @@ if(DISCORD_SDK_DIR AND FLASHARM_DISCORD_APP_ID AND EXISTS "${DISCORD_SDK_SO}" AN
         INTERFACE_INCLUDE_DIRECTORIES "${DISCORD_SDK_DIR}/include")
     add_library(flasharm_discord SHARED discord_bridge.cpp)
     target_compile_definitions(flasharm_discord PRIVATE
+        FLASHARM_HAS_DISCORD=1
         FLASHARM_DISCORD_APP_ID=${FLASHARM_DISCORD_APP_ID}ull
         FLASHARM_DISCORD_APP_ID_STR="${FLASHARM_DISCORD_APP_ID}")
     target_link_libraries(flasharm_discord discord_partner_sdk log android)

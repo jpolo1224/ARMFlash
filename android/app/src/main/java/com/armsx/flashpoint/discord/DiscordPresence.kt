@@ -220,8 +220,6 @@ object DiscordPresence {
     fun authorizeForGame() {
         signingInUntil = android.os.SystemClock.uptimeMillis() + 5 * 60_000L
         signingIn.value = true
-        // The helper may not be bound yet: then the sign-in goes out once it is.
-        authorizeOnConnect = helper == null
         authorize()
     }
 
@@ -552,7 +550,9 @@ object DiscordPresence {
         signInExpired = false
         error.value = null
         Log.i(TAG, "authorize() requested (started=$started, enabled=$enabled)")
-        send(DiscordIpc.MSG_AUTHORIZE)
+        // The first Connect binds the helper just now: send() would drop the sign-in, so it goes
+        // out from onServiceConnected instead.
+        if (helper == null) authorizeOnConnect = true else send(DiscordIpc.MSG_AUTHORIZE)
     }
 
     fun signOut() {

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -6,7 +8,14 @@ plugins {
 
 // Discord Rich Presence (as in ARMSX2): the Social SDK is a private, optional build input, and the
 // feature needs ARMFlash's own Discord application id. Without both it compiles out.
-val discordSdkDir: String? = (System.getenv("DISCORD_SDK_DIR") ?: providers.gradleProperty("DISCORD_SDK_DIR").orNull)
+// The SDK's folder: DISCORD_SDK_DIR, or discord.sdkDir in this machine's local.properties (kept out
+// of git). The application id is ARMFlash's own (gradle.properties), public in every APK anyway.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
+}
+val discordSdkDir: String? = (System.getenv("DISCORD_SDK_DIR") ?: providers.gradleProperty("DISCORD_SDK_DIR").orNull
+    ?: localProps.getProperty("discord.sdkDir"))
     ?.takeIf { File(it, "include/discordpp.h").isFile }
 val discordAppId: String? = (System.getenv("FLASHARM_DISCORD_APP_ID") ?: providers.gradleProperty("flasharm.discordAppId").orNull)
     ?.takeIf { it.matches(Regex("\\d{15,20}")) }

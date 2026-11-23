@@ -16,10 +16,11 @@ export CC_aarch64_linux_android="$BIN/aarch64-linux-android$API-clang"
 export CXX_aarch64_linux_android="$BIN/aarch64-linux-android$API-clang++"
 export AR_aarch64_linux_android="$BIN/llvm-ar"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
-# 16 KB page-size compatible (required for new Play uploads).
+# 16 KB page-size compatible (required for new Play uploads). No target-cpu: plain ARMv8, so
+# phones with only Cortex-A53-class cores run it too.
 # --remap-path-prefix: panic messages and symbols name crates by their registry path, not by
 # this machine's folders (they show up in the in-app Logs tab).
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C target-cpu=cortex-a76 --remap-path-prefix=$HOME/.cargo/registry/src=crates --remap-path-prefix=$HOME/.cargo/git/checkouts=git --remap-path-prefix=$ROOT=flasharm"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 --remap-path-prefix=$HOME/.cargo/registry/src=crates --remap-path-prefix=$HOME/.cargo/git/checkouts=git --remap-path-prefix=$ROOT=flasharm"
 
 FLAGS=(); [[ "$PROFILE" == release ]] && FLAGS=(--release)
 

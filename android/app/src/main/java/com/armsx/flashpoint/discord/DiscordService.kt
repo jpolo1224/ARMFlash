@@ -70,6 +70,9 @@ class DiscordService : Service() {
     private lateinit var messenger: Messenger
 
     private var started = false
+    // A sign-in asked for before the client was up (the first Connect starts both at once): it is
+    // opened once the client has started, not raced against it.
+    private var pendingAuthorize = false
     private var loaded = false
     private var idle = false
 
@@ -111,15 +114,11 @@ class DiscordService : Service() {
 
             DiscordIpc.MSG_AUTHORIZE -> {
                 if (!loaded) return
-                // The SDK opens the browser through an Activity it has been handed, and that
-                // Activity has to live in THIS process — one in the app process would be a
-                // reference the SDK here cannot use. DiscordAuthActivity exists only to be that.
-                runCatching {
-                    val i = Intent(this, DiscordAuthActivity::class.java)
-                        .putExtra(DiscordAuthActivity.EXTRA_AUTHORIZE, true)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(i)
-                }.onFailure { Log.w(TAG, "auth activity failed: ${it.message}") }
+                if (!started) {
+                    pendingAuthorize = true
+                    return
+                }
+                openSignIn()
             }
 
             DiscordIpc.MSG_SET_PLAYING -> {
@@ -141,6 +140,7 @@ class DiscordService : Service() {
                 if (!loaded) return
                 runCatching { DiscordNative.stop() }
                 started = false
+                pendingAuthorize = false
             }
 
             DiscordIpc.MSG_QUERY -> reply(msg.replyTo, msg.data?.getBoolean(DiscordIpc.DATA_PEEK, false) == true)
@@ -190,9 +190,28 @@ class DiscordService : Service() {
         }
     }
 
+    /** The browser sign-in, through the Activity the SDK needs in this process. */
+    private fun openSignIn() {
+        // The SDK opens the browser through an Activity it has been handed, and that
+        // Activity has to live in THIS process — one in the app process would be a
+        // reference the SDK here cannot use. DiscordAuthActivity exists only to be that.
+        runCatching {
+            val i = Intent(this, DiscordAuthActivity::class.java)
+                .putExtra(DiscordAuthActivity.EXTRA_AUTHORIZE, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(i)
+        }.onFailure { Log.w(TAG, "auth activity failed: ${it.message}") }
+    }
+
     private fun doStart(token: String, refresh: String) {
         runCatching { DiscordNative.start(token, refresh) }
-            .onSuccess { started = true }
+            .onSuccess {
+                started = true
+                if (pendingAuthorize) {
+                    pendingAuthorize = false
+                    openSignIn()
+                }
+            }
             .onFailure { Log.w(TAG, "start failed: ${it.message}") }
     }
 
