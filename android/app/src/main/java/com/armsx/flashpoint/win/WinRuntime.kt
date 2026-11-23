@@ -127,6 +127,9 @@ class WinRuntime(private val ctx: Context) {
         link("$lib/libxkbcomp.so", File(xdir, "bin/xkbcomp"))
         File(xdir, "tmp/.X11-unix").mkdirs(); File(xdir, "home").mkdirs()
         File(root, "tmp").mkdirs(); File(root, "home").mkdirs()
+        // Where the base system's glibc keeps POSIX shared memory (Winlator's patch, relocated):
+        // Wine's esync maps its shared object table there.
+        File(root, "tmp/shm").mkdirs()
         link("${xdir.path}/tmp/.X11-unix", File(root, "tmp/.X11-unix"))
     }
 

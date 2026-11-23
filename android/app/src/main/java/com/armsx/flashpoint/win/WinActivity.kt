@@ -185,6 +185,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             .onFailure { android.util.Log.w(WinRuntime.TAG, "audio: ${it.message}") }.getOrNull()
         say("Starting the virtual screen…")
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
+        // This game's settings before the first Wine command: Wine's server and every program
+        // must agree on some of them (WINEESYNC), and setup commands below start the server.
+        rt.extra = gameEnv(fpRoot)
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
@@ -200,7 +203,6 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         say("Starting the game…")
         // A start script (startUnity.bat and the like) runs in Wine's cmd, as Windows would.
         val command = if (app.endsWith(".bat", ignoreCase = true)) listOf("cmd", "/c", "F:\\$app") else listOf("F:\\$app")
-        rt.extra = gameEnv(fpRoot)
         val p = rt.run(command + args, cwd.takeIf { it.isDirectory })
         xq.execute {
             runCatching { x = XClient.connect(rt.socket.path) }.onFailure { say("Could not reach the virtual screen: ${it.message}") }
@@ -220,15 +222,14 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         val env = LinkedHashMap<String, String>()
         if (intent.getStringExtra(EXTRA_PLATFORM).equals("Silverlight", ignoreCase = true)) {
             env += WinRuntime.JIT_SAFE
-            // TEST (remove once Silverlight runs): how far it loads, any x86 instruction Box64
-            // cannot translate (reported at log level 1 only), and every exception Wine dispatches
-            // with its address, parameters (.NET's carry the exception's HRESULT) and registers.
-            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,+seh")
-            // TEST: every instruction of Silverlight's agcore.dll (code at 0x76E51000-0x774AB000,
-            // where it always loads here) run by both Box64's translator and its interpreter, and
-            // each place they disagree logged once: the Avatar Editor's PNG textures fail to
-            // decode here and not on the Mac (Rosetta), so its renderer never starts.
-            env += mapOf("BOX64_DYNAREC_TEST" to "0x76E51000-0x774AB000", "BOX64_DYNAREC_TEST_NODUP" to "1")
+            // TEST (remove once Silverlight runs): how far it loads, and any x86 instruction Box64
+            // cannot translate (reported at log level 1 only).
+            env += mapOf("BOX64_LOG" to "1", "WINEDEBUG" to "+timestamp,-all,err+all,+loaddll,warn+module,warn+seh")
+            // TEST: Wine's events, mutexes and waits through eventfd (esync) instead of a round
+            // trip to its server each time. The Xbox Avatar Editor loses a race between its UI
+            // thread and its worker threads when waking a thread is that slow (it ran with
+            // Silverlight's own code slowed down instead); Winlator runs this Wine with it on.
+            env += mapOf("WINEESYNC" to "1")
         }
         runCatching { File(fpRoot, "wine_env.txt").readLines() }.getOrNull()?.forEach { line ->
             val t = line.trim()
