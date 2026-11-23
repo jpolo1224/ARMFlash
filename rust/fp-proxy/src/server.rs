@@ -461,14 +461,22 @@ async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, r
             continue;
         }
         let status = resp.status();
-        let ct = resp.headers().get(header::CONTENT_TYPE).cloned();
+        let mut ct = resp.headers().get(header::CONTENT_TYPE).cloned();
         let cookies: Vec<HeaderValue> = resp.headers().get_all(header::SET_COOKIE).iter().cloned().collect();
-        let bytes = resp.into_body().collect().await.ok()?.to_bytes();
+        let mut bytes = resp.into_body().collect().await.ok()?.to_bytes();
         log::info!("live {method} {url}: {status} ({} bytes)", bytes.len());
-        if status == StatusCode::OK && bytes.is_empty() && empty_answers < 2 && ask_again_when_empty(rel, &body) {
-            empty_answers += 1;
-            tokio::time::sleep(std::time::Duration::from_millis(500 * empty_answers)).await;
-            continue;
+        let search = status == StatusCode::OK && ask_again_when_empty(rel, &body);
+        if search && bytes.is_empty() {
+            if let Some((last, last_ct)) = last_answer(&url, &body) {
+                log::info!("level server busy: the last answer to this search ({} bytes) stands in", last.len());
+                (bytes, ct) = (last, last_ct);
+            } else if empty_answers < 2 {
+                empty_answers += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(2 * empty_answers)).await;
+                continue;
+            }
+        } else if search {
+            remember_answer(&url, &body, &bytes, &ct);
         }
         log::debug!("live {method} sent {:?}; got {:?}", String::from_utf8_lossy(&body[..body.len().min(400)]),
             String::from_utf8_lossy(&bytes[..bytes.len().min(300)]));
@@ -484,11 +492,35 @@ async fn live_forward(method: Method, headers: &hyper::HeaderMap, body: Bytes, r
     None
 }
 
-/// Happy Wheels' level server answers a level search with nothing now and then (about one in
-/// six, checked 2026-11-23), and the game then shows no levels: such a search is asked again.
-/// Searches only (action=get_...): asking again changes nothing on the server.
+/// Happy Wheels' level server limits how often one address may search: after a handful of
+/// searches in quick succession it answers 200 with nothing until it has had a few seconds of
+/// quiet (measured 2026-11-23: empty from the 7th search at one every 2 s, back after 4 s), and
+/// the game then shows no levels. An empty answer to a search gets the last full answer to the
+/// same search; without one, the search is asked again after 2 s and then 4 s, long enough for
+/// the limit to clear. Searches only (action=get_...): asking again changes nothing on the server.
 fn ask_again_when_empty(rel: &str, body: &[u8]) -> bool {
     rel.ends_with("get_level.hw") && String::from_utf8_lossy(body).split('&').any(|kv| kv.starts_with("action=get_"))
+}
+
+type Answers = std::collections::HashMap<(String, Bytes), (Bytes, Option<HeaderValue>)>;
+
+/// The last full answer to each level search ([ask_again_when_empty]), for this run of the app.
+fn answers() -> &'static std::sync::Mutex<Answers> {
+    static A: OnceLock<std::sync::Mutex<Answers>> = OnceLock::new();
+    A.get_or_init(Default::default)
+}
+
+fn remember_answer(url: &str, body: &Bytes, answer: &Bytes, ct: &Option<HeaderValue>) {
+    let Ok(mut a) = answers().lock() else { return };
+    // Searches differ by page, sort and filters; a few hundred cover any session.
+    if a.len() >= 512 {
+        a.clear();
+    }
+    a.insert((url.to_string(), body.clone()), (answer.clone(), ct.clone()));
+}
+
+fn last_answer(url: &str, body: &Bytes) -> Option<(Bytes, Option<HeaderValue>)> {
+    answers().lock().ok()?.get(&(url.to_string(), body.clone())).cloned()
 }
 
 /// Fetch from the remote Legacy server, then (if allowed) the original site, and cache into htdocs.
@@ -727,7 +759,9 @@ pub async fn http_get(url: &str) -> io::Result<Bytes> {
 
 #[cfg(test)]
 mod live_tests {
-    use super::{ask_again_when_empty, live_allowed, tracker};
+    use super::{ask_again_when_empty, last_answer, live_allowed, remember_answer, tracker};
+    use bytes::Bytes;
+    use hyper::header::HeaderValue;
 
     #[test]
     fn happy_wheels_level_searches_are_asked_again() {
@@ -736,6 +770,19 @@ mod live_tests {
         assert!(ask_again_when_empty(lv, b"page=1&action=get_featured"));
         assert!(!ask_again_when_empty(lv, b"action=rate_level&level_id=1&rating=5"));
         assert!(!ask_again_when_empty("totaljerkface.com/submit_level.hw", b"action=get_all"));
+    }
+
+    #[test]
+    fn busy_level_server_gets_the_last_answer() {
+        let url = "https://totaljerkface.com/get_level.hw";
+        let (newest, featured) = (Bytes::from_static(b"action=get_all&page=1&sortby=newest"), Bytes::from_static(b"action=get_featured"));
+        assert!(last_answer(url, &newest).is_none());
+        remember_answer(url, &newest, &Bytes::from_static(b"levels"), &Some(HeaderValue::from_static("text/plain")));
+        let (b, ct) = last_answer(url, &newest).unwrap();
+        assert_eq!((&b[..], ct.unwrap()), (&b"levels"[..], HeaderValue::from_static("text/plain")));
+        // Another search, or the same one on another page, has its own answer.
+        assert!(last_answer(url, &featured).is_none());
+        assert!(last_answer(url, &Bytes::from_static(b"action=get_all&page=2&sortby=newest")).is_none());
     }
 
     #[test]
