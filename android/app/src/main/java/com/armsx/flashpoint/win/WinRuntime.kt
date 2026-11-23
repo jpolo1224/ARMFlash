@@ -125,6 +125,9 @@ class WinRuntime(private val ctx: Context) {
     private fun prepareLinks() {
         // Box64's interpreter is set to <data>/r/ld, the glibc loader shipped in the APK.
         link("$lib/libldlinux.so", File(root, "ld"))
+        // Box64 by a path without "=" (the APK's folder has "==" in it), for commands run through
+        // Android's env, which takes any argument with "=" for a variable.
+        link("$lib/libbox64.so", File(root, "box64"))
         link("/system/bin/sh", File(xdir, "bin/sh"))
         link("$lib/libxkbcomp.so", File(xdir, "bin/xkbcomp"))
         File(xdir, "tmp/.X11-unix").mkdirs(); File(xdir, "home").mkdirs()
@@ -320,7 +323,10 @@ class WinRuntime(private val ctx: Context) {
         val all = env + extra
         // Android's own taskset and env would load the base system's glibc through
         // LD_LIBRARY_PATH and refuse to start ("bad ELF magic"), so env sets it just for Box64.
-        val pinned = cpuMask?.let { listOf("/system/bin/taskset", it, "/system/bin/env", "LD_LIBRARY_PATH=${all["LD_LIBRARY_PATH"].orEmpty()}") + cmd }
+        val pinned = cpuMask?.let {
+            listOf("/system/bin/taskset", it, "/system/bin/env", "LD_LIBRARY_PATH=${all["LD_LIBRARY_PATH"].orEmpty()}",
+                "${root.path}/box64", "${root.path}/opt/wine/bin/wine") + args
+        }
         val pb = ProcessBuilder(pinned ?: cmd).redirectErrorStream(true)
         if (cwd != null) pb.directory(cwd)
         pb.environment().putAll(all)
