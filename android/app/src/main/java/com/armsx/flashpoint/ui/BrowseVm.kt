@@ -71,6 +71,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         get() = statusState.value
         set(v) { if (v.isNotEmpty()) android.util.Log.i("ARMFlash", "status: $v"); statusState.value = v }
     var dbReady by mutableStateOf(false)
+    /**
+     * The database is opening: start-up shows a loading screen then, not the first-run one.
+     * Declared before init, which already opens it.
+     */
+    var opening by mutableStateOf(false)
+        private set
     var dbGames by mutableStateOf(0)
     var importing by mutableStateOf<Long?>(null)
     var sync by mutableStateOf<com.armsx.flashpoint.core.SyncStatus?>(null)
@@ -118,10 +124,6 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     init {
         if (library.hasDatabase()) openDatabase()
     }
-
-    /** The database is opening: start-up shows a loading screen then, not the first-run one. */
-    var opening by mutableStateOf(false)
-        private set
 
     fun openDatabase(): kotlinx.coroutines.Job {
         opening = true
