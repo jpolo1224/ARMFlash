@@ -78,9 +78,66 @@ counted! {
     15 "set_layouts" "vkCreateDescriptorSetLayout" "vkDestroyDescriptorSetLayout",
 }
 
+// Command buffers and pipelines come in arrays, so they get their own hooks.
+static CMD_BUFFERS: AtomicIsize = AtomicIsize::new(0);
+static PIPELINES: AtomicIsize = AtomicIsize::new(0);
+static COMMAND_POOL_RESETS: AtomicIsize = AtomicIsize::new(0);
+static REAL_ALLOC_CB: AtomicUsize = AtomicUsize::new(0);
+static REAL_FREE_CB: AtomicUsize = AtomicUsize::new(0);
+static REAL_GFX_PIPES: AtomicUsize = AtomicUsize::new(0);
+static REAL_DESTROY_PIPE: AtomicUsize = AtomicUsize::new(0);
+static REAL_RESET_POOL: AtomicUsize = AtomicUsize::new(0);
+
+#[repr(C)]
+struct CbAllocInfo { s_type: i32, p_next: *const c_void, pool: u64, level: i32, count: u32 }
+
+unsafe extern "system" fn alloc_cb(d: vk::Device, info: *const CbAllocInfo, out: *mut *mut c_void) -> vk::Result {
+    let real: unsafe extern "system" fn(vk::Device, *const CbAllocInfo, *mut *mut c_void) -> vk::Result = unsafe { std::mem::transmute(REAL_ALLOC_CB.load(Ordering::Relaxed)) };
+    let r = unsafe { real(d, info, out) };
+    if r == vk::Result::SUCCESS { CMD_BUFFERS.fetch_add(unsafe { (*info).count } as isize, Ordering::Relaxed); }
+    r
+}
+unsafe extern "system" fn free_cb(d: vk::Device, pool: u64, n: u32, bufs: *const *mut c_void) {
+    let real: unsafe extern "system" fn(vk::Device, u64, u32, *const *mut c_void) = unsafe { std::mem::transmute(REAL_FREE_CB.load(Ordering::Relaxed)) };
+    CMD_BUFFERS.fetch_sub(n as isize, Ordering::Relaxed);
+    unsafe { real(d, pool, n, bufs) }
+}
+unsafe extern "system" fn gfx_pipes(d: vk::Device, cache: u64, n: u32, infos: *const c_void, alloc: *const c_void, out: *mut u64) -> vk::Result {
+    let real: unsafe extern "system" fn(vk::Device, u64, u32, *const c_void, *const c_void, *mut u64) -> vk::Result = unsafe { std::mem::transmute(REAL_GFX_PIPES.load(Ordering::Relaxed)) };
+    let r = unsafe { real(d, cache, n, infos, alloc, out) };
+    if r == vk::Result::SUCCESS { PIPELINES.fetch_add(n as isize, Ordering::Relaxed); }
+    r
+}
+unsafe extern "system" fn destroy_pipe(d: vk::Device, p: u64, alloc: *const c_void) {
+    let real: DestroyFn = unsafe { std::mem::transmute(REAL_DESTROY_PIPE.load(Ordering::Relaxed)) };
+    if p != 0 { PIPELINES.fetch_sub(1, Ordering::Relaxed); }
+    unsafe { real(d, p, alloc) }
+}
+unsafe extern "system" fn reset_pool(d: vk::Device, pool: u64, flags: u32) -> vk::Result {
+    let real: unsafe extern "system" fn(vk::Device, u64, u32) -> vk::Result = unsafe { std::mem::transmute(REAL_RESET_POOL.load(Ordering::Relaxed)) };
+    COMMAND_POOL_RESETS.fetch_add(1, Ordering::Relaxed);
+    unsafe { real(d, pool, flags) }
+}
+
+fn special(name: &str, real: unsafe extern "system" fn()) -> Option<vk::PFN_vkVoidFunction> {
+    let (slot, hook): (&AtomicUsize, usize) = match name {
+        "vkAllocateCommandBuffers" => (&REAL_ALLOC_CB, alloc_cb as usize),
+        "vkFreeCommandBuffers" => (&REAL_FREE_CB, free_cb as usize),
+        "vkCreateGraphicsPipelines" => (&REAL_GFX_PIPES, gfx_pipes as usize),
+        "vkDestroyPipeline" => (&REAL_DESTROY_PIPE, destroy_pipe as usize),
+        "vkResetCommandPool" => (&REAL_RESET_POOL, reset_pool as usize),
+        _ => return None,
+    };
+    slot.store(real as usize, Ordering::Relaxed);
+    Some(Some(unsafe { std::mem::transmute::<usize, unsafe extern "system" fn()>(hook) }))
+}
+
 /// Hook a looked-up function, remembering the driver's own; None when it's not one we count.
 fn hook(name: &str, real: vk::PFN_vkVoidFunction) -> Option<vk::PFN_vkVoidFunction> {
     let real = real?;
+    if let Some(h) = special(name, real) {
+        return Some(h);
+    }
     for i in 0..N {
         if name == CREATE_NAMES[i] {
             REAL_CREATE[i].store(real as usize, Ordering::Relaxed);
@@ -128,5 +185,10 @@ pub fn active() -> bool {
 
 /// "memory 812 desc_pools 40 ..." for the memory log.
 pub fn summary() -> String {
-    (0..N).filter(|&i| i != 10).map(|i| format!("{} {}", LABELS[i], LIVE[i].load(Ordering::Relaxed) + if i == 9 { LIVE[10].load(Ordering::Relaxed) } else { 0 })).collect::<Vec<_>>().join(" ")
+    let mut s = (0..N).filter(|&i| i != 10).map(|i| format!("{} {}", LABELS[i], LIVE[i].load(Ordering::Relaxed) + if i == 9 { LIVE[10].load(Ordering::Relaxed) } else { 0 })).collect::<Vec<_>>().join(" ");
+    s.push_str(&format!(
+        " command_buffers {} pipelines {} pool_resets {}",
+        CMD_BUFFERS.load(Ordering::Relaxed), PIPELINES.load(Ordering::Relaxed), COMMAND_POOL_RESETS.load(Ordering::Relaxed),
+    ));
+    s
 }
