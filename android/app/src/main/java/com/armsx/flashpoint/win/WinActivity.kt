@@ -79,12 +79,21 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
             surface.requestFocus(); imm.showSoftInput(surface, 0)
         }
         override fun restart() {
-            rt.stopAll()
-            val target = if (isFlash) com.armsx.flashpoint.game.FlashPrefs.activity(this@WinActivity, gameId) else WinActivity::class.java
+            if (restarting) return
             restarting = true
-            startActivity(Intent(intent).setClass(this@WinActivity, target)
-                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
-            finish()
+            running = false
+            val target = if (isFlash) com.armsx.flashpoint.game.FlashPrefs.activity(this@WinActivity, gameId) else WinActivity::class.java
+            // This run is all gone before the next one starts, in this same process: its X server
+            // and audio server hold the display and the socket name the new run needs, and this
+            // activity's onDestroy, which comes after the new one has started, leaves it alone.
+            Thread({
+                tearDown(wait = true)
+                runOnUiThread {
+                    startActivity(Intent(intent).setClass(this@WinActivity, target)
+                        .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
+                    finish()
+                }
+            }, "win-restart").start()
         }
         override fun exit() = quit()
         override fun frames(): Long = frames
@@ -484,12 +493,18 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         finish()
     }
 
+    /** The game, Wine, the X server and the audio server of this run. */
+    private fun tearDown(wait: Boolean) {
+        x?.close(); x = null
+        rt.stopAll(wait)
+        audio?.close(); audio = null
+    }
+
     override fun onDestroy() {
         running = false
         screen?.onDestroy()
-        x?.close()
-        rt.stopAll()
-        audio?.close()
+        // A restart already stopped this run; what runs now is the new one's.
+        if (!restarting) tearDown(wait = false)
         super.onDestroy()
         if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
     }

@@ -405,11 +405,23 @@ class WinRuntime(private val ctx: Context) {
         children().filter { it != x }.forEach { android.os.Process.sendSignal(it, if (paused) SIGSTOP else SIGCONT) }
     }
 
-    /** Stop the game, Wine's services and the X server. */
-    fun stopAll() {
-        children().forEach { android.os.Process.sendSignal(it, SIGCONT); android.os.Process.killProcess(it) }
+    /**
+     * Stop the game, Wine's services and the X server. With [wait], also wait (up to 3 s) until
+     * they are gone, so a new X server can take the display.
+     */
+    fun stopAll(wait: Boolean = false) {
+        val pids = children()
+        pids.forEach { android.os.Process.sendSignal(it, SIGCONT); android.os.Process.killProcess(it) }
         wine?.destroy(); xServer?.destroy()
+        if (!wait) return
+        val until = android.os.SystemClock.uptimeMillis() + 3000
+        while (pids.any(::alive) && android.os.SystemClock.uptimeMillis() < until) Thread.sleep(20)
     }
+
+    /** Still running: there, and not a zombie waiting to be reaped. */
+    private fun alive(pid: Int) = runCatching {
+        File("/proc/$pid/stat").readText().substringAfterLast(')').trim().firstOrNull().let { it != 'Z' && it != 'X' }
+    }.getOrDefault(false)
 
     companion object {
         /** Programs Wine places windows for itself (see [ensureUnmanaged]). */
