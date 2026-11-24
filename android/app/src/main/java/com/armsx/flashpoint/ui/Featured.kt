@@ -6,7 +6,7 @@ package com.armsx.flashpoint.ui
  * Ultimate Flash Sonic,
  * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run, Fireboy & Watergirl by Oslo Albet
  * and Jan Villanueva, Learn to Fly by Light Bringer, Jetpack Joyride, Angry Birds, Plants vs.
- * Zombies, and Club Penguin's games). By Flashpoint game id, in this order; Happy
+ * Zombies, Club Penguin's games, and Merlin's Revenge 1 to 3 and Team Battles). By Flashpoint game id, in this order; Happy
  * Wheels is its HTML5 release by its own makers.
  */
 val FEATURED_GAMES = listOf(
@@ -109,4 +109,8 @@ val FEATURED_GAMES = listOf(
     "bc7b622d-436e-d9c5-7c62-40ebfc04c3a5", // Secret of the Fur
     "cfa14c4b-6b3d-47f7-a1a1-b2fe2c9cf665", // The Veggie Villain
     "20a49e40-0a41-4406-8fe8-be694d172123", // Waddle Squad
+    "34a51a22-eae4-4292-b015-873b7e5bee4a", // Merlin's Revenge Episode 1
+    "e2dba75a-5d3d-4e00-abdc-6389fc5589fc", // Merlin's Revenge Episode 2
+    "1df86c2e-b80c-4974-80b1-afc2e9c55909", // Merlin's Revenge Episode 3
+    "a0925473-eaef-4d16-b909-8482c7e6510a", // Merlin's Revenge: Team Battles
 )
