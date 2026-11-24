@@ -231,9 +231,50 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
                 }
             }
         }
+        // ARMSX2's snap grid while editing: the faint squares the keys' centres snap to.
+        if (st.editing && TouchPrefs.gridSnap.value) {
+            val gpx = w / GRID_COLS
+            Canvas(Modifier.fillMaxSize()) {
+                val line = Color.White.copy(alpha = 0.13f)
+                var gx = 0f
+                while (gx <= size.width) { drawLine(line, Offset(gx, 0f), Offset(gx, size.height), strokeWidth = 1f); gx += gpx }
+                var gy = 0f
+                while (gy <= size.height) { drawLine(line, Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1f); gy += gpx }
+            }
+        }
         // ARMSX2's Half-Screen Sticks: the left half (outside the keys) is a stick for the arrow keys.
+        // While editing, its area is marked; in play, the stick shows under the thumb holding it.
+        if (st.editing && TouchPrefs.halfScreenStick.value) {
+            Box(
+                Modifier.fillMaxHeight().fillMaxWidth(0.5f).background(Color(0x1A6CC63F)).border(1.dp, Color(0x666CC63F)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Half-screen stick\nThe left half steers the arrow keys",
+                    color = Color(0xCCFFFFFF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
         if (keysShown && !st.editing && TouchPrefs.halfScreenStick.value) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(0.5f).then(halfStickInput(dirCodes("arrows"), inj, with(density) { 60.dp.toPx() })))
+            var at by remember { mutableStateOf<Offset?>(null) }
+            var thumb by remember { mutableStateOf(Offset.Zero) }
+            val baseDp = 140f
+            val basePx = with(density) { baseDp.dp.toPx() }
+            val thumbPx = basePx * 0.56f
+            Box(Modifier.fillMaxHeight().fillMaxWidth(0.5f).then(halfStickInput(dirCodes("arrows"), inj, basePx) { o, t -> at = o; thumb = t })) {
+                at?.let { o ->
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_stick_base), null,
+                        Modifier.offset { IntOffset((o.x - basePx / 2).roundToInt(), (o.y - basePx / 2).roundToInt()) }.size(baseDp.dp).alpha(l.opacity),
+                    )
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_thumb), null,
+                        Modifier.offset { IntOffset((o.x + thumb.x - thumbPx / 2).roundToInt(), (o.y + thumb.y - thumbPx / 2).roundToInt()) }
+                            .size((baseDp * 0.56f).dp).alpha(l.opacity),
+                    )
+                }
+            }
         }
         if (keysShown) {
             l.buttons.forEachIndexed { i, b ->
@@ -344,8 +385,11 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
     val wide = b.kind == "key" && isWideKey(b.code)
     val heightPx = with(density) { b.size.dp.toPx() }
     val widthPx = if (wide) heightPx * 1.9f else heightPx
-    val cx = b.x * w
-    val cy = b.y * h
+    // ARMSX2's grid: while editing, a key is drawn on its nearest grid cross as it is dragged; the
+    // layout keeps the free position until the finger lifts, then takes the snapped one.
+    val snap = st.editing && TouchPrefs.gridSnap.value
+    val cx = (if (snap) snapFrac(b.x, w, w) else b.x) * w
+    val cy = (if (snap) snapFrac(b.y, h, w) else b.y) * h
     val x = (cx - widthPx / 2).roundToInt()
     val y = (cy - heightPx / 2).roundToInt()
     val sel = st.editing && st.selected == index
@@ -371,14 +415,17 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
         "arrows", "wasd" -> {
             val codes = dirCodes(b.kind)
             var ownLit by remember { mutableStateOf(0) }
+            var ownShift by remember { mutableStateOf(Offset.Zero) }
             val input = when {
                 st.editing -> Modifier
                 multi -> surfaceInput(surface) { at }
-                else -> dpadInput(codes, widthPx, inj) { ownLit = it }
+                else -> dpadInput(codes, widthPx, inj, { ownShift = it }) { ownLit = it }
             }
             val lit = if (multi) surface.lit[index] ?: 0 else ownLit
+            val moved = if (multi) surface.shift[index] ?: Offset.Zero else ownShift
             Box(base.then(edit).then(input)) {
-                SpriteDpad(lit)
+                // Floating: the D-pad drawn where the thumb holding it centred it.
+                Box(Modifier.fillMaxSize().offset { IntOffset(moved.x.roundToInt(), moved.y.roundToInt()) }) { SpriteDpad(lit) }
                 if (b.kind == "wasd") Text("WASD", color = KeyLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
             }
         }
@@ -498,12 +545,15 @@ private fun surfaceInput(surface: TouchSurface, at: () -> Offset): Modifier = Mo
 
 /**
  * ARMSX2's Half-Screen Sticks, for the arrow keys: a thumb anywhere on the area steers from where
- * it landed. Nothing is drawn.
+ * it landed. [show] gets where the stick is (null: let go) and where its thumb is, to draw them;
+ * [sizePx] is the drawn stick's size.
  */
-private fun halfStickInput(codes: IntArray, inj: GameInput, radiusPx: Float): Modifier = Modifier.pointerInput(codes.toList(), radiusPx) {
+private fun halfStickInput(codes: IntArray, inj: GameInput, sizePx: Float, show: (Offset?, Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList(), sizePx) {
+    val visual = sizePx * 0.30f
     awaitEachGesture {
         val d = awaitFirstDown()
         d.consume()
+        show(d.position, Offset.Zero)
         var mask = 0
         fun apply(m: Int) {
             for (i in 0..3) {
@@ -520,11 +570,14 @@ private fun halfStickInput(codes: IntArray, inj: GameInput, radiusPx: Float): Mo
                 c.consume()
                 if (!c.pressed) break
                 val v = c.position - d.position
-                val travel = radiusPx * TouchPrefs.stickTravel.intValue / 100f
-                apply(if (hypot(v.x, v.y) > travel * 0.35f) angleMask(v.x, v.y) else 0)
+                val travel = visual * TouchPrefs.stickTravel.intValue / 100f
+                val len = hypot(v.x, v.y)
+                show(d.position, if (len > 0f) v * (minOf(len, travel) / len) * (visual / travel) else Offset.Zero)
+                apply(if (len > travel * 0.35f) angleMask(v.x, v.y) else 0)
             }
         } finally {
             apply(0)
+            show(null, Offset.Zero)
         }
     }
 }
@@ -532,13 +585,18 @@ private fun halfStickInput(codes: IntArray, inj: GameInput, radiusPx: Float): Mo
 /** ARMSX2's grid: the overlay's width in this many columns, rows at the same pitch. */
 private const val GRID_COLS = 24f
 
+/** [f], a fraction of [dim], on the nearest grid line (the grid's pitch comes from the width [w]). */
+private fun snapFrac(f: Float, dim: Float, w: Float): Float {
+    val grid = w / GRID_COLS
+    if (grid <= 0f || dim <= 0f) return f
+    return (((f * dim / grid).roundToInt() * grid) / dim).coerceIn(0.02f, 0.98f)
+}
+
 /** Put keys on the nearest grid cross: one ([only]) or all of them. */
 private fun snapToGrid(st: OverlayState, w: Float, h: Float, only: Int? = null) {
-    val grid = w / GRID_COLS
-    if (grid <= 0f || h <= 0f) return
-    fun snap(f: Float, dim: Float) = (((f * dim / grid).roundToInt() * grid) / dim).coerceIn(0.02f, 0.98f)
+    if (w <= 0f || h <= 0f) return
     st.layout = st.layout.copy(buttons = st.layout.buttons.mapIndexed { i, b ->
-        if (only != null && i != only) b else b.copy(x = snap(b.x, w), y = snap(b.y, h))
+        if (only != null && i != only) b else b.copy(x = snapFrac(b.x, w, w), y = snapFrac(b.y, h, w))
     })
 }
 
@@ -682,11 +740,13 @@ private fun press(inj: GameInput, code: Int, down: Boolean) = when (code) {
 }
 
 /** Arrow cluster: slide between directions, diagonals included. Bits: 1 up, 2 down, 4 left, 8 right. */
-private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
+private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, shift: (Offset) -> Unit, lit: (Int) -> Unit): Modifier = Modifier.pointerInput(codes.toList(), sizePx) {
     awaitEachGesture {
         var mask = 0
+        // Floating: the D-pad centres where the thumb lands (kept inside its square).
+        var center = Offset(sizePx / 2, sizePx / 2)
         fun apply(p: Offset?) {
-            val m = if (p != null) dpadMask(p.x - sizePx / 2, p.y - sizePx / 2, sizePx / 2) else 0
+            val m = if (p != null) dpadMask(p.x - center.x, p.y - center.y, sizePx / 2) else 0
             for (i in 0..3) {
                 val bit = 1 shl i
                 if ((m and bit) != (mask and bit)) inj.key(codes[i], m and bit != 0)
@@ -697,6 +757,10 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
         }
         val d = awaitFirstDown()
         d.consume()
+        if (TouchPrefs.floatingStick.value) {
+            center = Offset(d.position.x.coerceIn(sizePx / 4, sizePx * 3 / 4), d.position.y.coerceIn(sizePx / 4, sizePx * 3 / 4))
+            shift(center - Offset(sizePx / 2, sizePx / 2))
+        }
         try {
             apply(d.position)
             while (true) {
@@ -708,6 +772,7 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
             }
         } finally {
             apply(null)
+            shift(Offset.Zero)
         }
     }
 }
@@ -795,7 +860,7 @@ private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modif
                 TouchPrefs.save()
                 if (TouchPrefs.gridSnap.value) snapToGrid(st, w, h)
             }
-            Pill(if (TouchPrefs.floatingStick.value) "Floating Stick On" else "Floating Stick Off", on = TouchPrefs.floatingStick.value) {
+            Pill(if (TouchPrefs.floatingStick.value) "Floating D-Pad/Stick On" else "Floating D-Pad/Stick Off", on = TouchPrefs.floatingStick.value) {
                 TouchPrefs.floatingStick.value = !TouchPrefs.floatingStick.value; TouchPrefs.save()
             }
             Pill(if (TouchPrefs.halfScreenStick.value) "Half-Screen Stick On" else "Half-Screen Stick Off", on = TouchPrefs.halfScreenStick.value) {

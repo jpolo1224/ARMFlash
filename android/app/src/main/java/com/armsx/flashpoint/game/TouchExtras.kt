@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -50,7 +51,7 @@ object TouchPrefs {
     val hapticStrength = mutableIntStateOf(100)
     /** How far a thumb moves from a touch stick's centre before it presses a direction, in percent. */
     val stickTravel = mutableIntStateOf(100)
-    /** A touch stick centres itself where the thumb lands. */
+    /** The D-pad and touch sticks centre themselves where the thumb lands (ARMSX2's Floating stick, D-pad too). */
     val floatingStick = mutableStateOf(false)
     /** The left half of the screen is an invisible stick for the arrow keys (ARMSX2's Half-Screen Sticks). */
     val halfScreenStick = mutableStateOf(false)
@@ -247,6 +248,8 @@ class TouchSurface(private val press: (Int, Boolean) -> Unit) {
     val held = mutableStateMapOf<Int, Boolean>()
     /** Directions lit per arrow cluster (layout index). */
     val lit = mutableStateMapOf<Int, Int>()
+    /** How far a floating arrow cluster moved to centre under the thumb holding it (layout index). */
+    val shift = mutableStateMapOf<Int, Offset>()
 
     private class Finger {
         var current: Set<Int> = emptySet()
@@ -259,6 +262,8 @@ class TouchSurface(private val press: (Int, Boolean) -> Unit) {
         var dirFirst: Pair<Int, Int>? = null
         /** Every direction crossed, per cluster (Hold all). */
         val dirLatched = HashMap<Int, Int>()
+        /** Floating: the cluster this finger landed on, centred where it landed. */
+        var floating: Pair<Int, Offset>? = null
     }
 
     private val fingers = HashMap<Long, Finger>()
@@ -267,14 +272,25 @@ class TouchSurface(private val press: (Int, Boolean) -> Unit) {
 
     /** Finger [id] is down at [x], [y] (overlay pixels). */
     fun touch(id: Long, x: Float, y: Float) {
+        val new = id !in fingers
         val f = fingers.getOrPut(id) { Finger() }
         val pad = pads.firstOrNull { abs(x - it.cx) <= it.half && abs(y - it.cy) <= it.half }
         if (pad != null) f.pad = pad.index
+        // Floating: a finger landing on a cluster centres it under itself (kept inside its square).
+        if (new && pad != null && TouchPrefs.floatingStick.value) {
+            f.floating = pad.index to Offset(
+                x.coerceIn(pad.cx - pad.half / 2, pad.cx + pad.half / 2),
+                y.coerceIn(pad.cy - pad.half / 2, pad.cy + pad.half / 2),
+            )
+        }
         // Inside a cluster only the cluster answers, as when it handled its own touch.
         val h = if (pad != null) emptySet() else keys.filter { it.contains(x, y) }.mapTo(HashSet()) { it.index }
         if (pad == null && h.isNotEmpty()) f.pad = -1
         // Past the cluster's edge the finger keeps steering from its centre until it reaches a key.
-        val d = pads.firstOrNull { it.index == f.pad }?.let { dpadMask(x - it.cx, y - it.cy, it.half) } ?: 0
+        val d = pads.firstOrNull { it.index == f.pad }?.let { p ->
+            val c = f.floating?.takeIf { it.first == p.index }?.second ?: Offset(p.cx, p.cy)
+            dpadMask(x - c.x, y - c.y, p.half)
+        } ?: 0
         f.dir = d
         if (f.pad >= 0) f.dirLatched[f.pad] = (f.dirLatched[f.pad] ?: 0) or d
         f.current = h
@@ -335,6 +351,13 @@ class TouchSurface(private val press: (Int, Boolean) -> Unit) {
         agg.forEach { held[it] = true }
         lit.keys.toList().forEach { if (it !in pressedDirs) lit.remove(it) }
         pressedDirs.forEach { (p, m) -> lit[p] = m }
+        val moved = HashMap<Int, Offset>()
+        fingers.values.forEach { f ->
+            val (p, c) = f.floating ?: return@forEach
+            if (f.pad == p) pads.firstOrNull { it.index == p }?.let { moved[p] = Offset(c.x - it.cx, c.y - it.cy) }
+        }
+        shift.keys.toList().forEach { if (it !in moved) shift.remove(it) }
+        moved.forEach { (p, o) -> shift[p] = o }
     }
 
     private fun key(k: Key, down: Boolean) {

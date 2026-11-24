@@ -747,11 +747,11 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         PercentSlider("Stick travel", TouchPrefs.stickTravel.intValue, 50..200) { TouchPrefs.stickTravel.intValue = it }
         Hint("How far your thumb moves from the centre of a touch stick before it presses a direction, for every touch stick.")
         Spacer(Modifier.height(8.dp))
-        MenuSwitchRow("Floating stick", TouchPrefs.floatingStick.value) { TouchPrefs.floatingStick.value = it; TouchPrefs.save() }
-        Hint("A touch stick centres itself where your thumb lands, so you can grab it without looking.")
+        MenuSwitchRow("Floating D-pad and stick", TouchPrefs.floatingStick.value) { TouchPrefs.floatingStick.value = it; TouchPrefs.save() }
+        Hint("The D-pad and touch sticks centre themselves where your thumb lands, so you can grab them without looking.")
         Spacer(Modifier.height(8.dp))
         MenuSwitchRow("Half-screen stick", TouchPrefs.halfScreenStick.value) { TouchPrefs.halfScreenStick.value = it; TouchPrefs.save() }
-        Hint("The left half of the screen, outside the keys, is an invisible stick for the arrow keys, steering from wherever your thumb lands. Touches there no longer reach the game itself.")
+        Hint("The left half of the screen, outside the keys, is a stick for the arrow keys: it appears wherever your thumb lands and steers from there. Touches there no longer reach the game itself.")
     }
     SectionCard("Gesture control") {
         Hint("Swipes and a double-tap on the game itself (not on a key) press a key, for keys that don't fit on screen. The game still gets the touch. With Pointer set to Touchpad or Point & click the screen moves the mouse, so gestures work with Direct touch.")

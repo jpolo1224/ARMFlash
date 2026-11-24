@@ -2,7 +2,8 @@ package com.armsx.flashpoint.ui
 
 /**
  * The Games tab's first screen: well-known titles before the A to Z list, picked by jpolo1224
- * (Papa's games, Gravity Guy, Poptropica, Fancy Pants, Super Mario 63, Ultimate Flash Sonic,
+ * (Papa's games, Gravity Guy, Poptropica, Fancy Pants, Super Mario 63, Super Smash Flash 1 and 2,
+ * Ultimate Flash Sonic,
  * Ninja Painter, Duck Life, Henry Stickmin, Happy Wheels, Run, Fireboy & Watergirl by Oslo Albet
  * and Jan Villanueva, Learn to Fly by Light Bringer, Jetpack Joyride, Angry Birds, Plants vs.
  * Zombies, and Club Penguin's games). By Flashpoint game id, in this order; Happy
@@ -33,6 +34,8 @@ val FEATURED_GAMES = listOf(
     "e4a2f2f5-ffb4-4a5e-9a91-d95a39afd612", // The Fancy Pants Adventures: World 4 part 2
     "1df51450-0aad-4e8a-8f33-0c1f4415b6ed", // The Fancy Pants Adventures: World 4 Part 3
     "16b04977-f714-4239-b343-b759e16a33af", // Super Mario 63
+    "53c978f6-9ddb-4dc5-bf6e-c06f1052bd7f", // Super Smash Flash (McLeodGaming)
+    "ed058412-fa96-4ea5-b2cb-2baff6a24b2a", // Super Smash Flash 2 (Beta 1.3.1.2; its 3.4 GB pack holds every version)
     "aab8ff04-e593-47c9-8186-a9e7c72f668e", // Ultimate Flash Sonic
     "06042f5e-fd62-482d-a222-46b56e81ac5b", // Ninja Painter
     "ea7ece99-dc71-4f82-9041-1f34919512ae", // Ninja Painter 2

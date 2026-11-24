@@ -328,40 +328,17 @@ private fun GridHeader(text: String) {
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> Unit) {
-    // Config, Screenshot Preview: Always shows each game's screenshot in place of its logo, Long
-    // Press swaps one card between the two. A game with no screenshot keeps its logo, and an
-    // Extreme game's screenshot stays hidden while Hide Extreme Screenshots is on.
-    val mode = vm.prefs2.screenshotPreviewMode.value
     var peek by remember(g?.id) { mutableStateOf(false) }
-    var noShot by remember(g?.id) { mutableStateOf(false) }
-    val local = g != null && com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
-    val shot = g != null && !local && !noShot && (mode == "2" || mode == "1" && peek) &&
-        !(vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g))
     Column(
         Modifier.padFocus().clip(RoundedCornerShape(6.dp))
             .background(if (selected) Fp.CardSelected.copy(alpha = 0.25f) else Color.Transparent)
-            .combinedClickable(
-                enabled = g != null, onClick = onClick,
-                onLongClick = if (mode == "1" && !local) ({ peek = !peek }) else null,
-            )
+            .combinedClickable(enabled = g != null, onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek })
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
             if (g != null) {
-                AsyncImage(
-                    // An imported game has no Flashpoint logo: its platform's stands in.
-                    model = when {
-                        local -> LogoSets.image(g.primaryPlatform)
-                        shot -> vm.library.screenshotUrl(g.id)
-                        else -> vm.library.logoUrl(g.id)
-                    },
-                    contentDescription = null,
-                    onError = { if (shot) noShot = true },
-                    contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().then(
-                        if (local) Modifier.padding(28.dp) else Modifier,
-                    ),
-                )
+                GameArt(vm, g, peek, Modifier.fillMaxSize(), localPadding = 28.dp)
                 PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(6.dp))
             }
         }
@@ -373,6 +350,36 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
         )
     }
 }
+
+/**
+ * A game's picture on a card. Config, Screenshot Preview: Always shows the game's screenshot in
+ * place of its logo, Long Press swaps a card between the two ([peek]). A game with no screenshot
+ * keeps its logo, an Extreme game's screenshot stays hidden while Hide Extreme Screenshots is on,
+ * and an imported game (My Games) shows its platform's picture.
+ */
+@Composable
+fun GameArt(vm: BrowseVm, g: Game, peek: Boolean, modifier: Modifier, localPadding: androidx.compose.ui.unit.Dp) {
+    val mode = vm.prefs2.screenshotPreviewMode.value
+    var noShot by remember(g.id) { mutableStateOf(false) }
+    val local = com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
+    val shot = !local && !noShot && (mode == "2" || mode == "1" && peek) &&
+        !(vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g))
+    AsyncImage(
+        model = when {
+            local -> LogoSets.image(g.primaryPlatform)
+            shot -> vm.library.screenshotUrl(g.id)
+            else -> vm.library.logoUrl(g.id)
+        },
+        contentDescription = null,
+        onError = { if (shot) noShot = true },
+        contentScale = ContentScale.Fit,
+        modifier = modifier.then(if (local) Modifier.padding(localPadding) else Modifier),
+    )
+}
+
+/** What a long press on a card does: with Screenshot Preview on Long Press, [toggle] the screenshot. */
+fun peekOnLongPress(vm: BrowseVm, g: Game?, toggle: () -> Unit): (() -> Unit)? =
+    if (vm.prefs2.screenshotPreviewMode.value == "1" && g != null && !com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) toggle else null
 
 @Composable
 fun PlatformBadge(platform: String, modifier: Modifier = Modifier) {

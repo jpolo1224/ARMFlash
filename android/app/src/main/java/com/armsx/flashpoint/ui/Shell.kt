@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -294,11 +295,18 @@ private fun GameRow(vm: BrowseVm, title: String, games: List<Game>, expanded: Bo
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun MiniCard(vm: BrowseVm, g: Game, onClick: () -> Unit) {
-    Column(Modifier.width(120.dp).padFocus().clickable(onClick = onClick).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    var peek by remember(g.id) { mutableStateOf(false) }
+    Column(
+        Modifier.width(120.dp).padFocus()
+            .combinedClickable(onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek })
+            .padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
-            AsyncImage(vm.library.logoUrl(g.id), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            GameArt(vm, g, peek, Modifier.fillMaxSize(), localPadding = 22.dp)
             PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(4.dp).size(20.dp))
         }
         Text(g.title, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))
