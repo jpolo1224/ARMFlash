@@ -345,7 +345,7 @@ private fun LogsPage() {
             runCatching {
                 val p = ProcessBuilder("logcat", "-d", "-v", "time", "-t", "2000").redirectErrorStream(true).start()
                 p.inputStream.bufferedReader().readLines().filter { l ->
-                    listOf("fpcore", "fpgame", "ARMFlash", "AndroidRuntime", "chromium").any { it in l }
+                    listOf("fpcore", "fpgame", "fpruffle", "ARMFlash", "AndroidRuntime", "chromium").any { it in l }
                 }.takeLast(1000)
             }.getOrDefault(listOf("Could not read logs"))
         }
