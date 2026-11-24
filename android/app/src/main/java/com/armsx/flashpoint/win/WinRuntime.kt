@@ -233,6 +233,40 @@ class WinRuntime(private val ctx: Context) {
      * resized its window to the stage while the X window stayed at its first size, so only a
      * quarter of the game showed.
      */
+    /**
+     * Fixes from later Wine versions, put over the runtime's own files (made by
+     * tools/winrt/winefix). Each replaces only the exact file it was made from, so a later
+     * runtime keeps its own; reinstalling the runtime brings the fix back at the next start.
+     */
+    fun ensureWineFixes() {
+        for (fix in WINE_FIXES) runCatching {
+            val f = File(root, fix.path)
+            if (!f.isFile) return@runCatching
+            when (sha256(f)) {
+                fix.fixed -> return@runCatching
+                fix.original -> {
+                    val tmp = File(f.path + ".armflash-new")
+                    ctx.assets.open(fix.asset).use { ins -> tmp.outputStream().use { ins.copyTo(it) } }
+                    check(sha256(tmp) == fix.fixed) { "asset checksum" }
+                    check(tmp.renameTo(f)) { "rename" }
+                    Log.i(TAG, "wine fix: ${fix.path} (${fix.what})")
+                }
+                else -> Log.i(TAG, "wine fix: ${fix.path} is another build, left as it is")
+            }
+        }.onFailure { Log.w(TAG, "wine fix: ${fix.path}: ${it.message}") }
+    }
+
+    private fun sha256(f: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { ins ->
+            val buf = ByteArray(1 shl 16)
+            while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private class WineFix(val path: String, val asset: String, val original: String, val fixed: String, val what: String)
+
     fun ensureUnmanaged() {
         // Where it was seen: the Shockwave projector (every PJ version is SPR.exe) and
         // Flashpoint Navigator (FPNavigator.exe starts flashpointnavigator.exe). Wine then draws
@@ -395,6 +429,20 @@ class WinRuntime(private val ctx: Context) {
         const val GECKO_SHA256 = "26cecc47706b091908f7f814bddb074c61beb8063318e9efc5a7f789857793d6"
         /** ARMFlash-3d-1.tar.zst (tools/winrt/pack3d.py). */
         const val GRAPHICS_SHA256 = "2ac35e8bd4ab011f83c1041608806603273f236d7d83f88111b72b3212ee0260"
+        /** See [ensureWineFixes]. */
+        private val WINE_FIXES = listOf(
+            // Wine commit 4781a712 (iphlpapi: Avoid out-of-bounds read if no network interfaces
+            // are present), in the runtime's Wine 10.10. Android hides the network interfaces from
+            // apps, so Wine finds none, and a 32-bit program asking for its network adapters read
+            // past an empty list and crashed: Merlin's Revenge's Shockwave projector, as it loaded.
+            WineFix(
+                path = "opt/wine/lib/wine/i386-windows/iphlpapi.dll",
+                asset = "winrt/iphlpapi-i386.dll",
+                original = "0923068b93de990b0c811f2cfee628289035809c0fd00d5f725ccfe204a04320",
+                fixed = "c56e50b660e4033fd8d08a28e3acd7c1666ae05182c88c9cbde7d55100e811f2",
+                what = "no crash without network adapters",
+            ),
+        )
         const val DISPLAY_NO = 1
         private const val SIGSTOP = 19
         private const val SIGCONT = 18

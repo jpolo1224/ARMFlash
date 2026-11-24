@@ -188,6 +188,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         // This game's settings before the first Wine command, so Wine's server and the setup
         // commands below run with them too.
         rt.extra = gameEnv(fpRoot)
+        rt.ensureWineFixes()
         if (!rt.ensurePrefix(::say)) { say("Windows support could not be set up."); return }
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()

@@ -227,7 +227,7 @@ private val APP_CREDITS = listOf(
     "From ARMSX2" to "Touch control sprites, the in-game menu, battery indicator, custom driver manager, Discord presence and controller focus ring, by the ARMSX2 team.",
     "Custom drivers" to "libadrenotools by Billy Laws (BSD 2-Clause).",
     "Cursors" to "Modern Mac: Capitaine Cursors by Keefer Rourke and others (LGPL-3.0). Linux: DMZ-White by Novell (CC BY-SA 3.0).",
-    "Windows players" to "Box64 by ptitSeb and contributors (MIT); Wine (LGPL-2.1); Winlator's base system by brunodev85 (LGPL-2.1); Xvfb from X.Org (MIT) as built by Termux; players from Flashpoint's support packs.",
+    "Windows players" to "Box64 by ptitSeb and contributors (MIT); Wine (LGPL-2.1; its iphlpapi.dll carries a fix from a later Wine version); Winlator's base system by brunodev85 (LGPL-2.1); Xvfb from X.Org (MIT) as built by Termux; players from Flashpoint's support packs.",
     "Secure Player" to "ARMFlash's own stand-in, following Flashpoint Secure Player by tomysshadow (MIT).",
     "Internet Explorer support" to "Wine Gecko (MPL-2.0), downloaded from WineHQ when a game needs it.",
     "Windows libraries" to "MFC 4.2 from Microsoft's Visual C++ 6 runtime, downloaded from Microsoft when a game needs it.",
