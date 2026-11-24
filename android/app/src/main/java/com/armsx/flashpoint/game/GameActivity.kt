@@ -207,6 +207,7 @@ class GameActivity : ComponentActivity() {
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.AUDIO_GATE, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.PAGE_FIT, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.KEY_FOCUS, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(web, RufflePage.TOUCH_LEAVE, setOf("*"))
         }
 
         val target = when (runner) {
@@ -390,6 +391,44 @@ object RufflePage {
             }); });
           }).observe(document.documentElement || document, { childList: true, subtree: true });
           document.addEventListener('DOMContentLoaded', function() { scan(document); });
+        })();
+    """.trimIndent()
+
+    /**
+     * Taps for Flash in the browser. A finger leaving the screen ends in a pointerleave, which
+     * Ruffle (web) turns into the mouse leaving the stage right after the release, before the
+     * game's next frame. Games that act on a release a frame later, while the mouse is still over
+     * the button (Tower Bloxx Deluxe 3D's menus and its tap to drop), lost every tap. Ruffle's own
+     * pointerleave listeners (registered inside a Ruffle player's shadow root) skip touch, so a
+     * lifted finger leaves the mouse where it was, as on native Ruffle and Flash on phones. A
+     * page's own listeners are left alone.
+     */
+    val TOUCH_LEAVE = """
+        (function(){
+          if (window.__fpmTouchLeave) return;
+          window.__fpmTouchLeave = true;
+          var add = EventTarget.prototype.addEventListener, remove = EventTarget.prototype.removeEventListener;
+          var wrapped = new WeakMap();
+          function ruffles(t) {
+            var r = t && t.getRootNode ? t.getRootNode() : null;
+            return !!(r && r.host && /^RUFFLE-/.test(r.host.tagName));
+          }
+          function wrap(t, type, fn) {
+            if (type !== 'pointerleave' || typeof fn !== 'function' || !ruffles(t)) return fn;
+            var w = wrapped.get(fn);
+            if (!w) {
+              w = function(e) { if (e.pointerType === 'touch') return; return fn.apply(this, arguments); };
+              wrapped.set(fn, w);
+            }
+            return w;
+          }
+          EventTarget.prototype.addEventListener = function(type, fn, opts) { return add.call(this, type, wrap(this, type, fn), opts); };
+          // Both forms: a player being taken down may already be out of its shadow root.
+          EventTarget.prototype.removeEventListener = function(type, fn, opts) {
+            var w = type === 'pointerleave' && typeof fn === 'function' ? wrapped.get(fn) : null;
+            if (w) remove.call(this, type, w, opts);
+            return remove.call(this, type, fn, opts);
+          };
         })();
     """.trimIndent()
 
@@ -664,6 +703,7 @@ object RufflePage {
         <style>html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none}
         #p{position:fixed;inset:0}ruffle-player{width:100%;height:100%;display:block}</style>
         <script>${KEY_FOCUS}</script>
+        <script>${TOUCH_LEAVE}</script>
         <script>if(!window.__fpmRuffle){window.__fpmRuffle=true;window.RufflePlayer=window.RufflePlayer||{};
         window.RufflePlayer.config=Object.assign($CONFIG,window.__fpmDisplay||{});document.write('<script src="/__fpm/ruffle/ruffle.js"><\/script>');}</script>
         </head><body><div id="p"></div><script>
