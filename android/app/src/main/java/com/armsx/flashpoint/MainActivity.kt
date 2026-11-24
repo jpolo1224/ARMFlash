@@ -62,10 +62,24 @@ private fun downloaded(s: com.armsx.flashpoint.core.SyncStatus): String {
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        /** Library screens alive in this process: a game from outside goes to one (LinkActivity, BootActivity). */
+        @Volatile var alive = 0
+            private set
+        /** The game running now (its id), from launch until it hands back; null while in the library. */
+        @Volatile var playing: String? = null
+    }
+
     private val vm: BrowseVm by viewModels()
+
+    override fun onDestroy() {
+        alive--
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        alive++
         enableEdgeToEdge()
         UiMusic.load(this)
         com.armsx.flashpoint.discord.DiscordPresence.attachActivity(this)
@@ -137,6 +151,7 @@ private fun App(vm: BrowseVm) {
     }
     val playLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         // Back from a game: Discord shows the library again.
+        MainActivity.playing = null
         com.armsx.flashpoint.discord.DiscordPresence.setPlaying(null)
         if (r.resultCode == Activity.RESULT_OK) {
             val id = r.data?.getStringExtra(GameActivity.EXTRA_GAME_ID)
@@ -179,6 +194,7 @@ private fun App(vm: BrowseVm) {
                         if (vm.isFlashPage(ready.game, ready.plan)) web.putExtra(com.armsx.flashpoint.win.WinActivity.EXTRA_APP, ready.game.applicationPath)
                             .putExtra(com.armsx.flashpoint.win.WinActivity.EXTRA_PLATFORM, ready.game.primaryPlatform)
                         val native = ready.plan.runner == com.armsx.flashpoint.game.Runner.FLASH && com.armsx.flashpoint.game.FlashPrefs.player(ctx, ready.game.id) == "native"
+                        MainActivity.playing = ready.game.id
                         playLauncher.launch(
                             when {
                                 ready.winApp != null -> com.armsx.flashpoint.win.WinActivity.intent(ctx, web, ready.winApp, ready.winArgs, vm.library.root.path, ready.game.primaryPlatform)
@@ -197,6 +213,13 @@ private fun App(vm: BrowseVm) {
         val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (mine) vm.library.local.game(id) else runCatching { com.armsx.flashpoint.core.FpCore.game(id) }.getOrNull()
         }
+        // A game this launch closed (a frontend asking for another) ends its own process on the
+        // way out, and a game started before that lands in the dying process and goes with it.
+        // Games always end their process, so one still there is on its way out: wait for it.
+        val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+        val proc = ctx.packageName + ":game"
+        var waited = 0
+        while (waited++ < 50 && am.runningAppProcesses?.any { it.processName == proc } == true) delay(100)
         // Cleared only now: pendingGame keys this effect, so clearing it before the lookup
         // restarted the effect and cancelled the lookup, and the game never started.
         vm.pendingGame = null

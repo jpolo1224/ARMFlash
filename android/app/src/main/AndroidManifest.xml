@@ -32,6 +32,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.GAME" />
             </intent-filter>
+        </activity>
+
+        <!-- Games from outside, passed on at once (see LinkActivity). No task of its own, so a
+             frontend's repeated link is never swallowed by Android. -->
+        <activity
+            android:name=".LinkActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
             <!-- Frontends and home-screen shortcuts: armflash://play/<Flashpoint game id> -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

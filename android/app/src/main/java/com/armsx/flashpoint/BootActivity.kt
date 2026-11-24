@@ -31,6 +31,9 @@ import java.util.concurrent.ArrayBlockingQueue
 class BootActivity : Activity() {
     companion object {
         const val EXTRA_PREVIEW = "preview"
+        /** A .swf to add to My Games, copied into the cache by LinkActivity, and its name. */
+        const val EXTRA_SWF = "swfCopy"
+        const val EXTRA_SWF_NAME = "swfName"
     }
 
     private val fps = 30
@@ -51,10 +54,22 @@ class BootActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Frontend.swf(this, intent)?.let { uri ->
-            val name = com.armsx.flashpoint.ui.displayName(this, uri)
+        // A .swf LinkActivity received comes as its copy (EXTRA_SWF), deleted once imported.
+        val copy = intent.getStringExtra(EXTRA_SWF)?.let { java.io.File(it) }?.takeIf { it.isFile }
+        (copy?.let { android.net.Uri.fromFile(it) } ?: Frontend.swf(this, intent))?.let { uri ->
+            val name = intent.getStringExtra(EXTRA_SWF_NAME) ?: com.armsx.flashpoint.ui.displayName(this, uri)
             val lib = (application as FpApp).library
-            swfImport = Thread({ swfResult = runCatching { lib.local.import(this, uri, name).id } }, "swf-import").apply { start() }
+            swfImport = Thread({
+                swfResult = runCatching { lib.local.import(this, uri, name).id }
+                copy?.delete()
+            }, "swf-import").apply { start() }
+        }
+        // ARMFlash is already open (an old home-screen shortcut, the icon from a stale task): a game
+        // goes straight to the library with no intro, and anything else just shows ARMFlash again.
+        if (!intent.getBooleanExtra(EXTRA_PREVIEW, false) && MainActivity.alive > 0) {
+            if (swfImport != null || Frontend.gameId(this, intent) != null || intent.data?.scheme in setOf("content", "file")) return next()
+            finish()
+            return
         }
         val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val part0 = frames("boot/part0")
@@ -173,7 +188,9 @@ class BootActivity : Activity() {
         // Config's Preview: just play it and go back.
         if (intent.getBooleanExtra(EXTRA_PREVIEW, false)) return finish()
         // A frontend's launch (a game link, a .armflash file) goes on to the launcher with it.
-        val main = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        // An open library takes the game itself (onNewIntent) rather than a second one opening on top.
+        val main = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         Frontend.gameId(this, intent)?.let { main.putExtra("gameId", it) }
         swfImport?.let { t ->
             t.join(15_000)
