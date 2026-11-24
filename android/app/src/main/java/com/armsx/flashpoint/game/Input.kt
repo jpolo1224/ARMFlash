@@ -199,6 +199,8 @@ data class TouchLayout(
             TouchButton("key", KeyEvent.KEYCODE_X, x = 0.87f, y = 0.62f, size = 62f),
             TouchButton("key", KeyEvent.KEYCODE_C, x = 0.79f, y = 0.46f, size = 62f),
             TouchButton("key", KeyEvent.KEYCODE_ENTER, x = 0.92f, y = 0.40f, size = 46f),
+            // A held left button for drag, and a click where the cursor is in touchpad and point modes.
+            TouchButton("mouse", Keys.MOUSE_LEFT, x = 0.70f, y = 0.88f, size = 62f),
         )
         val DEFAULT_PAD = mapOf(
             KeyEvent.KEYCODE_BUTTON_A to KeyEvent.KEYCODE_SPACE,
