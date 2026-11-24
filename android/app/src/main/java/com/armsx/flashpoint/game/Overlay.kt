@@ -320,7 +320,24 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         WelcomeBannerOverlay(this)
         com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))
         DataPrepBanner(host.title, Modifier.align(Alignment.BottomCenter))
-        if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp), w, h)
+        if (st.editing) {
+            // ARMSX2's editor panel: moved off what is being edited by itself (a key in the top
+            // half puts it at the bottom), or by its grip; resized; folded down to the grip.
+            val landscape = w > h
+            val dxS = EditorPanel.dx(landscape)
+            val dyS = EditorPanel.dy(landscape)
+            val dockBottom = st.selected?.let { st.layout.buttons.getOrNull(it) }?.let { it.y < 0.5f } == true
+            Box(
+                Modifier.align(if (dockBottom) Alignment.BottomCenter else Alignment.TopCenter)
+                    .padding(top = if (dockBottom) 0.dp else 10.dp, bottom = if (dockBottom) 10.dp else 0.dp)
+                    // The stored offset is away from the edge it docks to, so it flips with the dock.
+                    .offset { IntOffset(dxS.floatValue.roundToInt(), (if (dockBottom) -dyS.floatValue else dyS.floatValue).roundToInt()) },
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalDensity provides androidx.compose.ui.unit.Density(density.density * EditorPanel.scale(landscape).floatValue, density.fontScale),
+                ) { EditBar(st, onSave, Modifier, w, h) }
+            }
+        }
         if (st.picking) KeyPicker(st)
         if (st.profiles) ProfilesPanel(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }
@@ -394,7 +411,11 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
     val y = (cy - heightPx / 2).roundToInt()
     val sel = st.editing && st.selected == index
     val sizeMod = if (wide) Modifier.size(width = (b.size * 1.9f).dp, height = b.size.dp) else Modifier.size(b.size.dp)
-    val base = Modifier.offset { IntOffset(x, y) }.then(sizeMod).alpha(if (st.editing) 0.95f else opacity)
+    val fade = if (st.editing) 0.95f else opacity
+    // The fade goes on what is drawn, not on the control's box: a fade layer is cut off at the
+    // box's edge, which sliced a floating D-pad or stick moved toward the thumb.
+    val box = Modifier.offset { IntOffset(x, y) }.then(sizeMod)
+    val base = box.alpha(fade)
     val edit = if (st.editing) Modifier.border(2.dp, if (sel) Accent else Color(0x88FFFFFF), RoundedCornerShape(12.dp)).pointerInput(index) {
         detectDragGestures(
             onDragStart = { st.selected = index },
@@ -423,25 +444,25 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
             }
             val lit = if (multi) surface.lit[index] ?: 0 else ownLit
             val moved = if (multi) surface.shift[index] ?: Offset.Zero else ownShift
-            Box(base.then(edit).then(input)) {
+            Box(box.then(edit).then(input)) {
                 // Floating: the D-pad drawn where the thumb holding it centred it.
-                Box(Modifier.fillMaxSize().offset { IntOffset(moved.x.roundToInt(), moved.y.roundToInt()) }) { SpriteDpad(lit) }
-                if (b.kind == "wasd") Text("WASD", color = KeyLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+                Box(Modifier.fillMaxSize().offset { IntOffset(moved.x.roundToInt(), moved.y.roundToInt()) }.alpha(fade)) { SpriteDpad(lit) }
+                if (b.kind == "wasd") Text("WASD", color = KeyLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).offset { IntOffset(moved.x.roundToInt(), moved.y.roundToInt()) }.alpha(fade))
             }
         }
         "stick", "stick_wasd" -> {
             val codes = dirCodes(if (b.kind == "stick_wasd") "wasd" else "arrows")
             var thumb by remember { mutableStateOf(Offset.Zero) }
             var shift by remember { mutableStateOf(Offset.Zero) }
-            Box(base.then(edit).then(if (st.editing) Modifier else stickInput(codes, widthPx, inj, { thumb = it }, { shift = it }))) {
+            Box(box.then(edit).then(if (st.editing) Modifier else stickInput(codes, widthPx, inj, { thumb = it }, { shift = it }))) {
                 androidx.compose.foundation.Image(
                     androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_stick_base), null,
-                    Modifier.fillMaxSize().offset { IntOffset(shift.x.roundToInt(), shift.y.roundToInt()) },
+                    Modifier.fillMaxSize().offset { IntOffset(shift.x.roundToInt(), shift.y.roundToInt()) }.alpha(fade),
                 )
                 val t = b.size * 0.56f
                 androidx.compose.foundation.Image(
                     androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_thumb), null,
-                    Modifier.align(Alignment.Center).offset { IntOffset((shift.x + thumb.x).roundToInt(), (shift.y + thumb.y).roundToInt()) }.size(t.dp),
+                    Modifier.align(Alignment.Center).offset { IntOffset((shift.x + thumb.x).roundToInt(), (shift.y + thumb.y).roundToInt()) }.size(t.dp).alpha(fade),
                 )
             }
         }
@@ -758,7 +779,7 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, shift: (Of
         val d = awaitFirstDown()
         d.consume()
         if (TouchPrefs.floatingStick.value) {
-            center = Offset(d.position.x.coerceIn(sizePx / 4, sizePx * 3 / 4), d.position.y.coerceIn(sizePx / 4, sizePx * 3 / 4))
+            center = d.position
             shift(center - Offset(sizePx / 2, sizePx / 2))
         }
         try {
@@ -813,7 +834,31 @@ private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modif
     fun update(i: Int, f: (TouchButton) -> TouchButton) {
         st.layout = st.layout.copy(buttons = st.layout.buttons.toMutableList().also { it[i] = f(it[i]) })
     }
+    val landscape = w > h
     Panel(modifier) {
+        // ARMSX2's grip row: fold the panel down, make it smaller or bigger, drag the grip to move
+        // it off the keys (double-tap the grip to put it back).
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            PanelSizeButton(if (EditorPanel.collapsed.value) "\u25BC" else "\u25B2") { EditorPanel.collapsed.value = !EditorPanel.collapsed.value }
+            PanelSizeButton("\uFF0D") { EditorPanel.resize(landscape, -0.1f) }
+            Box(
+                Modifier.weight(1f).height(30.dp)
+                    .pointerInput(landscape) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            EditorPanel.dx(landscape).floatValue = (EditorPanel.dx(landscape).floatValue + drag.x).coerceIn(-w * 0.42f, w * 0.42f)
+                            EditorPanel.dy(landscape).floatValue = (EditorPanel.dy(landscape).floatValue + drag.y).coerceIn(0f, h * 0.78f)
+                        }
+                    }
+                    .pointerInput(landscape) { detectTapGestures(onDoubleTap = { EditorPanel.reset(landscape) }) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.width(44.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0x99FFFFFF)))
+            }
+            PanelSizeButton("\uFF0B") { EditorPanel.resize(landscape, 0.1f) }
+        }
+        // Folded: the grip row only, so everything under the panel can be reached.
+        if (EditorPanel.collapsed.value) return@Panel
         Text("Drag keys to move them. Tap one to select it, then change, resize or remove it.", color = Color.White, fontSize = 12.sp)
         FlowRow {
             Pill("Add key") { st.swapping = null; st.picking = true }
@@ -873,6 +918,17 @@ private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modif
             Pill("Save for this game", on = true) { st.editing = false; onSave(false) }
             Pill("Save as default") { st.editing = false; onSave(true) }
         }
+    }
+}
+
+/** ARMSX2's grip row buttons (fold, smaller, bigger). */
+@Composable
+private fun PanelSizeButton(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF1F1F2C)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 

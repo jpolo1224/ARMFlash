@@ -159,6 +159,25 @@ object TouchHaptics {
 }
 
 /**
+ * ARMSX2's layout editor panel: moved by its grip (double-tap puts it back), resized with its
+ * minus and plus, folded down to the grip so everything under it can be reached. Kept apart for
+ * landscape and portrait, as ARMSX2 does, for this run of the game.
+ */
+object EditorPanel {
+    const val DEFAULT_SCALE = 0.9f
+    val collapsed = mutableStateOf(false)
+    private val dx = listOf(mutableFloatStateOf(0f), mutableFloatStateOf(0f))
+    private val dy = listOf(mutableFloatStateOf(0f), mutableFloatStateOf(0f))
+    private val scale = listOf(mutableFloatStateOf(DEFAULT_SCALE), mutableFloatStateOf(DEFAULT_SCALE))
+    private fun i(landscape: Boolean) = if (landscape) 1 else 0
+    fun dx(landscape: Boolean) = dx[i(landscape)]
+    fun dy(landscape: Boolean) = dy[i(landscape)]
+    fun scale(landscape: Boolean) = scale[i(landscape)]
+    fun resize(landscape: Boolean, by: Float) { scale(landscape).floatValue = (scale(landscape).floatValue + by).coerceIn(0.6f, 1.35f) }
+    fun reset(landscape: Boolean) { dx(landscape).floatValue = 0f; dy(landscape).floatValue = 0f; scale(landscape).floatValue = DEFAULT_SCALE }
+}
+
+/**
  * ARMSX2's per-button Turbo: while held, the key goes down and up on its own. [frames] (at 60 a
  * second) between the two: 2 fast, 4 medium, 8 slow, 0 off.
  */
@@ -276,13 +295,8 @@ class TouchSurface(private val press: (Int, Boolean) -> Unit) {
         val f = fingers.getOrPut(id) { Finger() }
         val pad = pads.firstOrNull { abs(x - it.cx) <= it.half && abs(y - it.cy) <= it.half }
         if (pad != null) f.pad = pad.index
-        // Floating: a finger landing on a cluster centres it under itself (kept inside its square).
-        if (new && pad != null && TouchPrefs.floatingStick.value) {
-            f.floating = pad.index to Offset(
-                x.coerceIn(pad.cx - pad.half / 2, pad.cx + pad.half / 2),
-                y.coerceIn(pad.cy - pad.half / 2, pad.cy + pad.half / 2),
-            )
-        }
+        // Floating: a finger landing on a cluster centres it right under itself.
+        if (new && pad != null && TouchPrefs.floatingStick.value) f.floating = pad.index to Offset(x, y)
         // Inside a cluster only the cluster answers, as when it handled its own touch.
         val h = if (pad != null) emptySet() else keys.filter { it.contains(x, y) }.mapTo(HashSet()) { it.index }
         if (pad == null && h.isNotEmpty()) f.pad = -1
