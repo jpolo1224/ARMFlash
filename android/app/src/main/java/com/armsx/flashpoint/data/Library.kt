@@ -97,9 +97,13 @@ class Library(private val ctx: Context) {
         get() = prefs.getBoolean("legacyOnline", true)
         set(v) = prefs.edit().putBoolean("legacyOnline", v).apply()
 
-    /** Last resort for files in neither the game's data nor Legacy: the original site (see fp-proxy). */
+    /**
+     * Last resort for files in neither the game's data nor Legacy: the original site (see
+     * fp-proxy). Off unless turned on, as in Flashpoint, where only curation (MAD4FP) asks the
+     * live web: games play from the archive.
+     */
     var liveWeb: Boolean
-        get() = prefs.getBoolean("liveWeb", true)
+        get() = liveWeb(prefs)
         set(v) = prefs.edit().putBoolean("liveWeb", v).apply()
 
     val legacyBase: String get() = if (legacyOnline) DEFAULT_LEGACY else ""
@@ -347,6 +351,9 @@ class Library(private val ctx: Context) {
     }
 
     companion object {
+        /** [liveWeb] from the "settings" preferences, for the game processes. */
+        fun liveWeb(prefs: android.content.SharedPreferences) = prefs.getBoolean("liveWeb", false)
+
         /** Files this big or bigger download in ranges over several connections. */
         private const val SEGMENTED_FROM = 16L shl 20
         private const val SEGMENT_MIN = 8L shl 20

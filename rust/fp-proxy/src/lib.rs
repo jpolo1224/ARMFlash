@@ -39,8 +39,8 @@ pub struct Config {
     /// Save files fetched from the remote Legacy server into `htdocs`.
     pub cache_remote: bool,
     /// Last resort for a file in neither the game's data nor Legacy: the original site, if it
-    /// still serves it (the desktop game server's live-internet fallback). Some curations rely
-    /// on it, such as Disney's HTML5 games, whose start-up script was never archived.
+    /// still serves it. Off unless the player turns it on: as in Flashpoint, where only curation
+    /// (MAD4FP) asks the live web, games play from the archive.
     /// Only for these sites (the game's own domain, e.g. "dolimg.com", with its subdomains):
     /// third-party ad and tracking hosts must keep failing as they do on desktop, or a game
     /// waits forever on an ad loader that comes back to life (Hidden Room Escape). Empty: off.

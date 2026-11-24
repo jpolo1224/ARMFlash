@@ -150,7 +150,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                 Switch(legacy, { legacy = it; lib.legacyOnline = it })
             }
             var live by remember { mutableStateOf(lib.liveWeb) }
-            ConfigRow("Live Web Fallback", "When a file is in neither the game's data nor Legacy, ask the site it originally came from. Some games need this to start.") {
+            ConfigRow("Live Web Fallback", "Off by default: games play from Flashpoint's archive. When on, a file in neither the game's data nor Legacy is asked for from the game's own original site, like Flashpoint's curation mode.") {
                 Switch(live, { live = it; lib.liveWeb = it })
             }
             Action("Update Game Info", "Last updated: ${vm.lastSync.take(10).ifBlank { "never" }}", "Update") { vm.syncDatabase() }

@@ -122,9 +122,12 @@ class GameActivity : ComponentActivity() {
         }
 
         val runner = Runner.valueOf(intent.getStringExtra(EXTRA_RUNNER) ?: Runner.WEB.name)
-        val live = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true)
+        val live = com.armsx.flashpoint.data.Library.liveWeb(getSharedPreferences("settings", MODE_PRIVATE))
         val launchUrl = intent.getStringExtra(EXTRA_URL) ?: return finish()
-        val url = if (live) LiveSites.startUrl(intent.getStringExtra(EXTRA_GAME_ID).orEmpty(), launchUrl) else launchUrl
+        val id = intent.getStringExtra(EXTRA_GAME_ID).orEmpty()
+        // A game listed in LiveSites runs from its own site whatever the fallback setting says.
+        val liveFirst = LiveSites.firstFor(id)
+        val url = if (liveFirst.isNotEmpty()) LiveSites.startUrl(id, launchUrl) else launchUrl
         val zips = intent.getStringArrayExtra(EXTRA_ZIPS).orEmpty()
 
         // PHP pages (unpacked by the launcher before the game started; here it is only pointed to).
@@ -134,9 +137,7 @@ class GameActivity : ComponentActivity() {
                 htdocs = intent.getStringExtra(EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
-                liveDomains = if (live)
-                    listOfNotNull(Launch.siteOf(launchUrl)) + LiveSites.firstFor(intent.getStringExtra(EXTRA_GAME_ID).orEmpty())
-                else emptyList(),
+                liveDomains = (if (live) listOfNotNull(Launch.siteOf(launchUrl)) else emptyList()) + liveFirst,
             )
             zips.forEach { FpCore.mount(it) }
             p

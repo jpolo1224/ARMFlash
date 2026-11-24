@@ -90,7 +90,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
                 htdocs = intent.getStringExtra(GameActivity.EXTRA_HTDOCS).orEmpty(),
                 legacyBase = intent.getStringExtra(GameActivity.EXTRA_LEGACY).orEmpty(),
                 cacheRemote = true,
-                liveDomains = if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("liveWeb", true))
+                liveDomains = if (com.armsx.flashpoint.data.Library.liveWeb(getSharedPreferences("settings", MODE_PRIVATE)))
                     listOfNotNull(Launch.siteOf(intent.getStringExtra(GameActivity.EXTRA_URL).orEmpty())) else emptyList(),
             )
             intent.getStringArrayExtra(GameActivity.EXTRA_ZIPS).orEmpty().forEach { FpCore.mount(it) }
