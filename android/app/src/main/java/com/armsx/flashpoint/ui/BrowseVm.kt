@@ -14,6 +14,7 @@ import com.armsx.flashpoint.core.Extreme
 import com.armsx.flashpoint.core.FpCore
 import com.armsx.flashpoint.core.Game
 import com.armsx.flashpoint.core.OFFERED_PLATFORMS
+import com.armsx.flashpoint.core.offeredPlatforms
 import com.armsx.flashpoint.core.SearchIndex
 import com.armsx.flashpoint.core.SearchOpts
 import com.armsx.flashpoint.game.Launch
@@ -53,7 +54,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     val library = (app as FpApp).library
     val prefs2 = AppPrefs(app)
 
-    /** The library the launcher browses: Flashpoint's games ("arcade"). Its animations ("theatre") are left out. */
+    /** Which browse tab: "arcade" (Games) or "theatre" (Animations, Flash ones). */
     var lib by mutableStateOf("arcade")
         private set
     var playlists by mutableStateOf<List<com.armsx.flashpoint.data.Playlist>>(emptyList())
@@ -104,7 +105,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     /** Home's "Filter by platform" (it opens the Games tab): the platforms with games. */
     var gamePlatforms by mutableStateOf<List<String>>(emptyList())
         private set
-    /** Per library ("arcade"), under the current Extreme setting. */
+    /** Per tab ("arcade", "theatre"), under the current Extreme setting. */
     private var platformsFor = mapOf<String, List<String>>()
     var index by mutableStateOf<SearchIndex?>(null)
     private val pages = mutableStateMapOf<Int, List<Game>>()
@@ -190,7 +191,6 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 sync = st
                 if (!st.running) break
                 val now = android.os.SystemClock.elapsedRealtime()
-                syncBytes = library.database.length() + java.io.File(library.database.path + "-wal").length()
                 syncEta = when (st.phase) {
                     "Starting", "Counting updates", "Tags", "Platforms" -> "Working out the time left"
                     "Games" -> {
@@ -235,9 +235,6 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         locations = withContext(Dispatchers.IO) { library.locations() }
     }
 
-    /** Database bytes written so far during a first download (it grows as the sync writes). */
-    var syncBytes by mutableStateOf(0L)
-        private set
 
     fun pickLocation(dir: java.io.File) {
         if (library.hasDatabase()) return
@@ -295,6 +292,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun showLibrary(l: String) {
         if (lib == l) return
         lib = l
+        // My Games are games: the Animations tab has no such shelf.
+        if (l == "theatre" && shelf == Shelf.MY_GAMES) shelf = Shelf.ALL
         clearSelection()
         applyPlatforms()
         refresh(immediate = true)
@@ -309,18 +308,18 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private fun loadPlatforms() = viewModelScope.launch {
         val bl = tagBlacklist()
         platformsFor = withContext(Dispatchers.IO) {
-            listOf("arcade").associateWith { l ->
+            listOf("arcade", "theatre").associateWith { l ->
                 // Counted while the rest of startup also searches: retry a few times before giving
                 // up, and then list the offered platforms as they are.
                 var found: List<String>? = null
                 for (attempt in 1..3) {
-                    found = runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl, platforms = OFFERED_PLATFORMS)) }
+                    found = runCatching { FpCore.platformsWithGames(SearchOpts(library = l, tagBlacklist = bl, platforms = offeredPlatforms(l))) }
                         .onFailure { android.util.Log.w("BrowseVm", "platforms for $l (try $attempt): ${it.message}") }
                         .getOrNull()
                     if (found != null) break
                     kotlinx.coroutines.delay(2000L * attempt)
                 }
-                (found ?: OFFERED_PLATFORMS)
+                (found ?: offeredPlatforms(l))
                     .filter { it.isNotBlank() }.sorted()
             }
         }
@@ -343,10 +342,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     private fun hidden(g: Game) = !prefs2.extremeGames.value && Extreme.isExtreme(g)
 
     fun rerollPicks() = viewModelScope.launch {
-        val libs = setOf("arcade")
+        val libs = prefs2.randomLibraries.value.ifEmpty { setOf("arcade") }
         randomPicks = withContext(Dispatchers.IO) {
             runCatching {
-                libs.flatMap { FpCore.random(SearchOpts(library = it, tagBlacklist = tagBlacklist(), platforms = OFFERED_PLATFORMS), 6 / libs.size + 1) }.shuffled().take(6)
+                libs.flatMap { FpCore.random(SearchOpts(library = it, tagBlacklist = tagBlacklist(), platforms = offeredPlatforms(it)), 6 / libs.size + 1) }.shuffled().take(6)
             }.getOrDefault(emptyList())
         }
     }
@@ -360,10 +359,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun loadHomeRows() = viewModelScope.launch {
         val bl = tagBlacklist()
         recent = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade", platforms = OFFERED_PLATFORMS), 12) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, platforms = OFFERED_PLATFORMS), 12) }.getOrDefault(emptyList())
         }
         installedGames = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade", platforms = OFFERED_PLATFORMS), 12) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, platforms = OFFERED_PLATFORMS), 12) }.getOrDefault(emptyList())
         }
     }
 
@@ -376,10 +375,10 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun loadHomeAll() = viewModelScope.launch {
         val bl = tagBlacklist()
         recentAll = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade", platforms = OFFERED_PLATFORMS), HOME_ALL) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(played = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, platforms = OFFERED_PLATFORMS), HOME_ALL) }.getOrDefault(emptyList())
         }
         installedAll = withContext(Dispatchers.IO) {
-            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, library = "arcade", platforms = OFFERED_PLATFORMS), HOME_ALL) }.getOrDefault(emptyList())
+            runCatching { FpCore.page("", SearchOpts(installed = true, order = "LASTPLAYED", descending = true, tagBlacklist = bl, platforms = OFFERED_PLATFORMS), HOME_ALL) }.getOrDefault(emptyList())
         }
     }
 
@@ -404,14 +403,14 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     }
 
     private fun baseOpts() = SearchOpts(
-        // Every shelf stays inside the games library: Installed lists installed games only.
+        // Every shelf stays inside its tab: Installed on Animations lists installed animations only.
         library = lib,
         tagBlacklist = tagBlacklist(),
         installed = if (shelf == Shelf.INSTALLED) true else null,
         order = if (shelf == Shelf.HISTORY) "LASTPLAYED" else order,
         descending = if (shelf == Shelf.HISTORY) true else descending,
         played = shelf == Shelf.HISTORY,
-        platforms = platform?.let { listOf(it) } ?: OFFERED_PLATFORMS,
+        platforms = platform?.let { listOf(it) } ?: offeredPlatforms(lib),
         // An empty id list would mean "no filter"; an impossible id means "nothing".
         ids = if (shelf == Shelf.FAVORITES) favorites.toList().ifEmpty { listOf("-") } else null,
     )

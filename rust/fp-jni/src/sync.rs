@@ -3,7 +3,7 @@
 //! functions. A fresh sync builds a complete flashpoint.sqlite on the phone, so the app
 //! needs no desktop install; later syncs fetch only what changed.
 
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use flashpoint_archive::game::GameRedirect;
@@ -32,6 +32,8 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 static CANCEL: AtomicBool = AtomicBool::new(false);
 static DONE: AtomicI64 = AtomicI64::new(0);
 static TOTAL: AtomicI64 = AtomicI64::new(0);
+/// Bytes downloaded so far (as sent, gzipped), for the progress readout.
+static BYTES: AtomicU64 = AtomicU64::new(0);
 
 fn phase(p: &str) {
     progress().lock().unwrap().phase = p.to_string();
@@ -45,6 +47,7 @@ pub fn status() -> Res {
         "phase": p.phase,
         "done": DONE.load(Ordering::SeqCst),
         "total": TOTAL.load(Ordering::SeqCst),
+        "bytes": BYTES.load(Ordering::SeqCst),
         "failure": p.error,
         "lastUpdate": p.last_update,
     })
@@ -100,7 +103,8 @@ fn aliases(s: &str) -> Vec<String> {
 }
 
 fn get_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, String> {
-    let bytes = rt().block_on(fp_proxy::http_get(url)).map_err(|e| e.to_string())?;
+    let (bytes, wire) = rt().block_on(fp_proxy::http_get_sized(url)).map_err(|e| e.to_string())?;
+    BYTES.fetch_add(wire, Ordering::SeqCst);
     serde_json::from_slice(&bytes).map_err(|e| format!("{url}: {e}"))
 }
 
@@ -118,6 +122,7 @@ pub fn start(base: &str, after: &str) -> Res {
     CANCEL.store(false, Ordering::SeqCst);
     DONE.store(0, Ordering::SeqCst);
     TOTAL.store(0, Ordering::SeqCst);
+    BYTES.store(0, Ordering::SeqCst);
     *progress().lock().unwrap() = Progress { phase: "Starting".into(), ..Default::default() };
     let base = base.trim_end_matches('/').to_string();
     let after = if after.is_empty() { "1970-01-01".to_string() } else { after.to_string() };

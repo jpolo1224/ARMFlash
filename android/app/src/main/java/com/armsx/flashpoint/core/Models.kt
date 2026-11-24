@@ -66,6 +66,12 @@ data class GameData(
 /** The platforms ARMFlash offers: games on any other platform stay out of every list. */
 val OFFERED_PLATFORMS = listOf("Flash", "HTML5", "Java", "Shockwave", "PopCap Plugin")
 
+/** The animations ARMFlash offers (Flashpoint's Theatre library): Flash ones. */
+val ANIMATION_PLATFORMS = listOf("Flash")
+
+/** What [library] ("arcade" for games, "theatre" for animations) lists. */
+fun offeredPlatforms(library: String?) = if (library == "theatre") ANIMATION_PLATFORMS else OFFERED_PLATFORMS
+
 @Serializable
 data class SearchOpts(
     val installed: Boolean? = null,
@@ -96,6 +102,8 @@ data class SyncStatus(
     val phase: String = "",
     val done: Long = 0,
     val total: Long = 0,
+    /** Bytes downloaded so far, as they came over the network. */
+    val bytes: Long = 0,
     val failure: String? = null,
     val lastUpdate: String? = null,
 )

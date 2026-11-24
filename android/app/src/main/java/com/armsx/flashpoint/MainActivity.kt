@@ -45,7 +45,21 @@ import com.armsx.flashpoint.ui.Shell
 import kotlinx.coroutines.delay
 
 /** The full database's size after a first download (221,660 games on 2026-11-22: 462 MB). */
+/** The finished database on the device (flashpoint.sqlite after the first download, 11-2026). */
 private const val DB_MB = 470
+/** What the first download fetches: the game list, gzipped (89 pages of about 1.15 MB, 11-2026). */
+private const val DOWNLOAD_MB = 100
+
+/**
+ * The first download's progress in megabytes actually received. The total is worked out from
+ * the games received so far, so it ends exactly on what came down.
+ */
+private fun downloaded(s: com.armsx.flashpoint.core.SyncStatus): String {
+    val mb = s.bytes / 1_000_000
+    if (s.phase != "Games" || s.done <= 0 || s.total <= 0) return "$mb MB downloaded"
+    val about = maxOf(mb, s.bytes * s.total / s.done / 1_000_000)
+    return "$mb MB of about $about MB"
+}
 
 class MainActivity : ComponentActivity() {
     private val vm: BrowseVm by viewModels()
@@ -180,10 +194,12 @@ private fun App(vm: BrowseVm) {
         // My Games needs no database: a .swf opened with ARMFlash plays even before setup.
         val mine = com.armsx.flashpoint.data.LocalGames.isLocal(id)
         if (!vm.dbReady && !mine) return@LaunchedEffect
-        vm.pendingGame = null
         val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (mine) vm.library.local.game(id) else runCatching { com.armsx.flashpoint.core.FpCore.game(id) }.getOrNull()
         }
+        // Cleared only now: pendingGame keys this effect, so clearing it before the lookup
+        // restarted the effect and cancelled the lookup, and the game never started.
+        vm.pendingGame = null
         if (game != null) play(game) else vm.status = if (mine) "That game is no longer in My Games." else "That game is not in the database."
     }
 
@@ -271,9 +287,7 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                         Box(Modifier.fillMaxWidth((s.done.toFloat() / s.total).coerceIn(0f, 1f)).height(8.dp).background(Fp.Play))
                     }
                 }
-                if (vm.syncBytes > 0) Text(
-                    "${vm.syncBytes / (1 shl 20)} MB of about $DB_MB MB", color = Fp.TextDim, fontSize = 13.sp,
-                )
+                if (s.bytes > 0) Text(downloaded(s), color = Fp.TextDim, fontSize = 13.sp)
                 if (vm.syncEta.isNotEmpty()) {
                     Text(vm.syncEta, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.height(10.dp))
@@ -290,7 +304,8 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Download: about $DB_MB MB, usually 5 to 10 minutes. It needs about $DB_MB MB of space, plus room for the games you play.",
+                    "Download: about $DOWNLOAD_MB MB, usually 5 to 10 minutes. The database it builds takes about $DB_MB MB, " +
+                        "and building it needs about 1 GB free, plus room for the games you play.",
                     color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.widthIn(max = 560.dp),
                 )
                 Spacer(Modifier.height(18.dp))

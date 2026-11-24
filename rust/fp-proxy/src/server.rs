@@ -736,6 +736,11 @@ fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
 /// GET a URL with the game server's HTTPS client (gzip understood). For metadata sync and
 /// other app-side fetches, so the app has one TLS stack.
 pub async fn http_get(url: &str) -> io::Result<Bytes> {
+    http_get_sized(url).await.map(|(body, _)| body)
+}
+
+/// [`http_get`], plus the bytes that came over the network (before gzip is undone).
+pub async fn http_get_sized(url: &str) -> io::Result<(Bytes, u64)> {
     let uri: hyper::Uri = url.parse().map_err(io::Error::other)?;
     let req = Request::get(uri)
         .header(header::ACCEPT_ENCODING, "gzip")
@@ -749,12 +754,13 @@ pub async fn http_get(url: &str) -> io::Result<Bytes> {
     if !status.is_success() {
         return Err(io::Error::other(format!("HTTP {status} for {url}")));
     }
+    let wire = body.len() as u64;
     if gz {
         let mut out = Vec::with_capacity(body.len() * 4);
         flate2::read::GzDecoder::new(&body[..]).read_to_end(&mut out)?;
-        return Ok(out.into());
+        return Ok((out.into(), wire));
     }
-    Ok(body)
+    Ok((body, wire))
 }
 
 #[cfg(test)]

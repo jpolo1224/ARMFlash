@@ -206,6 +206,7 @@ class GameActivity : ComponentActivity() {
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.EMBED_FRAMES, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.AUDIO_GATE, setOf("*"))
             WebViewCompat.addDocumentStartJavaScript(web, RufflePage.PAGE_FIT, setOf("*"))
+            WebViewCompat.addDocumentStartJavaScript(web, RufflePage.KEY_FOCUS, setOf("*"))
         }
 
         val target = when (runner) {
@@ -389,6 +390,50 @@ object RufflePage {
             }); });
           }).observe(document.documentElement || document, { childList: true, subtree: true });
           document.addEventListener('DOMContentLoaded', function() { scan(document); });
+        })();
+    """.trimIndent()
+
+    /**
+     * Keys for Flash in the browser. Ruffle (web) takes keys only while its player has focus, and
+     * it learns that from a focus event it listens for once the player is set up. Focusing earlier
+     * (the player page did, right after creating it) lands on Ruffle's hidden text box instead:
+     * Ruffle never counts itself focused, the on-screen controls' keys were ignored and every tap
+     * on the game opened Android's keyboard. [__fpmFocusRuffle] waits until Ruffle is ready, and a
+     * key pressed while nothing on the page has focus first gives it to the game's player.
+     */
+    val KEY_FOCUS = """
+        (function(){
+          if (window.__fpmFocusRuffle) return;
+          function ready(p) {
+            var c = p.shadowRoot && p.shadowRoot.getElementById('container');
+            return !!(c && c.hasAttribute('tabindex'));
+          }
+          function focus(p) {
+            var a = p.shadowRoot && p.shadowRoot.activeElement;
+            if (a) a.blur();
+            p.focus({ preventScroll: true });
+          }
+          window.__fpmFocusRuffle = function(p) {
+            var tries = 0;
+            (function wait() {
+              if (ready(p)) return focus(p);
+              if (++tries < 600) setTimeout(wait, 50);
+            })();
+          };
+          function game() {
+            var best = null, area = 0;
+            document.querySelectorAll('ruffle-player, ruffle-embed, ruffle-object').forEach(function(p) {
+              var r = p.getBoundingClientRect(), a = r.width * r.height;
+              if (a > area && ready(p)) { area = a; best = p; }
+            });
+            return best;
+          }
+          window.addEventListener('keydown', function() {
+            var a = document.activeElement;
+            if (a && a !== document.body && a !== document.documentElement) return;
+            var p = game();
+            if (p) focus(p);
+          }, true);
         })();
     """.trimIndent()
 
@@ -618,6 +663,7 @@ object RufflePage {
         <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
         <style>html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none}
         #p{position:fixed;inset:0}ruffle-player{width:100%;height:100%;display:block}</style>
+        <script>${KEY_FOCUS}</script>
         <script>if(!window.__fpmRuffle){window.__fpmRuffle=true;window.RufflePlayer=window.RufflePlayer||{};
         window.RufflePlayer.config=Object.assign($CONFIG,window.__fpmDisplay||{});document.write('<script src="/__fpm/ruffle/ruffle.js"><\/script>');}</script>
         </head><body><div id="p"></div><script>
@@ -629,7 +675,7 @@ object RufflePage {
             document.getElementById('p').appendChild(player);
             var api = player.ruffle ? player.ruffle() : player;
             api.load({ url: url, base: url.substring(0, url.lastIndexOf('/') + 1) });
-            player.focus();
+            window.__fpmFocusRuffle(player);
           }
           go();
         })();

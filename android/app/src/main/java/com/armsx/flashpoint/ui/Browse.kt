@@ -135,9 +135,9 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
     ) { uris -> if (uris.isNotEmpty()) vm.importPlaylists(uris) }
     val pls = vm.playlists.filter { it.library == vm.lib && (!it.extreme || vm.prefs2.extremeGames.value) }
     LazyColumn(modifier.background(Fp.Sidebar).padding(vertical = 8.dp)) {
-        items(Shelf.entries) { s ->
+        items(Shelf.entries.filter { vm.lib != "theatre" || it != Shelf.MY_GAMES }) { s ->
             SidebarRow(
-                label = if (s == Shelf.ALL) "All Games" else s.label,
+                label = if (s == Shelf.ALL) (if (vm.lib == "theatre") "All Animations" else "All Games") else s.label,
                 on = vm.playlist == null && vm.shelf == s,
             ) { vm.pickShelf(s); onPicked() }
         }

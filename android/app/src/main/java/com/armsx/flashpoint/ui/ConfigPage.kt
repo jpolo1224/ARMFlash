@@ -131,6 +131,17 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
 
         Section("Flashpoint") {
             ConfigRow("Flashpoint Path", lib.root.path) {}
+            ConfigRow("Random Libraries", "Libraries to use for Random Picks on the home page.") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("arcade" to "Games", "theatre" to "Animations").forEach { (id, label) ->
+                        val on = id in p.randomLibraries.value
+                        Chip(label, on) {
+                            p.randomLibraries.value = if (on) p.randomLibraries.value - id else p.randomLibraries.value + id
+                            vm.rerollPicks()
+                        }
+                    }
+                }
+            }
             TextSetting("Metadata Server Host", "Used for syncing new and updated game info.", lib.metadataBase) { lib.metadataBase = it }
             TextSetting("Game Data Source", "Where game data packs download from.", lib.gameDataSource) { lib.gameDataSource = it }
             TextSetting("Images Server", "Where logos and screenshots download from.", lib.imagesBase) { lib.imagesBase = it }
