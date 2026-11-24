@@ -18,6 +18,8 @@ mod avm2;
 mod avm_rng;
 mod binary_data;
 pub mod bitmap;
+/// ARMFlash: the device camera (flash.media.Camera).
+pub mod camera;
 mod character;
 pub mod context;
 pub mod context_menu;

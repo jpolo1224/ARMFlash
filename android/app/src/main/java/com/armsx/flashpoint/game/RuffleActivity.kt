@@ -157,10 +157,13 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     override fun onResume() {
         super.onResume()
         screen?.onResume()
+        // A webcam game gets its camera back.
+        if (cameraWanted != null && checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) openCamera()
     }
 
     override fun onPause() {
         screen?.onPause()
+        closeCamera()
         super.onPause()
     }
 
@@ -172,6 +175,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     }
 
     override fun onDestroy() {
+        closeCamera()
         screen?.onDestroy()
         super.onDestroy()
         if (isFinishing && !restarting) android.os.Process.killProcess(android.os.Process.myPid())
@@ -211,6 +215,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
         "scale" -> scaleCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).scale).toString()
         "quality" -> qualityCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).quality).toString()
+        // The cameras webcam games can use, one name per line, front first.
+        "cameras" -> cameras.joinToString("\n") { it.second }
         else -> null
     }
 
@@ -226,6 +232,157 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeShaderChanged(full: Boolean)
     /** Errors Ruffle has reported (script errors, failed loads, panics). */
     external fun nativeTrouble(): Long
+    /** A camera frame's Y, U and V planes (YUV_420_888) and how far it turns to stand up. */
+    external fun nativeCameraFrame(y: java.nio.ByteBuffer, u: java.nio.ByteBuffer, v: java.nio.ByteBuffer, width: Int, height: Int, yStride: Int, uvStride: Int, uvStep: Int, rotation: Int)
+    /** The camera permission: 1 allowed, 0 asking, -1 refused. */
+    external fun nativeCameraPermission(state: Int)
+
+    // ---- the camera, for webcam games ----------------------------------------------------
+
+    /** The cameras (id and the name Flash shows), front first. */
+    private val cameras: List<Pair<String, String>> by lazy {
+        runCatching {
+            val cm = getSystemService(android.hardware.camera2.CameraManager::class.java)
+            val facing = android.hardware.camera2.CameraCharacteristics.LENS_FACING
+            val byFacing = cm.cameraIdList.map { id -> id to cm.getCameraCharacteristics(id).get(facing) }
+                .sortedBy { when (it.second) { android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT -> 0; android.hardware.camera2.CameraMetadata.LENS_FACING_BACK -> 1; else -> 2 } }
+            val seen = HashMap<String, Int>()
+            byFacing.map { (id, f) ->
+                val base = when (f) {
+                    android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT -> "Front Camera"
+                    android.hardware.camera2.CameraMetadata.LENS_FACING_BACK -> "Back Camera"
+                    else -> "Camera"
+                }
+                val n = (seen[base] ?: 0) + 1
+                seen[base] = n
+                id to (if (n > 1) "$base $n" else base)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** What the game asked for: camera index, width, height, frames a second. */
+    private var cameraWanted: IntArray? = null
+    private var cameraDevice: android.hardware.camera2.CameraDevice? = null
+    private var cameraSession: android.hardware.camera2.CameraCaptureSession? = null
+    private var cameraReader: android.media.ImageReader? = null
+    private var cameraThread: android.os.HandlerThread? = null
+
+    /** From Rust (camera.rs), when a webcam game asks for the camera or changes its mode. */
+    @Suppress("unused")
+    private fun startCamera(index: Int, width: Int, height: Int, fps: Int) {
+        runOnUiThread {
+            cameraWanted = intArrayOf(index, width, height, fps)
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                nativeCameraPermission(1)
+                openCamera()
+            } else {
+                // Flash asked before a movie could use the camera; Android asks here.
+                nativeCameraPermission(0)
+                overlay.holdMenu = true
+                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), CAMERA_REQUEST)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != CAMERA_REQUEST) return
+        overlay.holdMenu = false
+        val ok = grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        nativeCameraPermission(if (ok) 1 else -1)
+        if (ok) openCamera()
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun openCamera() {
+        closeCamera()
+        val want = cameraWanted ?: return
+        val (id, _) = cameras.getOrNull(want[0]) ?: cameras.firstOrNull() ?: return
+        val cm = getSystemService(android.hardware.camera2.CameraManager::class.java)
+        val chars = runCatching { cm.getCameraCharacteristics(id) }.getOrNull() ?: return
+        val map = chars.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return
+        // The camera's own size nearest the game's mode, as Flash picks the closest native mode
+        // (kept small: games read every pixel).
+        val size = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
+            ?.filter { it.width <= 1280 && it.height <= 960 }
+            ?.minByOrNull { kotlin.math.abs(it.width - want[1]) + kotlin.math.abs(it.height - want[2]) } ?: return
+        val sensor = chars.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        val front = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING) == android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT
+        val thread = android.os.HandlerThread("armflash-camera").apply { start() }
+        val handler = android.os.Handler(thread.looper)
+        val reader = android.media.ImageReader.newInstance(size.width, size.height, android.graphics.ImageFormat.YUV_420_888, 2)
+        reader.setOnImageAvailableListener({ r ->
+            val img = runCatching { r.acquireLatestImage() }.getOrNull() ?: return@setOnImageAvailableListener
+            try {
+                val p = img.planes
+                nativeCameraFrame(p[0].buffer, p[1].buffer, p[2].buffer, img.width, img.height, p[0].rowStride, p[1].rowStride, p[1].pixelStride, frameRotation(sensor, front))
+            } finally {
+                img.close()
+            }
+        }, handler)
+        cameraThread = thread
+        cameraReader = reader
+        runCatching {
+            cm.openCamera(id, object : android.hardware.camera2.CameraDevice.StateCallback() {
+                override fun onOpened(device: android.hardware.camera2.CameraDevice) {
+                    if (cameraReader !== reader) { device.close(); return }
+                    cameraDevice = device
+                    @Suppress("DEPRECATION")
+                    device.createCaptureSession(listOf(reader.surface), object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
+                            cameraSession = session
+                            val request = device.createCaptureRequest(android.hardware.camera2.CameraDevice.TEMPLATE_PREVIEW).apply {
+                                addTarget(reader.surface)
+                                chars.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                                    ?.minByOrNull { kotlin.math.abs(it.upper - want[3]) * 4 + (it.upper - it.lower) }
+                                    ?.let { set(android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
+                            }.build()
+                            runCatching { session.setRepeatingRequest(request, null, handler) }
+                                .onFailure { android.util.Log.w("ARMFlash", "camera: ${it.message}") }
+                        }
+
+                        override fun onConfigureFailed(session: android.hardware.camera2.CameraCaptureSession) {
+                            android.util.Log.w("ARMFlash", "camera: the capture session could not be set up")
+                        }
+                    }, handler)
+                }
+
+                override fun onDisconnected(device: android.hardware.camera2.CameraDevice) {
+                    device.close()
+                    if (cameraDevice === device) cameraDevice = null
+                }
+
+                override fun onError(device: android.hardware.camera2.CameraDevice, error: Int) {
+                    android.util.Log.w("ARMFlash", "camera: error $error")
+                    device.close()
+                    if (cameraDevice === device) cameraDevice = null
+                }
+            }, handler)
+        }.onFailure { android.util.Log.w("ARMFlash", "camera: ${it.message}") }
+    }
+
+    private fun closeCamera() {
+        runCatching { cameraSession?.close() }
+        cameraSession = null
+        runCatching { cameraDevice?.close() }
+        cameraDevice = null
+        runCatching { cameraReader?.close() }
+        cameraReader = null
+        cameraThread?.quitSafely()
+        cameraThread = null
+    }
+
+    /** How far a frame turns clockwise to stand up on the screen as the device is held now. */
+    private fun frameRotation(sensor: Int, front: Boolean): Int {
+        @Suppress("DEPRECATION")
+        val display = when (windowManager.defaultDisplay.rotation) {
+            android.view.Surface.ROTATION_90 -> 90
+            android.view.Surface.ROTATION_180 -> 180
+            android.view.Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+        return if (front) (sensor + display) % 360 else (sensor - display + 360) % 360
+    }
 
     companion object {
         init {
@@ -234,6 +391,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         }
 
         @JvmStatic private external fun nativeInit()
+        private const val CAMERA_REQUEST = 4242
 
         fun intent(ctx: Context, base: Intent): Intent = Intent(base).setClass(ctx, RuffleActivity::class.java)
     }

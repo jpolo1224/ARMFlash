@@ -128,6 +128,8 @@ class OverlayState(layout: TouchLayout) {
     var gesturePick by mutableStateOf<String?>(null)
     /** The layout editor's profiles sheet is open. */
     var profiles by mutableStateOf(false)
+    /** Android's own dialog (the camera permission) is up: pausing for it does not open the menu. */
+    var holdMenu = false
     /** What gestures press keys through (set by the overlay). */
     var gestureInput: GameInput? = null
     /** The on-screen controls' touch areas in window pixels, which gestures leave alone. */

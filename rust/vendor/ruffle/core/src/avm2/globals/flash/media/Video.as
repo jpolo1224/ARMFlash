@@ -34,17 +34,22 @@ package flash.media {
             this._smoothing = value;
         }
 
-        public function get videoWidth():int {
-            stub_getter("flash.media.Video", "videoWidth");
-            return 0;
-        }
+        // The size of the frames shown (camera or stream), 0 before the first one.
+        public native function get videoWidth():int;
 
-        public function get videoHeight():int {
-            stub_getter("flash.media.Video", "videoHeight");
-            return 0;
-        }
+        public native function get videoHeight():int;
 
         public native function attachNetStream(netStream:NetStream):void;
+
+        // ARMFlash: the device camera (null shows nothing).
+        public function attachCamera(camera:Camera):void {
+            if (camera != null) {
+                camera.ruffleStart();
+            }
+            this.attachCameraNative(camera != null);
+        }
+
+        private native function attachCameraNative(on:Boolean):void;
 
         public function clear():void {
             stub_method("flash.media.Video", "clear");

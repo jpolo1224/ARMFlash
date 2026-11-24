@@ -63,6 +63,12 @@ pub fn attach_video<'gc>(
 
     if let NativeObject::NetStream(ns) = source.native() {
         video.attach_netstream(activation.context, ns);
+    } else if let NativeObject::Camera(_) = source.native() {
+        // ARMFlash: the device camera.
+        video.attach_camera(activation.context);
+    } else if matches!(source.native(), NativeObject::None) && args.first().is_some_and(|v| matches!(v, Value::Null | Value::Undefined)) {
+        // attachVideo(null) clears the video.
+        video.detach(activation.context);
     } else {
         tracing::warn!("Cannot use object of type {:?} as video source", source);
     }

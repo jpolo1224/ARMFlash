@@ -50,7 +50,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         com.armsx.flashpoint.discord.DiscordPresence.stopWatchingFriends()
         pad()?.reset()
         gestures.reset()
-        if (!act.isFinishing && !overlay.menu) { overlay.editing = false; overlay.menu = true }
+        if (!act.isFinishing && !overlay.menu && !overlay.holdMenu) { overlay.editing = false; overlay.menu = true }
     }
 
     fun onDestroy() {

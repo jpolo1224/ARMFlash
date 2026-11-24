@@ -94,6 +94,8 @@ pub enum NativeObject<'gc> {
     FileReference(FileReferenceObject<'gc>),
     NetConnection(NetConnection<'gc>),
     LocalConnection(LocalConnection<'gc>),
+    /// ARMFlash: a device camera (`Camera.get()`).
+    Camera(crate::avm1::globals::camera::CameraObject<'gc>),
     Sound(Sound<'gc>),
     StyleSheet(StyleSheetObject<'gc>),
     TextSnapshot(TextSnapshotObject<'gc>),

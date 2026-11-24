@@ -11,6 +11,7 @@
 //! - no context menu, no external browser.
 
 mod audio;
+mod camera;
 mod custom_event;
 mod driver;
 mod shader;
@@ -145,6 +146,8 @@ async fn run(app: AndroidApp) {
         sdk: u32,
         shader_preset: String,
         shader_params: String,
+        /// The device cameras for webcam games, one name per line (front first).
+        cameras: String,
     }
     let settings = vm
         .attach_current_thread(|env| -> jni::errors::Result<_> {
@@ -155,6 +158,7 @@ async fn run(app: AndroidApp) {
                 backend: JavaInterface::get_string(env, &activity, "backend"),
                 storage: JavaInterface::storage_dir(env, &activity),
                 trace: Some(JavaInterface::get_string(env, &activity, "traceOutput")).filter(|s| !s.is_empty()).map(Into::into),
+                cameras: JavaInterface::get_string(env, &activity, "cameras"),
                 scale: JavaInterface::get_string(env, &activity, "scale").parse().unwrap_or(0),
                 quality: JavaInterface::get_string(env, &activity, "quality").parse().unwrap_or(2),
                 vk_gipa: JavaInterface::get_string(env, &activity, "vkGipa").parse().unwrap_or(0),
@@ -167,6 +171,14 @@ async fn run(app: AndroidApp) {
         })
         .expect("JNI calls on the main thread must succeed");
     log::info!("swf {} via {} backend {}", settings.swf_url, settings.proxy_url, settings.backend);
+    // Webcam games: the device camera, when it has one.
+    if !settings.cameras.is_empty() {
+        ruffle_core::camera::set_backend(Box::new(camera::AndroidCamera::new(
+            app.vm_as_ptr() as *mut jni::sys::JavaVM,
+            activity_raw,
+            &settings.cameras,
+        )));
+    }
 
     // View coordinates (overlay) to surface pixels.
     let to_surface = |app: &AndroidApp, window: &ndk::native_window::NativeWindow, x: f64, y: f64| -> (f64, f64) {

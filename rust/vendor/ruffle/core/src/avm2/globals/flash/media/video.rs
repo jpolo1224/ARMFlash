@@ -79,6 +79,43 @@ pub fn init<'gc>(
     Ok(Value::Undefined)
 }
 
+/// ARMFlash: show the device camera in this video, or nothing (`attachCamera(null)`).
+pub fn attach_camera_native<'gc>(
+    activation: &mut Activation<'_, 'gc>,
+    this: Value<'gc>,
+    args: FunctionArgs<'_, 'gc>,
+) -> Result<Value<'gc>, Error<'gc>> {
+    let this = this.as_object().unwrap();
+    if let Some(video) = this.as_display_object().and_then(|dobj| dobj.as_video()) {
+        if args.get_bool(0) {
+            video.attach_camera(activation.context);
+        } else {
+            video.detach(activation.context);
+        }
+    }
+    Ok(Value::Undefined)
+}
+
+pub fn get_video_width<'gc>(
+    _activation: &mut Activation<'_, 'gc>,
+    this: Value<'gc>,
+    _args: FunctionArgs<'_, 'gc>,
+) -> Result<Value<'gc>, Error<'gc>> {
+    let this = this.as_object().unwrap();
+    let size = this.as_display_object().and_then(|dobj| dobj.as_video()).map_or((0, 0), |v| v.decoded_size());
+    Ok((size.0 as i32).into())
+}
+
+pub fn get_video_height<'gc>(
+    _activation: &mut Activation<'_, 'gc>,
+    this: Value<'gc>,
+    _args: FunctionArgs<'_, 'gc>,
+) -> Result<Value<'gc>, Error<'gc>> {
+    let this = this.as_object().unwrap();
+    let size = this.as_display_object().and_then(|dobj| dobj.as_video()).map_or((0, 0), |v| v.decoded_size());
+    Ok((size.1 as i32).into())
+}
+
 pub fn attach_net_stream<'gc>(
     activation: &mut Activation<'_, 'gc>,
     this: Value<'gc>,

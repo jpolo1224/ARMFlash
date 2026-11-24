@@ -17,7 +17,8 @@ use gc_arena::lock::{Lock, RefLock};
 use gc_arena::{Collect, Gc, Mutation};
 use ruffle_common::utils::HasPrefixField;
 use ruffle_macros::istr;
-use ruffle_render::bitmap::{BitmapInfo, PixelSnapping};
+use ruffle_render::backend::RenderBackend;
+use ruffle_render::bitmap::{Bitmap, BitmapFormat, BitmapInfo, PixelRegion, PixelSnapping};
 use ruffle_render::commands::CommandHandler;
 use ruffle_render::quality::StageQuality;
 use ruffle_video::VideoStreamHandle;
@@ -77,6 +78,9 @@ pub struct VideoData<'gc> {
     /// NOTE: This is only used for SWF-source video streams.
     decoded_frame: RefCell<Option<(u32, BitmapInfo)>>,
 
+    /// The camera frame on the GPU and which frame it is (`VideoSource::Camera`).
+    camera_frame: RefCell<Option<(u64, BitmapInfo)>>,
+
     /// The self bounds for this movie.
     size: Cell<(i32, i32)>,
 }
@@ -111,6 +115,8 @@ pub enum VideoSource<'gc> {
         /// The stream the video is downloaded from.
         stream: NetStream<'gc>,
     },
+    /// The device camera (`attachCamera`, or AS1/2 `attachVideo` with a Camera). ARMFlash.
+    Camera,
     Unconnected,
 }
 
@@ -155,6 +161,7 @@ impl<'gc> Video<'gc> {
                 movie,
                 size: Cell::new(size),
                 decoded_frame: RefCell::new(None),
+                camera_frame: RefCell::new(None),
             },
         ))
     }
@@ -178,6 +185,7 @@ impl<'gc> Video<'gc> {
                 movie,
                 size: Cell::new((width, height)),
                 decoded_frame: RefCell::new(None),
+                camera_frame: RefCell::new(None),
             },
         ))
     }
@@ -211,9 +219,50 @@ impl<'gc> Video<'gc> {
                 .as_ref()
                 .map(|(_, b)| b.clone()),
             VideoSource::NetStream { stream } => stream.last_decoded_bitmap(),
+            VideoSource::Camera => return crate::camera::frame().map_or((0, 0), |f| (f.width, f.height)),
             VideoSource::Unconnected => None,
         };
         bitmap.map_or((0, 0), |b| (b.width, b.height))
+    }
+
+    /// Show the device camera in this video.
+    pub fn attach_camera(self, context: &mut UpdateContext<'gc>) {
+        self.set_source(context, VideoSource::Camera);
+        self.0.stream.set(VideoStream::Uninstantiated(0));
+        self.0.keyframes.replace(BTreeSet::new());
+    }
+
+    /// Stop showing anything (`attachCamera(null)`).
+    pub fn detach(self, context: &mut UpdateContext<'gc>) {
+        self.set_source(context, VideoSource::Unconnected);
+        self.0.stream.set(VideoStream::Uninstantiated(0));
+    }
+
+    /// The newest camera frame as a texture, uploaded once per frame the camera delivers.
+    fn camera_bitmap(self, renderer: &mut dyn RenderBackend) -> Option<BitmapInfo> {
+        let frame = crate::camera::frame()?;
+        let mut cached = self.0.camera_frame.borrow_mut();
+        if let Some((seq, info)) = cached.as_ref() {
+            if *seq == frame.seq {
+                return Some(info.clone());
+            }
+        }
+        let bitmap = Bitmap::new(frame.width, frame.height, BitmapFormat::Rgba, frame.rgba.as_slice());
+        let info = match cached.take() {
+            Some((_, info)) if info.width == frame.width && info.height == frame.height => {
+                if let Err(e) = renderer.update_texture(&info.handle, bitmap, PixelRegion::for_whole_size(frame.width, frame.height)) {
+                    tracing::warn!("camera frame upload failed: {e}");
+                }
+                info
+            }
+            _ => BitmapInfo {
+                handle: renderer.register_bitmap(bitmap).ok()?,
+                width: frame.width,
+                height: frame.height,
+            },
+        };
+        *cached = Some((frame.seq, info.clone()));
+        Some(info)
     }
 
     /// Convert this Video into a NetStream sourced video.
@@ -244,6 +293,7 @@ impl<'gc> Video<'gc> {
                 frames.insert(tag.frame_num.into(), (subslice.start, subslice.end));
             }
             VideoSource::NetStream { .. } => {}
+            VideoSource::Camera => {}
             VideoSource::Unconnected { .. } => {}
         }
     }
@@ -267,6 +317,7 @@ impl<'gc> Video<'gc> {
         let num_frames = match self.0.source.get() {
             VideoSource::Swf(swf_source) => swf_source.streamdef.num_frames as usize,
             VideoSource::NetStream { .. } => return,
+            VideoSource::Camera => return,
             VideoSource::Unconnected { .. } => return,
         };
 
@@ -353,6 +404,7 @@ impl<'gc> Video<'gc> {
                 }
             },
             VideoSource::NetStream { .. } => return,
+            VideoSource::Camera => return,
             VideoSource::Unconnected { .. } => return,
         };
 
@@ -431,6 +483,7 @@ impl<'gc> TDisplayObject<'gc> for Video<'gc> {
                 }
             }
             VideoSource::NetStream { .. } => return,
+            VideoSource::Camera => return,
             VideoSource::Unconnected { .. } => return,
         };
 
@@ -492,6 +545,7 @@ impl<'gc> TDisplayObject<'gc> for Video<'gc> {
         match self.0.source.get() {
             VideoSource::Swf(swf_source) => swf_source.streamdef.id,
             VideoSource::NetStream { .. } => 0,
+            VideoSource::Camera => 0,
             VideoSource::Unconnected { .. } => 0,
         }
     }
@@ -553,6 +607,7 @@ impl<'gc> TDisplayObject<'gc> for Video<'gc> {
                 stream.last_decoded_bitmap(),
                 None,
             ),
+            VideoSource::Camera => (true, None, self.0.movie.version(), self.camera_bitmap(context.renderer), None),
             VideoSource::Unconnected { .. } => return context.transform_stack.pop(),
         };
 

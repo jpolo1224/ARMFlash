@@ -26,7 +26,7 @@ mod bitmap_filter;
 pub(crate) mod blur_filter;
 pub(crate) mod boolean;
 pub(crate) mod button;
-mod camera;
+pub(crate) mod camera;
 mod color;
 pub(crate) mod color_matrix_filter;
 pub(crate) mod color_transform;
