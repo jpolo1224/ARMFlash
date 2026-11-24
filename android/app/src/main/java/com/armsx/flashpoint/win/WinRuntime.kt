@@ -187,13 +187,44 @@ class WinRuntime(private val ctx: Context) {
      * Point Windows' own proxy setting (WinINet, which Flash Player and most plugins use) at the
      * game server, as desktop Flashpoint does, so every file a game asks for comes from its data.
      */
-    fun ensureProxy(port: Int) {
-        val mark = File(prefix, ".armflash-proxy-$port")
-        if (mark.isFile) return
-        val key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"
-        val ok = run(listOf("reg", "add", key, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f"), null).waitFor() == 0 &&
-            run(listOf("reg", "add", key, "/v", "ProxyServer", "/t", "REG_SZ", "/d", "127.0.0.1:$port", "/f"), null).waitFor() == 0
-        if (ok) mark.writeText("")
+    fun ensureProxy(port: Int) = ensureReg(
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+        listOf(RegValue("ProxyEnable", "REG_DWORD", "1"), RegValue("ProxyServer", "REG_SZ", "127.0.0.1:$port")),
+    )
+
+    /** A registry value as reg.exe adds it, and the line Wine saves for it in user.reg. */
+    private class RegValue(val name: String, val type: String, val data: String) {
+        val line: String get() = "\"$name\"=" + if (type == "REG_DWORD") "dword:%08x".format(data.toLong()) else "\"$data\""
+    }
+
+    /**
+     * Settings ARMFlash puts in Windows' registry, added with reg.exe whenever Wine's saved user
+     * registry (user.reg) does not have them. Wine saves the registry only every 30 seconds or
+     * when its server stops, and closing a game stops it hard: a setting added in a game's first
+     * seconds could be lost while a marker file said it was done, so it never came back (the
+     * Shockwave projector's window then kept its first size, cropping the game). Checked against
+     * the saved registry itself, a lost setting is back before the game starts.
+     */
+    private fun ensureReg(key: String, values: List<RegValue>) {
+        val saved = savedUserValues(key)
+        for (v in values) if (v.line.lowercase() !in saved) {
+            Log.i(TAG, "registry: adding ${v.name} under $key (not in user.reg)")
+            run(listOf("reg", "add", key, "/v", v.name, "/t", v.type, "/d", v.data, "/f"), null).waitFor()
+        }
+    }
+
+    /** The value lines (lowercase) Wine last saved under the HKCU key [key]. */
+    private fun savedUserValues(key: String): Set<String> {
+        val text = runCatching { File(prefix, "user.reg").readText() }.getOrNull() ?: return emptySet()
+        // user.reg names keys relative to HKCU, with each backslash written twice.
+        val header = "[" + key.removePrefix("HKCU\\").replace("\\", "\\\\").lowercase() + "]"
+        val out = HashSet<String>()
+        var inKey = false
+        for (line in text.lineSequence()) {
+            if (line.startsWith("[")) inKey = line.lowercase().startsWith(header)
+            else if (inKey) out += line.trim().lowercase()
+        }
+        return out
     }
 
     /**
@@ -203,16 +234,12 @@ class WinRuntime(private val ctx: Context) {
      * quarter of the game showed.
      */
     fun ensureUnmanaged() {
-        val mark = File(prefix, ".armflash-unmanaged-2")
-        if (mark.isFile) return
         // Where it was seen: the Shockwave projector (every PJ version is SPR.exe) and
         // Flashpoint Navigator (FPNavigator.exe starts flashpointnavigator.exe). Wine then draws
         // their title bars itself, which the game screen crops off.
-        val ok = UNMANAGED_EXES.all { exe ->
-            val key = "HKCU\\Software\\Wine\\AppDefaults\\$exe\\X11 Driver"
-            run(listOf("reg", "add", key, "/v", "Managed", "/t", "REG_SZ", "/d", "N", "/f"), null).waitFor() == 0
+        for (exe in UNMANAGED_EXES) {
+            ensureReg("HKCU\\Software\\Wine\\AppDefaults\\$exe\\X11 Driver", listOf(RegValue("Managed", "REG_SZ", "N")))
         }
-        if (ok) mark.writeText("")
     }
 
     /**
@@ -255,6 +282,19 @@ class WinRuntime(private val ctx: Context) {
     val hasGecko: Boolean get() = File(prefix, ".armflash-gecko").isFile
 
     /**
+     * Every Internet Explorer zone (local, intranet, trusted, internet, restricted): ActiveX
+     * controls and plugins run and scripts may use them, with no prompt.
+     */
+    private fun ensureZones() {
+        for (zone in 0..4) {
+            ensureReg(
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Zones\\$zone",
+                listOf("1001", "1004", "1200", "1201", "1208", "1209", "120A", "120B", "1405", "2000", "2201").map { RegValue(it, "REG_DWORD", "0") },
+            )
+        }
+    }
+
+    /**
      * Internet Explorer's engine for games that run in its browser control (Secure Player's
      * WEB_BROWSER templates: ActiveX games, WildTangent, Hypercosm, Viscape and others): Wine
      * Gecko, the version this Wine uses, installed once with Wine's msiexec. Until it is there,
@@ -262,7 +302,7 @@ class WinRuntime(private val ctx: Context) {
      * lets pages run their ActiveX controls without asking, as Secure Player's browser does.
      */
     fun ensureGecko(log: (String) -> Unit): Boolean {
-        if (hasGecko) return true
+        if (hasGecko) { ensureZones(); return true }
         return runCatching {
             log("Getting Internet Explorer support (once, 55 MB)…")
             val tmp = File(prefix, "drive_c/windows/temp/armflash-gecko").apply { deleteRecursively(); mkdirs() }
@@ -285,14 +325,7 @@ class WinRuntime(private val ctx: Context) {
             val code = run(listOf("msiexec", "/i", "C:\\windows\\temp\\armflash-gecko\\wine-gecko-x86.msi", "/q"), null).waitFor()
             tmp.deleteRecursively()
             check(code == 0) { "msiexec exited with $code" }
-            // Every zone (local, intranet, trusted, internet, restricted): ActiveX controls and
-            // plugins run and scripts may use them, with no prompt.
-            for (zone in 0..4) {
-                val key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Zones\\$zone"
-                for (action in listOf("1001", "1004", "1200", "1201", "1208", "1209", "120A", "120B", "1405", "2000", "2201")) {
-                    run(listOf("reg", "add", key, "/v", action, "/t", "REG_DWORD", "/d", "0", "/f"), null).waitFor()
-                }
-            }
+            ensureZones()
             File(prefix, ".armflash-gecko").writeText(GECKO_SHA256)
             Log.i(TAG, "gecko: installed")
             true
