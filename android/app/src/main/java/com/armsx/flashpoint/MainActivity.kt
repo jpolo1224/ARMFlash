@@ -49,6 +49,8 @@ import kotlinx.coroutines.delay
 private const val DB_MB = 470
 /** What the first download fetches: the game list, gzipped (89 pages of about 1.15 MB, 11-2026). */
 private const val DOWNLOAD_MB = 100
+/** The Windows players' runtime and 3D file together (82 + 54 MB on ARMFlash's 1.0 release). */
+private const val WINDOWS_MB = 135
 
 /**
  * The first download's progress in megabytes actually received. The total is worked out from
@@ -261,6 +263,7 @@ private fun App(vm: BrowseVm) {
                 },
             )
         }
+        vm.winAsk?.let { ask -> WindowsPlayersAsk(vm, ask) }
         if (vm.status.isNotBlank()) {
             LaunchedEffect(vm.status) { delay(4000); vm.status = "" }
             Box(
@@ -290,6 +293,8 @@ private fun Opening() {
 @Composable
 private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit) {
     LaunchedEffect(Unit) { vm.loadLocations() }
+    val ctx = LocalContext.current
+    val win = com.armsx.flashpoint.win.WinSetup
     Column(
         Modifier.fillMaxSize().background(Fp.Browse).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -316,8 +321,12 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                     Spacer(Modifier.height(10.dp))
                 }
                 Chip("Cancel", on = false) { vm.cancelSync() }
+                WindowsProgress(win)
             }
-            imp != null -> Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
+            imp != null -> {
+                Text("Importing: ${imp / (1 shl 20)} MB", color = Fp.Text)
+                WindowsProgress(win)
+            }
             else -> {
                 Text(
                     "ARMFlash needs Flashpoint's game database: the details of over 170,000 games. " +
@@ -331,6 +340,13 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                         "and building it needs about 1 GB free, plus room for the games you play.",
                     color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.widthIn(max = 560.dp),
                 )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "The Windows players download with it, for Shockwave, Unity, Java and the other games that run in a " +
+                        "Windows player: about $WINDOWS_MB MB more, about 1 GB once set up.",
+                    color = Fp.Text, fontSize = 14.sp, modifier = Modifier.widthIn(max = 560.dp),
+                )
+                WindowsProgress(win)
                 Spacer(Modifier.height(18.dp))
                 Text("Where to keep the database and games", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Spacer(Modifier.height(8.dp))
@@ -353,10 +369,58 @@ private fun Setup(vm: BrowseVm, onImport: () -> Unit, onCustomFolder: () -> Unit
                 )
                 com.armsx.flashpoint.ui.SetupDriverOffer()
                 Spacer(Modifier.height(20.dp))
-                Chip("Download the game database", on = true) { vm.syncDatabase(fresh = true) }
+                Chip("Download the game database", on = true) { vm.syncDatabase(fresh = true); win.start(ctx) }
                 Spacer(Modifier.height(10.dp))
-                Chip("Import flashpoint.sqlite", on = false, onClick = onImport)
+                Chip("Import flashpoint.sqlite", on = false) { onImport(); win.start(ctx) }
             }
         }
     }
+}
+
+/** The Windows players' download as setup runs (it keeps going after setup, shown in Config). */
+@Composable
+private fun WindowsProgress(win: com.armsx.flashpoint.win.WinSetup) {
+    val line = win.progress ?: win.failed ?: return
+    Spacer(Modifier.height(8.dp))
+    Text(line, color = Fp.TextDim, fontSize = 13.sp, modifier = Modifier.widthIn(max = 560.dp))
+}
+
+/**
+ * A Windows game with the Windows players or their 3D file not downloaded yet: what they are, a
+ * Download that starts the game once they are in, and the download's progress meanwhile.
+ */
+@Composable
+private fun WindowsPlayersAsk(vm: BrowseVm, ask: BrowseVm.WinAsk) {
+    val win = com.armsx.flashpoint.win.WinSetup
+    val only3d = ask.parts == listOf(com.armsx.flashpoint.win.WinSetup.Part.GRAPHICS)
+    val busy = win.progress != null
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { vm.winAsk = null },
+        title = { Text(if (only3d) "3D for Windows players" else "Windows players needed") },
+        text = {
+            Column {
+                Text(
+                    if (only3d) "${ask.game.title} runs in a Windows player. Its 3D file (about 54 MB) lets Windows games " +
+                        "draw 3D (Unity, Shockwave 3D). It downloads once, for every Windows game."
+                    else "${ask.game.title} runs in a Windows player. The Windows players and their 3D file " +
+                        "(about 135 MB) download once, then every Windows game uses them.",
+                )
+                (win.progress ?: win.failed)?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = {
+            if (!busy) androidx.compose.material3.TextButton(onClick = { vm.winAskDownload() }) {
+                Text(if (win.failed != null) "Try again" else "Download")
+            }
+        },
+        dismissButton = {
+            androidx.compose.foundation.layout.Row {
+                if (only3d && !busy) androidx.compose.material3.TextButton(onClick = { vm.winAskWithout3d() }) { Text("Play without 3D") }
+                androidx.compose.material3.TextButton(onClick = { vm.winAsk = null }) { Text(if (busy) "Hide" else "Cancel") }
+            }
+        },
+    )
 }

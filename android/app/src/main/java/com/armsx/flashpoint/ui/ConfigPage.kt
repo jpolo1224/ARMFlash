@@ -586,44 +586,41 @@ private fun WindowsSupportRow() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val rt = remember { com.armsx.flashpoint.win.WinRuntime(ctx) }
-    var installed by remember { mutableStateOf(rt.installed) }
-    var has3d by remember { mutableStateOf(rt.has3d) }
-    var busy by remember { mutableStateOf<String?>(null) }
+    val win = com.armsx.flashpoint.win.WinSetup
+    var picked by remember { mutableStateOf<String?>(null) }
+    var fromFile by remember { mutableStateOf(0) }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = "Starting…"
+        picked = "Starting…"
         scope.launch {
             val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val ins = ctx.contentResolver.openInputStream(uri) ?: return@withContext false
-                rt.install(ins, setOf(com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256)) { busy = it }
+                rt.install(ins, setOf(com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256)) { picked = it }
             }
-            installed = rt.installed; has3d = rt.has3d
-            busy = if (ok) null else (busy ?: "Install failed")
+            fromFile++
+            picked = if (ok) null else (picked ?: "Install failed")
         }
     }
+    // Looked at again whenever a part goes in: from a file here, or downloaded here, in setup or
+    // before a game.
+    val installed = remember(fromFile, win.installs) { rt.installed }
+    val has3d = remember(fromFile, win.installs) { rt.has3d }
+    val busy = win.progress ?: picked
     ConfigRow(
         "Windows support",
         if (installed) "Installed. Shockwave, Unity, Java, Flash Player and the other Windows players can run." +
-            (if (has3d) " 3D: installed (software)." else " For 3D games (Unity, Shockwave 3D), also download the 3D file (52 MB).")
-        else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players (82 MB download).",
+            (if (has3d) " 3D: installed (software)." else " For 3D games (Unity, Shockwave 3D), also download the 3D file (54 MB).")
+        else "Needed for Shockwave, Unity, Java, Flash Player and the other Windows players: the players and their 3D file, 135 MB. " +
+            "Downloaded with the game database in first-time setup, or when a Windows game first starts.",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            // The runtime first, then the 3D file; each is checked like a file picked by hand.
+            // The runtime first, then the 3D file, in one download shared with setup and the game prompt.
             if (!installed || !has3d) Chip(busy ?: if (!installed) "Download" else "Download 3D", on = true) {
-                if (busy == null) {
-                    busy = "Starting…"
-                    scope.launch {
-                        val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            if (!rt.installed) rt.download(com.armsx.flashpoint.win.WinRuntime.RUNTIME_URL, com.armsx.flashpoint.win.WinRuntime.RUNTIME_SHA256) { busy = it }
-                            else rt.download(com.armsx.flashpoint.win.WinRuntime.GRAPHICS_URL, com.armsx.flashpoint.win.WinRuntime.GRAPHICS_SHA256) { busy = it }
-                        }
-                        installed = rt.installed; has3d = rt.has3d
-                        busy = if (ok) null else (busy ?: "Download failed")
-                    }
-                }
+                if (busy == null) win.start(ctx)
             }
+            if (busy == null) win.failed?.let { Text(it, color = Fp.TextDim, fontSize = 12.sp) }
             Chip(if (installed) "Reinstall from file" else "Install from file", on = false) {
                 if (busy == null) pick.launch(arrayOf("*/*"))
             }

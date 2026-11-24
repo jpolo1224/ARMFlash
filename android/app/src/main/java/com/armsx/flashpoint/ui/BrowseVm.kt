@@ -569,11 +569,59 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     var bigDownload by mutableStateOf<BigDownload?>(null)
     private val bigOk = HashSet<String>()
 
+    /**
+     * A Windows game found the Windows players or their 3D file missing (see [prepare]): asks to
+     * download them first, then starts the game if the prompt is still up when they are in.
+     */
+    data class WinAsk(val game: Game, val parts: List<com.armsx.flashpoint.win.WinSetup.Part>, val onReady: (Ready) -> Unit)
+    var winAsk by mutableStateOf<WinAsk?>(null)
+    /** "Play without 3D" was picked: not asked about the 3D file again until ARMFlash restarts. */
+    private var skip3d = false
+
+    fun winAskDownload() {
+        val ask = winAsk ?: return
+        val ctx = getApplication<Application>()
+        viewModelScope.launch {
+            com.armsx.flashpoint.win.WinSetup.start(ctx).join()
+            // Closed meanwhile: the download finished in the background, the game waits for a tap.
+            if (winAsk !== ask) return@launch
+            if (com.armsx.flashpoint.win.WinSetup.missing(ctx).isEmpty()) { winAsk = null; prepare(ask.game, ask.onReady) }
+        }
+    }
+
+    fun winAskWithout3d() {
+        val ask = winAsk ?: return
+        winAsk = null; skip3d = true
+        prepare(ask.game, ask.onReady)
+    }
+
     fun prepare(game: Game, onReady: (Ready) -> Unit): kotlinx.coroutines.Job = viewModelScope.launch {
         val plan = Launch.plan(game)
         if (!plan.runner.ready) {
             status = "${plan.runner.label} games are not playable on Android yet."
             return@launch
+        }
+        // Windows players (and Flash Player for a Flash game set to it): the runtime and its 3D
+        // file first, asked about before anything of the game downloads.
+        val ctx = getApplication<Application>()
+        val flashPage = isFlashPage(game, plan)
+        val flashPlayer = (plan.runner == com.armsx.flashpoint.game.Runner.FLASH || flashPage) &&
+            com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id, flashPage) == "flashplayer"
+        val winApp = when {
+            plan.runner == com.armsx.flashpoint.game.Runner.WINDOWS -> game.applicationPath
+            // Its own browser with the Flash plugin, as on the desktop.
+            flashPlayer && flashPage -> game.applicationPath
+            flashPlayer -> game.applicationPath.takeIf { "flashplayer" in it.lowercase() } ?: DEFAULT_FLASH_PLAYER
+            else -> null
+        }
+        if (winApp != null) {
+            val setup = com.armsx.flashpoint.win.WinSetup
+            val need = withContext(Dispatchers.IO) { setup.missing(ctx) }
+                .filterNot { it == com.armsx.flashpoint.win.WinSetup.Part.GRAPHICS && skip3d }
+            if (need.isNotEmpty()) {
+                winAsk = WinAsk(game, need, onReady)
+                return@launch
+            }
         }
         val gd = game.activeData
         val zips = mutableListOf<String>()
@@ -608,24 +656,8 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { FpCore.game(other)?.activeData?.let { library.zipFor(it) } }
                 ?.takeIf { it.isFile }?.let { zips += it.path }
         }
-        // Windows players (and Flash Player for a Flash game set to it): the runtime, then the
-        // game's support pack, downloaded the first time.
-        val ctx = getApplication<Application>()
-        val flashPage = isFlashPage(game, plan)
-        val flashPlayer = (plan.runner == com.armsx.flashpoint.game.Runner.FLASH || flashPage) &&
-            com.armsx.flashpoint.game.FlashPrefs.player(ctx, game.id, flashPage) == "flashplayer"
-        val winApp = when {
-            plan.runner == com.armsx.flashpoint.game.Runner.WINDOWS -> game.applicationPath
-            // Its own browser with the Flash plugin, as on the desktop.
-            flashPlayer && flashPage -> game.applicationPath
-            flashPlayer -> game.applicationPath.takeIf { "flashplayer" in it.lowercase() } ?: DEFAULT_FLASH_PLAYER
-            else -> null
-        }
+        // The game's support pack, downloaded the first time.
         if (winApp != null) {
-            if (!com.armsx.flashpoint.win.WinRuntime(ctx).installed) {
-                status = "This game needs Windows support: install it in Config, under Windows Players."
-                return@launch
-            }
             val packs = com.armsx.flashpoint.win.SupportPacks
             val drive = withContext(Dispatchers.IO) { packs.drive(ctx, library.root) }
             val missing = withContext(Dispatchers.IO) { packs.needed(ctx, winApp, game.primaryPlatform).filterNot { packs.installed(drive, it) } }
