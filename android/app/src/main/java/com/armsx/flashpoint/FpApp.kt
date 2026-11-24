@@ -4,6 +4,12 @@ import android.app.Application
 import com.armsx.flashpoint.data.Library
 
 class FpApp : Application() {
+    companion object {
+        /** This process's application, for code that has no Context of its own (FpCore's settings). */
+        @Volatile var app: FpApp? = null
+            private set
+    }
+
     lateinit var library: Library
         private set
 
@@ -12,6 +18,7 @@ class FpApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        app = this
         library = Library(this)
         // Flashpoint's credits, platform logos, logo sets and themes, then the themes' colors.
         com.armsx.flashpoint.data.Defaults.install(this, library.root)

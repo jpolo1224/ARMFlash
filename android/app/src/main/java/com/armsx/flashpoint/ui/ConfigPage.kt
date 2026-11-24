@@ -158,7 +158,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
         }
 
         Section("Visuals") {
-            ConfigRow("Screenshot Preview", "Show a game's screenshot in the grid.") {
+            ConfigRow("Screenshot Preview", "Show games' screenshots in the grid in place of their logos: always, or one game at a time with a long press.") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("0" to "Off", "1" to "Long Press", "2" to "Always").forEach { (v, label) ->
                         Chip(label, p.screenshotPreviewMode.value == v) { p.screenshotPreviewMode.value = v }
@@ -205,7 +205,9 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                     vm.status = "Database optimized"
                 }
             }
-            Toggle("Verbose Logging", "Enables verbose logging for the game server and database.", p.enableVerboseLogging)
+            Toggle("Verbose Logging", "Logs every request the game server answers, and more about the database, in Logs. Games started after the change log this way.", p.enableVerboseLogging) {
+                com.armsx.flashpoint.core.FpCore.verbose(p.enableVerboseLogging.value)
+            }
         }
         Spacer(Modifier.height(30.dp))
     }

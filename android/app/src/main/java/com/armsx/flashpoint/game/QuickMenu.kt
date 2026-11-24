@@ -1,5 +1,6 @@
 package com.armsx.flashpoint.game
 
+import kotlin.math.roundToInt
 import android.view.KeyEvent
 import com.armsx.flashpoint.ui.sliderPadKeys
 import androidx.compose.animation.AnimatedVisibility
@@ -713,6 +714,66 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         Spacer(Modifier.height(2.dp))
         MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
     }
+    // ARMSX2's on-screen control options.
+    SectionCard("Touch options") {
+        Hint("For every game.")
+        MenuSwitchRow("Multi-Touch", TouchPrefs.multiTouch.value) { TouchPrefs.multiTouch.value = it; TouchPrefs.save() }
+        Hint("A key answers a little outside itself too, so one thumb can press two keys side by side, and a finger can slide from key to key.")
+        if (TouchPrefs.multiTouch.value) {
+            Spacer(Modifier.height(6.dp))
+            PercentSlider("Multi-touch reach", (TouchPrefs.reach.floatValue * 100).roundToInt(), 50..95) { TouchPrefs.reach.floatValue = it / 100f }
+            Hint("How far from a key's centre a touch still presses it. Higher reaches further, so keys side by side are easier to press together.")
+            Spacer(Modifier.height(8.dp))
+            Text("Glide", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier.fillMaxWidth().bleedHorizontal(13.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 13.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TouchPrefs.Glide.entries.forEach { g ->
+                    OptionChip(g.label, TouchPrefs.glide.value == g) { TouchPrefs.glide.value = g; TouchPrefs.save() }
+                }
+            }
+            Hint(TouchPrefs.glide.value.help)
+        }
+        Spacer(Modifier.height(8.dp))
+        MenuSwitchRow("Touch haptics", TouchPrefs.haptics.value) { TouchPrefs.haptics.value = it; TouchPrefs.save() }
+        Hint("Vibrate briefly when you press an on-screen key.")
+        if (TouchPrefs.haptics.value) {
+            Spacer(Modifier.height(6.dp))
+            PercentSlider("Vibration strength", TouchPrefs.hapticStrength.intValue, 0..200) { TouchPrefs.hapticStrength.intValue = it }
+        }
+        Spacer(Modifier.height(8.dp))
+        PercentSlider("Stick travel", TouchPrefs.stickTravel.intValue, 50..200) { TouchPrefs.stickTravel.intValue = it }
+        Hint("How far your thumb moves from the centre of a touch stick before it presses a direction, for every touch stick.")
+        Spacer(Modifier.height(8.dp))
+        MenuSwitchRow("Floating stick", TouchPrefs.floatingStick.value) { TouchPrefs.floatingStick.value = it; TouchPrefs.save() }
+        Hint("A touch stick centres itself where your thumb lands, so you can grab it without looking.")
+        Spacer(Modifier.height(8.dp))
+        MenuSwitchRow("Half-screen stick", TouchPrefs.halfScreenStick.value) { TouchPrefs.halfScreenStick.value = it; TouchPrefs.save() }
+        Hint("The left half of the screen, outside the keys, is an invisible stick for the arrow keys, steering from wherever your thumb lands. Touches there no longer reach the game itself.")
+    }
+    SectionCard("Gesture control") {
+        Hint("Swipes and a double-tap on the game itself (not on a key) press a key, for keys that don't fit on screen. The game still gets the touch. With Pointer set to Touchpad or Point & click the screen moves the mouse, so gestures work with Direct touch.")
+        MenuSwitchRow("Gesture control", TouchPrefs.gestures.value) { TouchPrefs.gestures.value = it; TouchPrefs.save() }
+        if (TouchPrefs.gestures.value) {
+            Spacer(Modifier.height(6.dp))
+            TouchPrefs.gestureSlots.forEach { (name, state) ->
+                MenuCycleRow(name, keyName(state.intValue.takeIf { it != 0 })) { st.gesturePick = name }
+                Spacer(Modifier.height(6.dp))
+            }
+            Text("Double-tap mode", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OptionChip("Tap", !TouchPrefs.doubleTapHold.value) { TouchPrefs.doubleTapHold.value = false; TouchPrefs.save() }
+                OptionChip("Hold", TouchPrefs.doubleTapHold.value) { TouchPrefs.doubleTapHold.value = true; TouchPrefs.save() }
+            }
+            Hint(if (TouchPrefs.doubleTapHold.value) "The key stays down until you double-tap again." else "A quick press, for something one-shot.")
+            Spacer(Modifier.height(8.dp))
+            PercentSlider("Swipe distance", (TouchPrefs.swipeDistance.floatValue * 100).roundToInt(), 5..40) { TouchPrefs.swipeDistance.floatValue = it / 100f }
+            Hint("How far a finger travels to count as a swipe, as a part of the screen's shorter edge. Lower is more sensitive.")
+        }
+    }
     SectionCard("Controller") {
         MenuCycleRow("Mouse cursor", if (st.layout.mouseStick == "left") "Left stick" else "Right stick") {
             st.layout = st.layout.copy(mouseStick = if (st.layout.mouseStick == "left") "right" else "left"); host.save(false)
@@ -897,6 +958,23 @@ private fun ActionGrid(actions: List<MenuAction>) {
     }
 }
 
+/** A line of explanation under a setting. */
+@Composable
+private fun Hint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 3.dp, bottom = 2.dp))
+}
+
+/** A percent setting: its name and value over a slider; saved when the slider is let go of. */
+@Composable
+private fun PercentSlider(title: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Text("$title  $value%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+    Slider(
+        value.toFloat(), { onChange(it.roundToInt()) }, valueRange = range.first.toFloat()..range.last.toFloat(),
+        onValueChangeFinished = { TouchPrefs.save() },
+        modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+    )
+}
+
 @Composable
 private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Surface(
@@ -1021,16 +1099,32 @@ private fun keyName(code: Int?): String = when (code) {
 }
 
 /** Pick what a controller button sends, in the same sheet style. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
-    fun pick(code: Int?) {
+    KeySheet("${PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"} sends", st.layout.pad[button], { st.padPick = null }) { code ->
         st.layout = st.layout.copy(pad = st.layout.pad.toMutableMap().apply { if (code == null) remove(button) else put(button, code) })
         host.save(false)
         st.padPick = null
     }
+}
+
+/** Pick the key a gesture ([slot]: "Swipe up", "Double-tap"...) presses. */
+@Composable
+fun GestureKeyPicker(st: OverlayState, slot: String) {
+    val state = TouchPrefs.gestureSlots.firstOrNull { it.first == slot }?.second ?: return
+    KeySheet("$slot presses", state.intValue.takeIf { it != 0 }, { st.gesturePick = null }) { code ->
+        state.intValue = code ?: 0
+        TouchPrefs.save()
+        st.gesturePick = null
+    }
+}
+
+/** The key picker sheet: None, the mouse buttons and every key; [current] is marked. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeySheet(title: String, current: Int?, dismiss: () -> Unit, pick: (Int?) -> Unit) {
     MaterialTheme(colorScheme = NightScheme, typography = ArmsTypography) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable { st.padPick = null }, contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable { dismiss() }, contentAlignment = Alignment.Center) {
             Surface(
                 modifier = Modifier.fillMaxWidth(0.8f).widthIn(max = 620.dp).fillMaxHeight(0.86f).clickable(enabled = false) {},
                 shape = RoundedCornerShape(24.dp),
@@ -1040,7 +1134,7 @@ fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        "${PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"} sends",
+                        title,
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(10.dp))
@@ -1048,7 +1142,6 @@ fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
                         Modifier.verticalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        val current = st.layout.pad[button]
                         OptionChip("None", current == null) { pick(null) }
                         OptionChip("Left click", current == Keys.MOUSE_LEFT) { pick(Keys.MOUSE_LEFT) }
                         OptionChip("Right click", current == Keys.MOUSE_RIGHT) { pick(Keys.MOUSE_RIGHT) }

@@ -29,6 +29,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         PauseMusic.load(act)
         OsdPrefs.load(act)
         GamePrefs.load(act)
+        TouchPrefs.load(act)
         Cursors.load(act)
         GamePrefs.apply(act)
         overlay.padConnected = gamepadAttached()
@@ -48,6 +49,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         PauseMusic.setForeground(false, act, overlay.menu)
         com.armsx.flashpoint.discord.DiscordPresence.stopWatchingFriends()
         pad()?.reset()
+        gestures.reset()
         if (!act.isFinishing && !overlay.menu) { overlay.editing = false; overlay.menu = true }
     }
 
@@ -65,6 +67,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         menuWasOpen = open
         if (open == wasOpen) return
         pad()?.reset()
+        gestures.reset()
         if (open) {
             MenuSfx.play(MenuSfx.Event.MENU_OPEN)
             PauseMusic.start(act)
@@ -80,7 +83,11 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
             com.armsx.flashpoint.ui.PadInput.onTouch()
             overlay.touchTick++
         }
+        gestures.onTouch(ev, act.resources.displayMetrics.density)
     }
+
+    /** ARMSX2's Gesture Control: swipes and a double-tap on the game press keys. */
+    private val gestures = Gestures(overlay)
 
     override fun onInputDeviceAdded(deviceId: Int) { overlay.padConnected = gamepadAttached() }
     override fun onInputDeviceRemoved(deviceId: Int) { overlay.padConnected = gamepadAttached() }

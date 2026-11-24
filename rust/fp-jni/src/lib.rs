@@ -53,8 +53,16 @@ macro_rules! jfn {
 
 #[no_mangle]
 pub extern "system" fn Java_com_armsx_flashpoint_core_FpCore_init(_env: JNIEnv, _c: JClass) {
+    // The logger takes Debug; what is logged is set by the global level (Config, Verbose Logging).
     #[cfg(target_os = "android")]
-    android_logger::init_once(android_logger::Config::default().with_tag("fpcore").with_max_level(log::LevelFilter::Info));
+    android_logger::init_once(android_logger::Config::default().with_tag("fpcore").with_max_level(log::LevelFilter::Debug));
+    log::set_max_level(log::LevelFilter::Info);
+}
+
+/// Config, Verbose Logging: the game server's every request and the database's details too.
+#[no_mangle]
+pub extern "system" fn Java_com_armsx_flashpoint_core_FpCore_setVerbose(_env: JNIEnv, _c: JClass, on: jboolean) {
+    log::set_max_level(if on != 0 { log::LevelFilter::Debug } else { log::LevelFilter::Info });
 }
 
 jfn!(Java_com_armsx_flashpoint_core_FpCore_openDatabase(path: JString) => core::open_database(&path));

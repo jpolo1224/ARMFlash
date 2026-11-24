@@ -59,6 +59,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -121,6 +124,17 @@ class OverlayState(layout: TouchLayout) {
     val menuInput = kotlinx.coroutines.channels.Channel<MenuInput>(16)
     /** A controller is attached (kept current by the game screen). */
     var padConnected by mutableStateOf(false)
+    /** The gesture slot ("Swipe up", "Double-tap"...) whose key is being picked. */
+    var gesturePick by mutableStateOf<String?>(null)
+    /** The layout editor's profiles sheet is open. */
+    var profiles by mutableStateOf(false)
+    /** What gestures press keys through (set by the overlay). */
+    var gestureInput: GameInput? = null
+    /** The on-screen controls' touch areas in window pixels, which gestures leave alone. */
+    var controlRects: List<android.graphics.RectF> = emptyList()
+    var screenW = 0f
+    var screenH = 0f
+    fun controlAt(x: Float, y: Float) = controlRects.any { it.contains(x, y) }
 }
 
 sealed interface MenuInput {
@@ -143,10 +157,17 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
     val onSave: (Boolean) -> Unit = host::save
     // The game also pauses while its touch layout is being edited, as in ARMSX2.
     androidx.compose.runtime.LaunchedEffect(st.menu || st.editing) { host.menuOpen(st.menu || st.editing) }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val l = st.layout
+        val density = LocalDensity.current
+        // ARMSX2's multi-touch layer, fed by each key's touch area (see TouchSurface).
+        val surface = remember(inj) { TouchSurface { code, down -> press(inj, code, down) } }
+        androidx.compose.runtime.DisposableEffect(surface) { onDispose { surface.releaseAll() } }
+        val multi = TouchPrefs.multiTouch.value && !st.editing
+        androidx.compose.runtime.SideEffect { st.gestureInput = inj; st.screenW = w; st.screenH = h }
 
         // Mouse layer (under the buttons, so a finger on a button never reaches it).
         if (l.mode != "direct" && !st.editing) {
@@ -175,9 +196,48 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
             l.showMode == "timed" -> !timedOut
             else -> true
         }
+        // Hidden keys, the menu or the editor: nothing stays held.
+        LaunchedEffect(keysShown, st.menu, st.editing, multi) { surface.releaseAll() }
+        if (keysShown && multi) {
+            val reach = TouchPrefs.reach.floatValue
+            val keyAreas = ArrayList<TouchSurface.Key>()
+            val padAreas = ArrayList<TouchSurface.Pad>()
+            l.buttons.forEachIndexed { i, b ->
+                val hp = with(density) { b.size.dp.toPx() }
+                when (b.kind) {
+                    "arrows", "wasd" -> padAreas += TouchSurface.Pad(i, dirCodes(b.kind), b.x * w, b.y * h, hp / 2)
+                    "key", "mouse" -> if (!b.tapToHold) {
+                        val wp = if (b.kind == "key" && isWideKey(b.code)) hp * 1.9f else hp
+                        keyAreas += TouchSurface.Key(i, b.code, b.turbo, b.x * w, b.y * h, hp * reach, (wp - hp) / 2)
+                    }
+                }
+            }
+            androidx.compose.runtime.SideEffect { surface.keys = keyAreas; surface.pads = padAreas }
+        }
+        // Where the controls are, for gestures (which take only touches on the game itself).
+        val corner = with(density) { 64.dp.toPx() }
+        androidx.compose.runtime.SideEffect {
+            st.controlRects = buildList {
+                add(android.graphics.RectF(origin.x + w - corner, origin.y, origin.x + w, origin.y + corner))
+                if (!keysShown) return@buildList
+                if (TouchPrefs.halfScreenStick.value) add(android.graphics.RectF(origin.x, origin.y, origin.x + w / 2, origin.y + h))
+                l.buttons.forEach { b ->
+                    val hp = with(density) { b.size.dp.toPx() }
+                    val wp = if (b.kind == "key" && isWideKey(b.code)) hp * 1.9f else hp
+                    val grow = if (multi && b.kind in setOf("key", "mouse")) hp * TouchPrefs.reach.floatValue - hp / 2 else 0f
+                    val cx = origin.x + b.x * w
+                    val cy = origin.y + b.y * h
+                    add(android.graphics.RectF(cx - wp / 2 - grow, cy - hp / 2 - grow, cx + wp / 2 + grow, cy + hp / 2 + grow))
+                }
+            }
+        }
+        // ARMSX2's Half-Screen Sticks: the left half (outside the keys) is a stick for the arrow keys.
+        if (keysShown && !st.editing && TouchPrefs.halfScreenStick.value) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(0.5f).then(halfStickInput(dirCodes("arrows"), inj, with(density) { 60.dp.toPx() })))
+        }
         if (keysShown) {
             l.buttons.forEachIndexed { i, b ->
-                ButtonView(b, w, h, l.opacity, st, i, inj)
+                ButtonView(b, w, h, l.opacity, st, i, inj, surface, multi)
             }
         }
 
@@ -219,9 +279,11 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         WelcomeBannerOverlay(this)
         com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))
         DataPrepBanner(host.title, Modifier.align(Alignment.BottomCenter))
-        if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp))
+        if (st.editing) EditBar(st, onSave, Modifier.align(Alignment.TopCenter).padding(top = 10.dp), w, h)
         if (st.picking) KeyPicker(st)
+        if (st.profiles) ProfilesPanel(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }
+        st.gesturePick?.let { GestureKeyPicker(st, it) }
     }
 }
 
@@ -277,18 +339,24 @@ private fun mouseInput(mode: String, inj: GameInput, show: (Offset) -> Unit): Mo
 }
 
 @Composable
-private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: OverlayState, index: Int, inj: GameInput) {
+private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: OverlayState, index: Int, inj: GameInput, surface: TouchSurface, multi: Boolean) {
     val density = LocalDensity.current
     val wide = b.kind == "key" && isWideKey(b.code)
     val heightPx = with(density) { b.size.dp.toPx() }
     val widthPx = if (wide) heightPx * 1.9f else heightPx
-    val x = (b.x * w - widthPx / 2).roundToInt()
-    val y = (b.y * h - heightPx / 2).roundToInt()
+    val cx = b.x * w
+    val cy = b.y * h
+    val x = (cx - widthPx / 2).roundToInt()
+    val y = (cy - heightPx / 2).roundToInt()
     val sel = st.editing && st.selected == index
     val sizeMod = if (wide) Modifier.size(width = (b.size * 1.9f).dp, height = b.size.dp) else Modifier.size(b.size.dp)
     val base = Modifier.offset { IntOffset(x, y) }.then(sizeMod).alpha(if (st.editing) 0.95f else opacity)
     val edit = if (st.editing) Modifier.border(2.dp, if (sel) Accent else Color(0x88FFFFFF), RoundedCornerShape(12.dp)).pointerInput(index) {
-        detectDragGestures(onDragStart = { st.selected = index }) { change, drag ->
+        detectDragGestures(
+            onDragStart = { st.selected = index },
+            // ARMSX2's grid: a key let go of lands on the nearest grid cross.
+            onDragEnd = { if (TouchPrefs.gridSnap.value) snapToGrid(st, w, h, only = index) },
+        ) { change, drag ->
             change.consume()
             val cur = st.layout.buttons[index]
             st.layout = st.layout.copy(buttons = st.layout.buttons.toMutableList().also {
@@ -296,12 +364,20 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
             })
         }
     }.clickable { st.selected = index } else Modifier
+    // Where this control's touch area starts, read fresh by its touch handler (Multi-Touch).
+    val at by androidx.compose.runtime.rememberUpdatedState(Offset(x.toFloat(), y.toFloat()))
 
     when (b.kind) {
         "arrows", "wasd" -> {
             val codes = dirCodes(b.kind)
-            var lit by remember { mutableStateOf(0) }
-            Box(base.then(edit).then(if (st.editing) Modifier else dpadInput(codes, widthPx, inj) { lit = it })) {
+            var ownLit by remember { mutableStateOf(0) }
+            val input = when {
+                st.editing -> Modifier
+                multi -> surfaceInput(surface) { at }
+                else -> dpadInput(codes, widthPx, inj) { ownLit = it }
+            }
+            val lit = if (multi) surface.lit[index] ?: 0 else ownLit
+            Box(base.then(edit).then(input)) {
                 SpriteDpad(lit)
                 if (b.kind == "wasd") Text("WASD", color = KeyLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
             }
@@ -309,42 +385,161 @@ private fun ButtonView(b: TouchButton, w: Float, h: Float, opacity: Float, st: O
         "stick", "stick_wasd" -> {
             val codes = dirCodes(if (b.kind == "stick_wasd") "wasd" else "arrows")
             var thumb by remember { mutableStateOf(Offset.Zero) }
-            Box(base.then(edit).then(if (st.editing) Modifier else stickInput(codes, widthPx, inj) { thumb = it })) {
+            var shift by remember { mutableStateOf(Offset.Zero) }
+            Box(base.then(edit).then(if (st.editing) Modifier else stickInput(codes, widthPx, inj, { thumb = it }, { shift = it }))) {
                 androidx.compose.foundation.Image(
-                    androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_stick_base), null, Modifier.fillMaxSize(),
+                    androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_stick_base), null,
+                    Modifier.fillMaxSize().offset { IntOffset(shift.x.roundToInt(), shift.y.roundToInt()) },
                 )
                 val t = b.size * 0.56f
                 androidx.compose.foundation.Image(
                     androidx.compose.ui.res.painterResource(com.armsx.flashpoint.R.drawable.pad_thumb), null,
-                    Modifier.align(Alignment.Center).offset { IntOffset(thumb.x.roundToInt(), thumb.y.roundToInt()) }.size(t.dp),
+                    Modifier.align(Alignment.Center).offset { IntOffset((shift.x + thumb.x).roundToInt(), (shift.y + thumb.y).roundToInt()) }.size(t.dp),
                 )
             }
         }
         else -> {
-            var down by remember { mutableStateOf(false) }
             val label = when (b.code) { Keys.MOUSE_LEFT -> "L-Click"; Keys.MOUSE_RIGHT -> "R-Click"; else -> Keys.label(b.code) }
-            Box(
-                base.then(edit).then(if (st.editing) Modifier else Modifier.pointerInput(b.code) {
-                    awaitEachGesture {
-                        awaitFirstDown().consume()
-                        down = true
-                        press(inj, b.code, true)
-                        try {
-                            do {
-                                val e = awaitPointerEvent()
-                                e.changes.forEach { it.consume() }
-                            } while (e.changes.any { it.pressed })
-                        } finally {
-                            press(inj, b.code, false)
-                            down = false
-                        }
-                    }
-                }),
-            ) {
-                Keycap(label, down, round = false, sizeDp = b.size)
+            if (multi && !b.tapToHold) {
+                // Multi-Touch: the key answers within its reach (ARMSX2's hit circle), so its touch
+                // area is that much bigger than the key drawn in its middle.
+                val r = heightPx * TouchPrefs.reach.floatValue
+                val boxW = widthPx - heightPx + 2 * r
+                val boxH = 2 * r
+                val bx = cx - boxW / 2
+                val by = cy - boxH / 2
+                val areaAt by androidx.compose.runtime.rememberUpdatedState(Offset(bx, by))
+                Box(
+                    Modifier.offset { IntOffset(bx.roundToInt(), by.roundToInt()) }
+                        .size(with(density) { boxW.toDp() }, with(density) { boxH.toDp() })
+                        .then(surfaceInput(surface) { areaAt }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(sizeMod.alpha(opacity)) { Keycap(label, surface.held[index] == true, round = false, sizeDp = b.size) }
+                }
+            } else {
+                var down by remember { mutableStateOf(false) }
+                Box(base.then(edit).then(if (st.editing) Modifier else keyInput(inj, b) { down = it })) {
+                    Keycap(label, down, round = false, sizeDp = b.size)
+                }
             }
         }
     }
+}
+
+/**
+ * One key handling its own touch (Multi-Touch off, or a Tap-Hold key): ARMSX2's press handling,
+ * with its Turbo and Tap-Hold. A key let go of when the control goes away never stays down.
+ */
+private fun keyInput(inj: GameInput, b: TouchButton, shown: (Boolean) -> Unit): Modifier = Modifier.pointerInput(b.code, b.tapToHold, b.turbo) {
+    var latched = false
+    fun emit(on: Boolean) {
+        if (b.turbo > 0) Turbo.press("touch", b.code, on, b.turbo) { c, d -> press(inj, c, d) } else press(inj, b.code, on)
+    }
+    try {
+        awaitEachGesture {
+            awaitFirstDown().consume()
+            if (b.tapToHold) {
+                latched = !latched
+                shown(latched)
+                emit(latched)
+                if (latched) TouchHaptics.tick()
+                do {
+                    val e = awaitPointerEvent()
+                    e.changes.forEach { it.consume() }
+                } while (e.changes.any { it.pressed })
+            } else {
+                shown(true)
+                emit(true)
+                TouchHaptics.tick()
+                try {
+                    do {
+                        val e = awaitPointerEvent()
+                        e.changes.forEach { it.consume() }
+                    } while (e.changes.any { it.pressed })
+                } finally {
+                    emit(false)
+                    shown(false)
+                }
+            }
+        }
+    } finally {
+        if (latched) { emit(false); shown(false) }
+    }
+}
+
+/**
+ * A Multi-Touch control's touch area: its fingers go to the shared [TouchSurface] in overlay
+ * coordinates ([at] is where the area starts), which decides what they press.
+ */
+private fun surfaceInput(surface: TouchSurface, at: () -> Offset): Modifier = Modifier.pointerInput(surface) {
+    val mine = HashSet<Long>()
+    try {
+        awaitPointerEventScope {
+            while (true) {
+                val ev = awaitPointerEvent()
+                val o = at()
+                for (ch in ev.changes) {
+                    val id = ch.id.value
+                    if (ch.pressed) {
+                        mine += id
+                        surface.touch(id, ch.position.x + o.x, ch.position.y + o.y)
+                    } else if (mine.remove(id)) surface.lift(id)
+                    ch.consume()
+                }
+                surface.commit()
+            }
+        }
+    } finally {
+        mine.forEach(surface::lift)
+        surface.commit()
+    }
+}
+
+/**
+ * ARMSX2's Half-Screen Sticks, for the arrow keys: a thumb anywhere on the area steers from where
+ * it landed. Nothing is drawn.
+ */
+private fun halfStickInput(codes: IntArray, inj: GameInput, radiusPx: Float): Modifier = Modifier.pointerInput(codes.toList(), radiusPx) {
+    awaitEachGesture {
+        val d = awaitFirstDown()
+        d.consume()
+        var mask = 0
+        fun apply(m: Int) {
+            for (i in 0..3) {
+                val bit = 1 shl i
+                if ((m and bit) != (mask and bit)) inj.key(codes[i], m and bit != 0)
+            }
+            if (m and mask.inv() != 0) TouchHaptics.tick()
+            mask = m
+        }
+        try {
+            while (true) {
+                val e = awaitPointerEvent()
+                val c = e.changes.firstOrNull { it.id == d.id } ?: break
+                c.consume()
+                if (!c.pressed) break
+                val v = c.position - d.position
+                val travel = radiusPx * TouchPrefs.stickTravel.intValue / 100f
+                apply(if (hypot(v.x, v.y) > travel * 0.35f) angleMask(v.x, v.y) else 0)
+            }
+        } finally {
+            apply(0)
+        }
+    }
+}
+
+/** ARMSX2's grid: the overlay's width in this many columns, rows at the same pitch. */
+private const val GRID_COLS = 24f
+
+/** Put keys on the nearest grid cross: one ([only]) or all of them. */
+private fun snapToGrid(st: OverlayState, w: Float, h: Float, only: Int? = null) {
+    val grid = w / GRID_COLS
+    if (grid <= 0f || h <= 0f) return
+    fun snap(f: Float, dim: Float) = (((f * dim / grid).roundToInt() * grid) / dim).coerceIn(0.02f, 0.98f)
+    st.layout = st.layout.copy(buttons = st.layout.buttons.mapIndexed { i, b ->
+        if (only != null && i != only) b else b.copy(x = snap(b.x, w), y = snap(b.y, h))
+    })
 }
 
 private val KeyLabel = Color(0xFFC4C4C8)
@@ -363,7 +558,8 @@ else intArrayOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.K
  */
 @Composable
 private fun SpriteDpad(lit: Int) {
-    val armFill = 0.46f
+    // ARMSX2's D-pad spacing pulls each arm back toward its edge, opening a gap in the middle.
+    val armFill = (0.46f - TouchPrefs.dpadSpacing.floatValue).coerceAtLeast(0.2f)
     Box(Modifier.fillMaxSize()) {
         @Composable
         fun arm(res: Int, pressedRes: Int, on: Boolean, m: Modifier) = androidx.compose.foundation.Image(
@@ -427,34 +623,42 @@ private fun Keycap(label: String, pressed: Boolean, @Suppress("UNUSED_PARAMETER"
     }
 }
 
-/** The left stick as a direction pad: 8 directions, same keys as the D-pad. */
-private fun stickInput(codes: IntArray, sizePx: Float, inj: GameInput, thumb: (Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList()) {
-    val radius = sizePx * 0.30f
+/**
+ * The left stick as a direction pad: 8 directions, same keys as the D-pad. ARMSX2's Stick travel
+ * sets how far the thumb goes before a direction presses, and its Floating stick centres the stick
+ * where the thumb lands ([shift]: how far the stick moved for that).
+ */
+private fun stickInput(codes: IntArray, sizePx: Float, inj: GameInput, thumb: (Offset) -> Unit, shift: (Offset) -> Unit): Modifier = Modifier.pointerInput(codes.toList(), sizePx) {
+    val visual = sizePx * 0.30f
     awaitEachGesture {
         var mask = 0
+        val travel = visual * TouchPrefs.stickTravel.intValue / 100f
         fun apply(v: Offset?) {
             var m = 0
             if (v != null) {
                 val len = hypot(v.x, v.y)
-                val clamped = if (len > radius) v * (radius / len) else v
-                thumb(clamped)
-                if (len > radius * 0.35f) {
-                    val a = Math.toDegrees(atan2(v.y.toDouble(), v.x.toDouble()))
-                    if (a in -157.5..-22.5) m = m or 1
-                    if (a in 22.5..157.5) m = m or 2
-                    if (abs(a) >= 112.5) m = m or 4
-                    if (abs(a) <= 67.5) m = m or 8
-                }
-            } else thumb(Offset.Zero)
+                // The thumb is drawn within the stick's ring, however far the travel is.
+                thumb(if (len > 0f) v * (minOf(len, travel) / len) * (visual / travel) else Offset.Zero)
+                if (len > travel * 0.35f) m = angleMask(v.x, v.y)
+            } else {
+                thumb(Offset.Zero)
+                shift(Offset.Zero)
+            }
             for (i in 0..3) {
                 val bit = 1 shl i
                 if ((m and bit) != (mask and bit)) inj.key(codes[i], m and bit != 0)
             }
+            if (m and mask.inv() != 0) TouchHaptics.tick()
             mask = m
         }
         val d = awaitFirstDown()
         d.consume()
-        val center = Offset(sizePx / 2, sizePx / 2)
+        var center = Offset(sizePx / 2, sizePx / 2)
+        if (TouchPrefs.floatingStick.value) {
+            // Kept far enough in that full travel stays reachable every way.
+            center = Offset(d.position.x.coerceIn(visual, sizePx - visual), d.position.y.coerceIn(visual, sizePx - visual))
+            shift(center - Offset(sizePx / 2, sizePx / 2))
+        }
         // finally: a gesture cut short (the menu opening, the keys hiding) still lets go.
         try {
             apply(d.position - center)
@@ -482,22 +686,12 @@ private fun dpadInput(codes: IntArray, sizePx: Float, inj: GameInput, lit: (Int)
     awaitEachGesture {
         var mask = 0
         fun apply(p: Offset?) {
-            var m = 0
-            if (p != null) {
-                val dx = p.x - sizePx / 2
-                val dy = p.y - sizePx / 2
-                if (hypot(dx, dy) > sizePx * 0.12f) {
-                    val a = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble()))
-                    if (a in -157.5..-22.5) m = m or 1
-                    if (a in 22.5..157.5) m = m or 2
-                    if (abs(a) >= 112.5) m = m or 4
-                    if (abs(a) <= 67.5) m = m or 8
-                }
-            }
+            val m = if (p != null) dpadMask(p.x - sizePx / 2, p.y - sizePx / 2, sizePx / 2) else 0
             for (i in 0..3) {
                 val bit = 1 shl i
                 if ((m and bit) != (mask and bit)) inj.key(codes[i], m and bit != 0)
             }
+            if (m and mask.inv() != 0) TouchHaptics.tick()
             mask = m
             lit(m)
         }
@@ -548,25 +742,122 @@ internal fun Pill(label: String, on: Boolean = false, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modifier) {
+private fun EditBar(st: OverlayState, onSave: (Boolean) -> Unit, modifier: Modifier, w: Float, h: Float) {
+    fun update(i: Int, f: (TouchButton) -> TouchButton) {
+        st.layout = st.layout.copy(buttons = st.layout.buttons.toMutableList().also { it[i] = f(it[i]) })
+    }
     Panel(modifier) {
         Text("Drag keys to move them. Tap one to select it, then change, resize or remove it.", color = Color.White, fontSize = 12.sp)
-        Row {
+        FlowRow {
             Pill("Add key") { st.swapping = null; st.picking = true }
-            st.selected?.let { i ->
+            st.selected?.let { i -> st.layout.buttons.getOrNull(i)?.let { b ->
                 Pill("Change key", on = true) { st.swapping = i; st.picking = true }
                 Pill("Bigger") { resize(st, i, 1.15f) }
                 Pill("Smaller") { resize(st, i, 1 / 1.15f) }
+                if (b.kind in setOf("key", "mouse")) {
+                    // ARMSX2's per-button Turbo (Off, Fast, Med, Slow) and Tap-Hold.
+                    Pill(Turbo.label(b.turbo), on = b.turbo > 0) {
+                        update(i) { it.copy(turbo = Turbo.steps[(Turbo.steps.indexOf(it.turbo) + 1).mod(Turbo.steps.size)]) }
+                    }
+                    Pill(if (b.tapToHold) "Tap-Hold On" else "Tap-Hold Off", on = b.tapToHold) { update(i) { it.copy(tapToHold = !it.tapToHold) } }
+                }
                 Pill("Remove") {
                     st.layout = st.layout.copy(buttons = st.layout.buttons.filterIndexed { j, _ -> j != i }); st.selected = null
                 }
+            } }
+        }
+        st.selected?.let { st.layout.buttons.getOrNull(it) }?.takeIf { it.kind == "arrows" || it.kind == "wasd" }?.let {
+            // ARMSX2's D-Pad spacing, for every D-pad.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("D-Pad spacing", color = Color.White, fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                Slider(
+                    TouchPrefs.dpadSpacing.floatValue, { TouchPrefs.dpadSpacing.floatValue = it }, valueRange = 0f..0.35f,
+                    onValueChangeFinished = { TouchPrefs.save() }, modifier = Modifier.width(200.dp),
+                )
+                Text("${(TouchPrefs.dpadSpacing.floatValue * 100).roundToInt()}%", color = Color(0xFFA0A0A6), fontSize = 12.sp)
             }
         }
-        Row {
+        // ARMSX2's editor switches. They are for every game.
+        FlowRow {
+            val multi = TouchPrefs.multiTouch.value
+            Pill(if (multi) "Multi-Touch On" else "Multi-Touch Off", on = multi) { TouchPrefs.multiTouch.value = !multi; TouchPrefs.save() }
+            Pill(if (multi) "Glide: ${TouchPrefs.glide.value.label}" else "Glide (needs Multi-touch)", on = multi) {
+                if (multi) {
+                    val modes = TouchPrefs.Glide.entries
+                    TouchPrefs.glide.value = modes[(TouchPrefs.glide.value.ordinal + 1) % modes.size]
+                    TouchPrefs.save()
+                }
+            }
+            Pill(if (TouchPrefs.gridSnap.value) "Grid On" else "Grid Off", on = TouchPrefs.gridSnap.value) {
+                TouchPrefs.gridSnap.value = !TouchPrefs.gridSnap.value
+                TouchPrefs.save()
+                if (TouchPrefs.gridSnap.value) snapToGrid(st, w, h)
+            }
+            Pill(if (TouchPrefs.floatingStick.value) "Floating Stick On" else "Floating Stick Off", on = TouchPrefs.floatingStick.value) {
+                TouchPrefs.floatingStick.value = !TouchPrefs.floatingStick.value; TouchPrefs.save()
+            }
+            Pill(if (TouchPrefs.halfScreenStick.value) "Half-Screen Stick On" else "Half-Screen Stick Off", on = TouchPrefs.halfScreenStick.value) {
+                TouchPrefs.halfScreenStick.value = !TouchPrefs.halfScreenStick.value; TouchPrefs.save()
+            }
+            Pill("Profiles") { st.profiles = true }
+        }
+        FlowRow {
             Pill("Reset") { st.layout = st.layout.copy(buttons = TouchLayout.DEFAULT_BUTTONS); st.selected = null }
             Pill("Save for this game", on = true) { st.editing = false; onSave(false) }
             Pill("Save as default") { st.editing = false; onSave(true) }
+        }
+    }
+}
+
+/**
+ * ARMSX2's Touch Control Profiles: save the keys being edited under a name, or load a saved set
+ * onto this layout, for any game.
+ */
+@Composable
+private fun ProfilesPanel(st: OverlayState) {
+    var all by remember { mutableStateOf(TouchProfiles.all()) }
+    var name by remember { mutableStateOf("") }
+    Box(Modifier.fillMaxSize().background(Color(0xAA000000)).clickable { st.profiles = false }, contentAlignment = Alignment.Center) {
+        Panel(Modifier.widthIn(max = 560.dp).clickable(enabled = false) {}) {
+            Text("Touch Control Profiles", color = Color.White, fontWeight = FontWeight.Black)
+            Text(
+                "A profile keeps a set of keys for any game. Loading one puts its keys on the layout you are editing: save the layout to keep them.",
+                color = Color(0xFFBDBDC2), fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                if (all.isEmpty()) Text("No profiles yet.", color = Color(0xFFA0A0A6), fontSize = 13.sp)
+                all.keys.sortedBy { it.lowercase() }.forEach { n ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(n, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Pill("Load", on = true) {
+                            all[n]?.let { st.layout = st.layout.copy(buttons = it) }
+                            st.selected = null
+                            st.profiles = false
+                        }
+                        Pill("Delete") { TouchProfiles.delete(n); all = TouchProfiles.all() }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Save current layout as new profile:", color = Color.White, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.OutlinedTextField(
+                    name, { name = it.take(40) }, singleLine = true,
+                    placeholder = { Text("Profile name") },
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF6CC63F), unfocusedBorderColor = Color(0xFF55555B),
+                        cursorColor = Color(0xFF6CC63F),
+                    ),
+                )
+                Pill("Save As", on = name.isNotBlank()) {
+                    if (name.isNotBlank()) { TouchProfiles.save(name.trim(), st.layout.buttons); all = TouchProfiles.all(); name = "" }
+                }
+            }
         }
     }
 }

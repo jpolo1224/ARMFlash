@@ -3,6 +3,7 @@ package com.armsx.flashpoint.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -325,11 +326,24 @@ private fun GridHeader(text: String) {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> Unit) {
+    // Config, Screenshot Preview: Always shows each game's screenshot in place of its logo, Long
+    // Press swaps one card between the two. A game with no screenshot keeps its logo, and an
+    // Extreme game's screenshot stays hidden while Hide Extreme Screenshots is on.
+    val mode = vm.prefs2.screenshotPreviewMode.value
+    var peek by remember(g?.id) { mutableStateOf(false) }
+    var noShot by remember(g?.id) { mutableStateOf(false) }
+    val local = g != null && com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
+    val shot = g != null && !local && !noShot && (mode == "2" || mode == "1" && peek) &&
+        !(vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g))
     Column(
         Modifier.padFocus().clip(RoundedCornerShape(6.dp))
             .background(if (selected) Fp.CardSelected.copy(alpha = 0.25f) else Color.Transparent)
-            .clickable(enabled = g != null, onClick = onClick)
+            .combinedClickable(
+                enabled = g != null, onClick = onClick,
+                onLongClick = if (mode == "1" && !local) ({ peek = !peek }) else null,
+            )
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -337,10 +351,15 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
             if (g != null) {
                 AsyncImage(
                     // An imported game has no Flashpoint logo: its platform's stands in.
-                    model = if (com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) LogoSets.image(g.primaryPlatform) else vm.library.logoUrl(g.id),
+                    model = when {
+                        local -> LogoSets.image(g.primaryPlatform)
+                        shot -> vm.library.screenshotUrl(g.id)
+                        else -> vm.library.logoUrl(g.id)
+                    },
                     contentDescription = null,
+                    onError = { if (shot) noShot = true },
                     contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().then(
-                        if (com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) Modifier.padding(28.dp) else Modifier,
+                        if (local) Modifier.padding(28.dp) else Modifier,
                     ),
                 )
                 PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(6.dp))

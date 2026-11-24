@@ -18,11 +18,19 @@ object FpCore {
     init {
         System.loadLibrary("fpcore")
         init()
+        // Config, Verbose Logging, in whichever process loads the core (the launcher, a game).
+        com.armsx.flashpoint.FpApp.app?.let { a ->
+            runCatching { verbose(a.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).getBoolean("enableVerboseLogging", false)) }
+        }
     }
+
+    /** Config, Verbose Logging: the game server's every request and the database's details too. */
+    fun verbose(on: Boolean) = setVerbose(on)
 
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
 
     @JvmStatic private external fun init()
+    @JvmStatic private external fun setVerbose(on: Boolean)
     @JvmStatic private external fun openDatabase(path: String): String
     @JvmStatic private external fun searchIndex(input: String, opts: String, pageSize: Int): String
     @JvmStatic private external fun searchPage(input: String, opts: String, pageSize: Int): String

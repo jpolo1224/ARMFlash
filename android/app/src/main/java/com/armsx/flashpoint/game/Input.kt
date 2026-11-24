@@ -159,6 +159,10 @@ data class TouchButton(
     val x: Float,
     val y: Float,
     val size: Float = 64f, // dp
+    /** ARMSX2's per-button Turbo: frames (at 60 a second) between presses while held; 0 off. */
+    val turbo: Int = 0,
+    /** ARMSX2's Tap-Hold: a tap holds the key down, the next tap lets go. */
+    val tapToHold: Boolean = false,
 )
 
 @Serializable

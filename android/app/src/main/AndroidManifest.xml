@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Touch Haptics: a short tick on an on-screen key press. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- The Discord Social SDK's voice permissions: ARMFlash uses no voice or microphone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
