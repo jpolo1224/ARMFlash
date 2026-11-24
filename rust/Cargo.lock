@@ -469,6 +469,7 @@ dependencies = [
  "hyper",
  "hyper-rustls",
  "hyper-util",
+ "libc",
  "libz-rs-sys",
  "log",
  "mime_guess",

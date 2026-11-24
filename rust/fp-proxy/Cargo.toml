@@ -7,6 +7,7 @@ description = "Flashpoint-compatible game server: serves game files straight out
 
 [dependencies]
 regex = "1"
+libc = "0.2"
 tokio ={ version = "1.54", features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time", "process"] }
 hyper = { version = "1.12", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1.21", features = ["tokio", "client-legacy", "http1"] }

@@ -52,10 +52,26 @@ impl Drop for ProxyHandle {
     }
 }
 
+/// Non-blocking mode for the listener. std asks for it with the FIONBIO ioctl, which some Android
+/// environments do not have (an Android emulator running on iOS answered "Inappropriate ioctl for
+/// device", os error 25, and no game could start): fcntl's O_NONBLOCK does the same there.
+fn set_nonblocking(listener: &std::net::TcpListener) -> io::Result<()> {
+    let Err(e) = listener.set_nonblocking(true) else { return Ok(()) };
+    use std::os::fd::AsRawFd;
+    let fd = listener.as_raw_fd();
+    // SAFETY: fcntl on a socket this function borrows, with plain integer arguments.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(e);
+    }
+    log::info!("game server: non-blocking through fcntl ({e})");
+    Ok(())
+}
+
 /// Start serving on 127.0.0.1:`port` (0 picks a free port) on a private runtime thread.
 pub fn start(server: Arc<GameServer>, port: u16) -> io::Result<ProxyHandle> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
-    listener.set_nonblocking(true)?;
+    set_nonblocking(&listener)?;
     let port = listener.local_addr()?.port();
     let (tx, mut rx) = oneshot::channel::<()>();
     let srv = server.clone();
