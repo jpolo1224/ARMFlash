@@ -35,9 +35,18 @@ class AudioServer(val name: String) {
 
     private fun serve(sock: LocalSocket) {
         val inp = DataInputStream(sock.inputStream.buffered(1 shl 16))
+        val out = sock.outputStream
+        val reply = ByteArray(4)
+        // The plugin's position: a WRITE's byte count once AudioTrack holds it, which is what
+        // paces Wine; PREPARED after a PREPARE, where the count restarts.
+        fun answer(v: Int) {
+            ByteBuffer.wrap(reply).order(ByteOrder.LITTLE_ENDIAN).putInt(0, v)
+            out.write(reply)
+        }
         val head = ByteArray(5)
         var track: AudioTrack? = null
         var buf = ByteArray(0)
+        var writeFailed = false
         try {
             while (running) {
                 inp.readFully(head)
@@ -57,20 +66,33 @@ class AudioServer(val name: String) {
                         Log.i(WinRuntime.TAG, "audio stream: $channels ch, format ${b[1]}, $rate Hz")
                         track?.let { tracks.remove(it); it.release() }
                         val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
-                        val min = AudioTrack.getMinBufferSize(rate, mask, encoding).coerceAtLeast(4096)
-                        track = AudioTrack.Builder()
-                            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                            .setAudioFormat(AudioFormat.Builder().setSampleRate(rate).setEncoding(encoding).setChannelMask(mask).build())
-                            .setBufferSizeInBytes(min * 2)
-                            .setTransferMode(AudioTrack.MODE_STREAM)
-                            .build().also { it.setVolume(volume); tracks.add(it) }
+                        track = runCatching {
+                            val min = AudioTrack.getMinBufferSize(rate, mask, encoding).coerceAtLeast(4096)
+                            AudioTrack.Builder()
+                                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                                .setAudioFormat(AudioFormat.Builder().setSampleRate(rate).setEncoding(encoding).setChannelMask(mask).build())
+                                .setBufferSizeInBytes(min * 2)
+                                .setTransferMode(AudioTrack.MODE_STREAM)
+                                .build().also { it.setVolume(volume); tracks.add(it) }
+                        }.onFailure { Log.w(WinRuntime.TAG, "audio stream: ${it.message}") }.getOrNull()
+                        answer(PREPARED)
                     }
                     5 -> { // WRITE
                         if (buf.size < len) buf = ByteArray(len)
                         inp.readFully(buf, 0, len)
-                        val t = track ?: continue
-                        if (t.playState != AudioTrack.PLAYSTATE_PLAYING) t.play()
-                        t.write(buf, 0, len, AudioTrack.WRITE_BLOCKING)
+                        track?.let { t ->
+                            if (t.playState != AudioTrack.PLAYSTATE_PLAYING) t.play()
+                            // Through a ByteBuffer: AudioTrack takes float PCM (Wine's usual
+                            // format) only that way; from a byte array it refuses every write.
+                            val data = ByteBuffer.wrap(buf, 0, len)
+                            while (data.hasRemaining()) {
+                                val n = t.write(data, data.remaining(), AudioTrack.WRITE_BLOCKING)
+                                if (n > 0) continue
+                                if (n < 0 && !writeFailed) { writeFailed = true; Log.w(WinRuntime.TAG, "audio stream: write failed ($n)") }
+                                break
+                            }
+                        }
+                        answer(len)
                     }
                     1 -> track?.play()
                     2 -> track?.let { it.pause(); it.flush() }
@@ -95,5 +117,10 @@ class AudioServer(val name: String) {
         running = false
         runCatching { server.close() }
         tracks.forEach { runCatching { it.release() } }
+    }
+
+    private companion object {
+        /** The reply to a PREPARE (the plugin's PREPARED_REPLY, 0xFFFFFFFF). */
+        const val PREPARED = -1
     }
 }
