@@ -404,8 +404,21 @@ class WinRuntime(private val ctx: Context) {
     }
 
     private fun drain(p: Process, tag: String) = Thread {
-        runCatching { p.inputStream.bufferedReader().forEachLine { Log.i(TAG, "$tag: $it") } }
+        runCatching {
+            p.inputStream.bufferedReader().forEachLine {
+                Log.i(TAG, "$tag: $it")
+                if (tag == "wine" && "could not load kernel32.dll" in it) cannotStart = true
+            }
+        }
     }.apply { isDaemon = true }.start()
+
+    /**
+     * Wine could not load its own kernel32.dll: no Windows program can run on this device, the
+     * setup commands included (seen on a Mali phone: every Wine command failed at once, while the
+     * same runtime works on others). The game screen says so instead of closing like a crash.
+     */
+    @Volatile var cannotStart = false
+        private set
 
     /** Every process this app started under Wine or X (they outlive their parents). */
     private fun children(): List<Int> {

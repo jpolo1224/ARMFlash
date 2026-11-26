@@ -203,6 +203,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         rt.ensureProxy(GAME_SERVER_PORT)
         rt.ensureUnmanaged()
         rt.ensureMfc42(::say)
+        if (rt.cannotStart) { say(CANNOT_START); return }
         if (SupportPacks.needsBrowser(this, packs) && !rt.ensureGecko(::say)) return
         val fp = drive
         rt.mapDrive('f', fp)
@@ -220,7 +221,8 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         Thread(::render, "win-render").start()
         Thread(::watchWindows, "win-windows").start()
         // When the program ends, so does the game.
-        Thread { p.waitFor(); if (running) runOnUiThread { quit() } }.start()
+        // (Unless Wine could not start at all: then the screen keeps saying why.)
+        Thread { p.waitFor(); if (rt.cannotStart) say(CANNOT_START) else if (running) runOnUiThread { quit() } }.start()
     }
 
     /**
@@ -566,6 +568,10 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         const val EXTRA_ARGS = "winArgs"
         const val EXTRA_ROOT = "fpRoot"
         const val EXTRA_PLATFORM = "winPlatform"
+        /** Shown when Wine cannot load its own system files on this device (WinRuntime.cannotStart). */
+        const val CANNOT_START = "Windows games cannot start on this device: Wine could not load its own system files. " +
+            "Reinstall Windows support in Config, Windows Players, and try again. If it still happens, " +
+            "please report it with your phone's model and Android version."
         const val GAME_SERVER_PORT = 22500
         const val SCREEN_W = 1600
         const val SCREEN_H = 1200
