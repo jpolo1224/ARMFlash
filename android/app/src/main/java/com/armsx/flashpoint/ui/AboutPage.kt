@@ -231,7 +231,7 @@ private val APP_CREDITS = listOf(
     "Secure Player" to "ARMFlash's own stand-in, following Flashpoint Secure Player by tomysshadow (MIT).",
     "Internet Explorer support" to "Wine Gecko (MPL-2.0), downloaded from WineHQ when a game needs it.",
     "Windows libraries" to "MFC 4.2 from Microsoft's Visual C++ 6 runtime, downloaded from Microsoft when a game needs it.",
-    "3D for Windows players" to "Mesa with llvmpipe (MIT), LLVM (Apache-2.0 with LLVM exceptions), libglvnd (MIT) and ICU (Unicode license), from Ubuntu's packages.",
+    "3D for Windows players" to "Mesa with llvmpipe (MIT), LLVM (Apache-2.0 with LLVM exceptions), libglvnd (MIT) and ICU (Unicode license), from Ubuntu's packages; for the virtual screen's GLX, Mesa's libdril and libgbm with libdrm (MIT), as built by Termux.",
     "PHP" to "PHP 7.4 (PHP License 3.01) from Debian, with libxml2 and libxslt (MIT), ICU (Unicode license), OpenSSL (OpenSSL and SSLeay licenses), Oniguruma (BSD), PCRE2 (BSD), SQLite (public domain), libsodium (ISC), Argon2 (CC0), zlib, bzip2, XZ (public domain), libmagic (BSD), libgcrypt and libgpg-error (LGPL-2.1), ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1).",
     "Native libraries" to "tokio, hyper, rustls, ring, zip, rusqlite with SQLite (public domain) and other crates under MIT or Apache-2.0.",
 )

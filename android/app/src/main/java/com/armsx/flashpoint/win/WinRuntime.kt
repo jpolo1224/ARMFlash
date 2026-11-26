@@ -265,6 +265,28 @@ class WinRuntime(private val ctx: Context) {
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * GLX on the virtual screen, for OpenGL and Direct3D in Windows games. Termux's Xvfb has GLX
+     * built in but loads its software renderer from x/lib/dri, which the runtime never had, so it
+     * offered no GL visuals and Wine got no OpenGL (Shockwave 3D games froze where 3D starts).
+     * Mesa's libdril (tools/winrt/xglx.py) is the stub Mesa makes for such X servers: it gives
+     * GLX a list of framebuffer configs and renders nothing. Wine renders with the 3D file's
+     * llvmpipe in its own process, so only then is it put in.
+     */
+    fun ensureGlx() {
+        if (!has3d) return
+        for ((asset, rel) in GLX_FILES) runCatching {
+            val f = File(xdir, rel)
+            val bytes = ctx.assets.open("winrt/xglx/$asset").use { it.readBytes() }
+            if (f.isFile && f.length() == bytes.size.toLong() && f.readBytes().contentEquals(bytes)) return@runCatching
+            f.parentFile?.mkdirs()
+            val tmp = File(f.path + ".armflash-new")
+            tmp.writeBytes(bytes)
+            check(tmp.renameTo(f)) { "rename" }
+            Log.i(TAG, "glx: x/$rel put in")
+        }.onFailure { Log.w(TAG, "glx: x/$rel: ${it.message}") }
+    }
+
     private class WineFix(val path: String, val asset: String, val original: String, val fixed: String, val what: String)
 
     fun ensureUnmanaged() {
@@ -441,6 +463,12 @@ class WinRuntime(private val ctx: Context) {
         const val GECKO_SHA256 = "26cecc47706b091908f7f814bddb074c61beb8063318e9efc5a7f789857793d6"
         /** ARMFlash-3d-1.tar.zst (tools/winrt/pack3d.py). */
         const val GRAPHICS_SHA256 = "2ac35e8bd4ab011f83c1041608806603273f236d7d83f88111b72b3212ee0260"
+        /** See [ensureGlx]: asset name -> path under x/. */
+        private val GLX_FILES = listOf(
+            "swrast_dri.so" to "lib/dri/swrast_dri.so",
+            "libgbm.so" to "lib/libgbm.so",
+            "libdrm.so" to "lib/libdrm.so",
+        )
         /** See [ensureWineFixes]. */
         private val WINE_FIXES = listOf(
             // Wine commit 4781a712 (iphlpapi: Avoid out-of-bounds read if no network interfaces

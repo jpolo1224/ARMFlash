@@ -193,6 +193,7 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
         audio = runCatching { AudioServer(rt.audioName).also { it.volume = com.armsx.flashpoint.game.GamePrefs.volume.floatValue } }
             .onFailure { android.util.Log.w(WinRuntime.TAG, "audio: ${it.message}") }.getOrNull()
         say("Starting the virtual screen…")
+        rt.ensureGlx()
         if (!rt.startX(SCREEN_W, SCREEN_H)) { say("The virtual screen did not start."); return }
         // This game's settings before the first Wine command, so Wine's server and the setup
         // commands below run with them too.
