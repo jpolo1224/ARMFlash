@@ -74,15 +74,27 @@ class Playlists(private val dir: File) {
     fun create(title: String, library: String): Playlist =
         write(Playlist(id = java.util.UUID.randomUUID().toString(), title = title, library = library))
 
+    /** [p] as its file holds it now: changes start from that, so two quick ones never undo each other. */
+    private fun current(p: Playlist): Playlist =
+        if (p.file.isBlank()) p
+        else runCatching { FpCore.json.decodeFromString(Playlist.serializer(), File(p.file).readText()).copy(file = p.file) }.getOrDefault(p)
+
     /** [p] with [gameId] at its end (unchanged when it is already in it), saved. */
-    fun add(p: Playlist, gameId: String): Playlist {
+    fun add(p0: Playlist, gameId: String): Playlist {
+        val p = current(p0)
         if (p.games.any { it.gameId == gameId }) return p
         val next = (p.games.mapNotNull { it.order }.maxOrNull() ?: (p.games.size - 1)) + 1
         return write(p.copy(games = p.games + PlaylistGame(gameId, order = next)))
     }
 
     /** [p] without [gameId], saved. */
-    fun remove(p: Playlist, gameId: String): Playlist = write(p.copy(games = p.games.filter { it.gameId != gameId }))
+    fun remove(p0: Playlist, gameId: String): Playlist = current(p0).let { p -> write(p.copy(games = p.games.filter { it.gameId != gameId })) }
+
+    /** Write [p] as a Flashpoint playlist file to [uri] (picked by the player), for desktop Flashpoint or anyone else. */
+    fun export(ctx: Context, p: Playlist, uri: Uri): Boolean = runCatching {
+        val text = if (p.file.isNotBlank() && File(p.file).isFile) File(p.file).readText() else FpCore.json.encodeToString(Playlist.serializer(), p)
+        ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } != null
+    }.getOrDefault(false)
 
     /** Save [p] to its file (a new one named after its id when it has none), in Flashpoint's playlist format. */
     private fun write(p: Playlist): Playlist {

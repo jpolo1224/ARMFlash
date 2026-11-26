@@ -273,11 +273,24 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     fun pickOrder(o: String) { order = o; prefs.edit().putString("order", o).apply(); refresh(immediate = true) }
     fun toggleDirection() { descending = !descending; prefs.edit().putBoolean("desc", descending).apply(); refresh(immediate = true) }
 
-    fun loadPlaylists() = viewModelScope.launch {
+    fun loadPlaylists() = viewModelScope.launch { reloadPlaylists() }
+
+    /** Read the playlists again; the open one follows, so a game just added shows in it at once. */
+    private suspend fun reloadPlaylists() {
         playlists = withContext(Dispatchers.IO) {
             library.playlists.seed(getApplication())
             library.playlists.all()
         }
+        val open = playlist ?: return
+        val fresh = playlists.firstOrNull { it.id == open.id }
+        if (fresh == null) pickPlaylist(null)
+        else if (fresh.gameIds != open.gameIds || fresh.title != open.title) { playlist = fresh; refresh(immediate = true) }
+    }
+
+    /** Save [p] to [uri] as a playlist file. */
+    fun exportPlaylist(p: com.armsx.flashpoint.data.Playlist, uri: android.net.Uri) = viewModelScope.launch {
+        val ok = withContext(Dispatchers.IO) { library.playlists.export(getApplication(), p, uri) }
+        status = if (ok) "Exported ${p.title}" else "Could not export ${p.title}"
     }
 
     fun importPlaylists(uris: List<android.net.Uri>) = viewModelScope.launch {
@@ -292,7 +305,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         val made = withContext(Dispatchers.IO) {
             library.playlists.create(name, lib).let { pl -> if (first != null) library.playlists.add(pl, first.id) else pl }
         }
-        loadPlaylists()
+        reloadPlaylists()
         status = if (first != null) "Added ${first.title} to $name" else "Created $name"
         if (first == null) pickPlaylist(made)
     }
@@ -300,21 +313,21 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     /** Put [game] in [p], or take it out when it is already there. */
     fun togglePlaylist(p: com.armsx.flashpoint.data.Playlist, game: Game) = viewModelScope.launch {
         val inIt = game.id in p.gameIds
-        val now = withContext(Dispatchers.IO) { if (inIt) library.playlists.remove(p, game.id) else library.playlists.add(p, game.id) }
-        loadPlaylists()
+        withContext(Dispatchers.IO) { if (inIt) library.playlists.remove(p, game.id) else library.playlists.add(p, game.id) }
+        reloadPlaylists()
         status = if (inIt) "Removed from ${p.title}" else "Added to ${p.title}"
-        if (playlist?.id == p.id) { playlist = now; refresh(immediate = true) }
     }
 
     fun deletePlaylist(p: com.armsx.flashpoint.data.Playlist) = viewModelScope.launch {
         withContext(Dispatchers.IO) { library.playlists.delete(p) }
         if (playlist?.id == p.id) pickPlaylist(null)
-        loadPlaylists()
+        reloadPlaylists()
         status = "Deleted ${p.title}"
     }
 
     fun pickPlaylist(p: com.armsx.flashpoint.data.Playlist?) {
-        playlist = p
+        // The newest copy: the one passed in may be from before a game was added.
+        playlist = p?.let { want -> playlists.firstOrNull { it.id == want.id } ?: want }
         if (p != null) shelf = Shelf.ALL
         clearSelection()
         refresh(immediate = true)

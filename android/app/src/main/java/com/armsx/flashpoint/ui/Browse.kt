@@ -135,10 +135,34 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
         androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> if (uris.isNotEmpty()) vm.importPlaylists(uris) }
     val pls = vm.playlists.filter { it.library == vm.lib && (!it.extreme || vm.prefs2.extremeGames.value) }
-    // New Playlist asks for a name; a long press on a playlist offers to delete it.
+    // New Playlist asks for a name; a long press on a playlist offers to export or delete it.
     var naming by remember { mutableStateOf(false) }
+    var managing by remember { mutableStateOf<com.armsx.flashpoint.data.Playlist?>(null) }
     var deleting by remember { mutableStateOf<com.armsx.flashpoint.data.Playlist?>(null) }
+    var exporting by remember { mutableStateOf<com.armsx.flashpoint.data.Playlist?>(null) }
+    val exporter = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri -> val p = exporting; exporting = null; if (uri != null && p != null) vm.exportPlaylist(p, uri) }
     if (naming) PlaylistNameDialog(onDismiss = { naming = false }) { name -> naming = false; vm.createPlaylist(name); onPicked() }
+    managing?.let { p ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { managing = null },
+            title = { Text(p.title) },
+            text = { Text("Export saves it as a Flashpoint playlist file (.json), which desktop Flashpoint and ARMFlash's Import Playlist read.") },
+            confirmButton = {
+                Row {
+                    androidx.compose.material3.TextButton(onClick = { managing = null; deleting = p }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Delete") }
+                    androidx.compose.material3.TextButton(
+                        onClick = { managing = null; exporting = p; exporter.launch(p.title.replace(Regex("[\\\\/:*?\"<>|]"), "_") + ".json") },
+                        modifier = Modifier.padFocus(RoundedCornerShape(20.dp)),
+                    ) { Text("Export") }
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { managing = null }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Close") }
+            },
+        )
+    }
     deleting?.let { p ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleting = null },
@@ -165,7 +189,7 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
         items(pls, key = { it.id }) { p ->
             SidebarRow(
                 p.title, on = vm.playlist?.id == p.id, sub = p.author.takeIf { it.isNotBlank() }?.let { "by $it" }, icon = p.iconBytes,
-                onLongClick = { deleting = p },
+                onLongClick = { managing = p },
             ) {
                 vm.pickPlaylist(p); onPicked()
             }
