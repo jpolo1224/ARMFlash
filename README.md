@@ -82,4 +82,5 @@ It includes code from ARMSX2 (GPL-3.0) and builds on many other projects, listed
 licenses and sources in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Flashpoint Archive,
 its game database and its games belong to their respective owners.
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/8e6ed929-9c57-49cb-9e1d-fda576658e15" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/09e765a7-5087-4a2a-addf-205b1d54dc71" />
+
