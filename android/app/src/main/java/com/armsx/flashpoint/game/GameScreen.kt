@@ -34,6 +34,7 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
         GamePrefs.apply(act)
         overlay.padConnected = gamepadAttached()
         im.registerInputDeviceListener(this, null)
+        PadRouter.load(act)
     }
 
     fun onResume() {
@@ -89,9 +90,9 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     /** ARMSX2's Gesture Control: swipes and a double-tap on the game press keys. */
     private val gestures = Gestures(overlay)
 
-    override fun onInputDeviceAdded(deviceId: Int) { overlay.padConnected = gamepadAttached() }
-    override fun onInputDeviceRemoved(deviceId: Int) { overlay.padConnected = gamepadAttached() }
-    override fun onInputDeviceChanged(deviceId: Int) { overlay.padConnected = gamepadAttached() }
+    override fun onInputDeviceAdded(deviceId: Int) { overlay.padConnected = gamepadAttached(); PadRouter.devicesChanged() }
+    override fun onInputDeviceRemoved(deviceId: Int) { overlay.padConnected = gamepadAttached(); PadRouter.forgetDevice(deviceId) }
+    override fun onInputDeviceChanged(deviceId: Int) { overlay.padConnected = gamepadAttached(); PadRouter.devicesChanged() }
 }
 
 /** Game settings the pause menu's Options tab changes while a game runs; shared by every game. */

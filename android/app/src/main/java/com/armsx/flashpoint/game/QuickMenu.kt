@@ -790,6 +790,33 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
             modifier = Modifier.padding(start = 4.dp, top = 2.dp),
         )
         Spacer(Modifier.height(6.dp))
+        if (st.layout.multiplayer) {
+            // Which controller is which player (ARMSX2's controller assignment, PadRouter): Auto
+            // takes the next free player on a controller's first press; a pinned one keeps its player.
+            PadRouter.version.intValue
+            val pads = PadRouter.connectedPads()
+            if (pads.isEmpty()) Hint("No controllers are connected.")
+            pads.forEach { pad ->
+                val pin = PadRouter.pins()[pad.descriptor]
+                val now = PadRouter.currentPlayer(pad.descriptor)
+                val label = when {
+                    pin != null -> "Player ${pin + 1}"
+                    now != null -> "Auto: Player ${now + 1}"
+                    else -> "Auto"
+                }
+                MenuCycleRow(pad.name, label) {
+                    // Auto, then players 1 to 4, then Auto again.
+                    PadRouter.setPin(pad.descriptor, when (pin) { null -> 0; PadRouter.PLAYERS - 1 -> null; else -> pin + 1 })
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            Hint(
+                "Auto gives a controller the next free player when it first presses a button in the game, which is why the " +
+                    "pad you pick up second is not always player 2. Pick a player to keep a controller there. Controllers set " +
+                    "to the same player all play as it. A choice is remembered per controller and kept when it reconnects.",
+            )
+            Spacer(Modifier.height(10.dp))
+        }
         val who = if (st.layout.multiplayer) st.padPlayer else 1
         if (st.layout.multiplayer) {
             MenuCycleRow("Buttons for", "Player $who") { st.padPlayer = st.padPlayer % 4 + 1 }

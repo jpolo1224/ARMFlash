@@ -10,9 +10,9 @@ import android.view.MotionEvent
  * triggers as clicks, Back / Home opens the in-game menu.
  *
  * With the layout's local multiplayer on (GitHub issue #1), each controller is a player of its
- * own, numbered as Android numbers controllers (else in the order they were first used), and
- * presses its own player's keys ([TouchLayout.padFor]): players 2 to 4 move with their D-pad and
- * both sticks, and their triggers are their L2 / R2 buttons. Player 1 is as described above.
+ * own, as [PadRouter] assigns them (next free player on its first press, unless pinned in the
+ * menu), and presses its own player's keys ([TouchLayout.padFor]): players 2 to 4 move with their
+ * D-pad and both sticks, and their triggers are their L2 / R2 buttons. Player 1 is as above.
  *
  * Every key the game sees has one owner here. A press is recorded per source (a button, the
  * D-pad hat, the stick), the game gets a key down when the first source presses it and a key up
@@ -79,17 +79,9 @@ class PadMapper(
 
     // ---- players -------------------------------------------------------------------------
 
-    /** Controllers Android gave no number, in the order they were first used. */
-    private val firstUsed = ArrayList<Int>()
-
     /** The player [e] comes from, 1 to 4: always 1 while the layout's local multiplayer is off. */
-    private fun player(e: android.view.InputEvent): Int {
-        if (!overlay.layout.multiplayer) return 1
-        val n = e.device?.controllerNumber ?: 0
-        if (n > 0) return n.coerceAtMost(4)
-        if (e.deviceId !in firstUsed) firstUsed += e.deviceId
-        return (firstUsed.indexOf(e.deviceId) + 1).coerceIn(1, 4)
-    }
+    private fun player(e: android.view.InputEvent): Int =
+        if (!overlay.layout.multiplayer) 1 else PadRouter.playerFor(e.deviceId) + 1
 
     /** Players 2 to 4's D-pad hat, sticks and triggers. */
     private class Other { var hat = 0; var left = 0; var right = 0; var trig = 0 }
