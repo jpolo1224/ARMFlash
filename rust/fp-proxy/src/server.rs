@@ -262,6 +262,8 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
     match resolved {
         Resolved::Zip { mount, index, size, name } => {
             let mut ct = content_type(&name);
+            // The pack's own date: every file in it is as old as the pack.
+            let modified = std::fs::metadata(&mount.path).and_then(|m| m.modified()).ok();
             let body = if head {
                 empty()
             } else if size <= SMALL {
@@ -281,7 +283,7 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
                     pump(&mut f, send)
                 })
             };
-            file_response(&ct, size, body)
+            file_response(&ct, size, modified, body)
         }
         // A POST and the like to the game's own site (a level server's API): passed on live, as
         // the game's web version does, unless a pack has it. Never answered from the folder of
@@ -301,7 +303,9 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
                 .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"))
         }
         Resolved::Disk(p) => {
-            let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            let meta = std::fs::metadata(&p).ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = meta.and_then(|m| m.modified().ok());
             let name = p.to_string_lossy().split('?').next().unwrap_or("").to_string();
             let mut ct = content_type(&name);
             if ct == "application/octet-stream" {
@@ -314,7 +318,7 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
             } else {
                 stream_blocking(size, move |send| pump(&mut std::fs::File::open(&p)?, send))
             };
-            file_response(&ct, size, body)
+            file_response(&ct, size, modified, body)
         }
         Resolved::AddSlash => {
             let mut loc = format!("{}/", uri.path());
@@ -735,13 +739,43 @@ fn with(status: StatusCode, ct: &str, body: Body) -> Response<Body> {
 }
 
 fn ok_file(name: &str, size: u64, body: Body) -> Response<Body> {
-    file_response(&content_type(name), size, body)
+    file_response(&content_type(name), size, Some(std::time::SystemTime::now()), body)
 }
 
-fn file_response(ct: &str, size: u64, body: Body) -> Response<Body> {
+/// A file's answer. `modified` goes out as Last-Modified, as desktop Flashpoint's game server
+/// sends it: Shockwave keeps a download for a second use only when the answer has one, and
+/// without it a game that preloads an image and then loads it into a member waits forever
+/// (Slipstream's sponsor banners: "Media not ready" on every frame, stuck at 100% loading).
+fn file_response(ct: &str, size: u64, modified: Option<std::time::SystemTime>, body: Body) -> Response<Body> {
     let mut r = with(StatusCode::OK, ct, body);
     r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(size));
+    if let Some(v) = modified.and_then(|t| HeaderValue::from_str(&http_date(t)).ok()) {
+        r.headers_mut().insert(header::LAST_MODIFIED, v);
+    }
     r
+}
+
+/// An HTTP date (RFC 9110 IMF-fixdate): "Tue, 24 Dec 1996 23:32:00 GMT".
+fn http_date(t: std::time::SystemTime) -> String {
+    let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    const WEEKDAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    format!(
+        "{}, {:02} {} {} {:02}:{:02}:{:02} GMT",
+        WEEKDAYS[days.rem_euclid(7) as usize], day, MONTHS[(month - 1) as usize], year,
+        rem / 3600, rem % 3600 / 60, rem % 60,
+    )
 }
 
 fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
@@ -777,6 +811,19 @@ pub async fn http_get_sized(url: &str) -> io::Result<(Bytes, u64)> {
         return Ok((out.into(), wire));
     }
     Ok((body, wire))
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::http_date;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn http_dates() {
+        assert_eq!(http_date(UNIX_EPOCH), "Thu, 01 Jan 1970 00:00:00 GMT");
+        assert_eq!(http_date(UNIX_EPOCH + Duration::from_secs(851_470_320)), "Tue, 24 Dec 1996 23:32:00 GMT");
+        assert_eq!(http_date(UNIX_EPOCH + Duration::from_secs(1_772_236_801)), "Sat, 28 Feb 2026 00:00:01 GMT");
+    }
 }
 
 #[cfg(test)]
