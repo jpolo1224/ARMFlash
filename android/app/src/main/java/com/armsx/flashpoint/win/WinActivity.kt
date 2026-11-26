@@ -125,15 +125,9 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
         surface = SurfaceView(this).apply { isFocusable = true; isFocusableInTouchMode = true }
         surface.holder.addCallback(this)
-        // Direct touch: the finger is the mouse (the overlay handles touchpad and point & click).
-        surface.setOnTouchListener { _, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { input.moveCursor(ev.x, ev.y); input.mouseDown() }
-                MotionEvent.ACTION_MOVE -> input.moveCursor(ev.x, ev.y)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { input.moveCursor(ev.x, ev.y); input.mouseUp() }
-            }
-            true
-        }
+        // Direct touch drives the mouse from dispatchTouchEvent (see directTouch); the overlay
+        // handles touchpad and point & click.
+        surface.setOnTouchListener { _, _ -> true }
         status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 16f; gravity = Gravity.CENTER
             text = "Starting…"
@@ -481,7 +475,44 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         screen?.onTouch(ev)
+        directTouch(ev)
         return super.dispatchTouchEvent(ev)
+    }
+
+    /** The finger that is the mouse in direct touch (its pointer id; -1: none). */
+    private var mouseFinger = -1
+
+    /**
+     * Direct touch: a finger on the game (not on a control) is the mouse, its button held while
+     * it is down. Read here, ahead of the views: once a finger is on a touch key, Android hands
+     * every later finger to the controls' layer too, so the game screen never saw a second finger
+     * move the mouse while L-Click was held to fire (Heavy Weapon).
+     */
+    private fun directTouch(ev: MotionEvent) {
+        if (!::input.isInitialized) return
+        val origin = IntArray(2).also { surface.getLocationInWindow(it) }
+        fun move(i: Int) = input.moveCursor(ev.getX(i) - origin[0], ev.getY(i) - origin[1])
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val i = ev.actionIndex
+                if (mouseFinger != -1 || overlay.layout.mode != "direct" || overlay.menu || overlay.editing ||
+                    overlay.controlAt(ev.getX(i), ev.getY(i))) return
+                mouseFinger = ev.getPointerId(i)
+                move(i)
+                input.fingerDown()
+            }
+            MotionEvent.ACTION_MOVE -> ev.findPointerIndex(mouseFinger).takeIf { mouseFinger != -1 && it >= 0 }?.let(::move)
+            MotionEvent.ACTION_POINTER_UP -> if (ev.getPointerId(ev.actionIndex) == mouseFinger) {
+                move(ev.actionIndex)
+                input.fingerUp()
+                mouseFinger = -1
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (mouseFinger != -1) {
+                ev.findPointerIndex(mouseFinger).takeIf { it >= 0 }?.let(::move)
+                input.fingerUp()
+                mouseFinger = -1
+            }
+        }
     }
 
     override fun onResume() { super.onResume(); screen?.onResume() }
@@ -542,22 +573,49 @@ class WinActivity : ComponentActivity(), SurfaceHolder.Callback {
 
         private fun which(button: Int) = if (button == MotionEvent.BUTTON_SECONDARY) 3 else 1
 
+        /**
+         * The direct-touch finger holds the left button apart from the keys and controllers
+         * ([buttons]): with L-Click held and a finger moving the mouse, lifting either one leaves
+         * the button down for the other.
+         */
+        private var finger = false
+        private fun down(button: Int) = buttons and button != 0 || (button == MotionEvent.BUTTON_PRIMARY && finger)
+
+        private fun send(button: Int, pressed: Boolean) {
+            val (gx, gy) = toX(cursorX, cursorY)
+            if (pressed) android.util.Log.i(WinRuntime.TAG, "press at $gx,$gy (view $cursorX,$cursorY)")
+            xq.execute { this@WinActivity.x?.let { it.motion(gx, gy); it.button(which(button), pressed) } }
+        }
+
         override fun mouseDown(button: Int) {
             if (buttons and button != 0) return
+            val was = down(button)
             buttons = buttons or button
-            val (gx, gy) = toX(cursorX, cursorY)
-            android.util.Log.i(WinRuntime.TAG, "press at $gx,$gy (view $cursorX,$cursorY)")
-            xq.execute { this@WinActivity.x?.let { it.motion(gx, gy); it.button(which(button), true) } }
+            if (!was) send(button, true)
         }
 
         override fun mouseUp(button: Int) {
             if (buttons and button == 0) return
             buttons = buttons and button.inv()
-            xq.execute { this@WinActivity.x?.button(which(button), false) }
+            if (!down(button)) send(button, false)
+        }
+
+        fun fingerDown() {
+            if (finger) return
+            val was = down(MotionEvent.BUTTON_PRIMARY)
+            finger = true
+            if (!was) send(MotionEvent.BUTTON_PRIMARY, true)
+        }
+
+        fun fingerUp() {
+            if (!finger) return
+            finger = false
+            if (!down(MotionEvent.BUTTON_PRIMARY)) send(MotionEvent.BUTTON_PRIMARY, false)
         }
 
         override fun releaseAll() {
             held.toList().forEach { key(it, false) }
+            fingerUp()
             if (buttons and MotionEvent.BUTTON_PRIMARY != 0) mouseUp(MotionEvent.BUTTON_PRIMARY)
             if (buttons and MotionEvent.BUTTON_SECONDARY != 0) mouseUp(MotionEvent.BUTTON_SECONDARY)
         }
