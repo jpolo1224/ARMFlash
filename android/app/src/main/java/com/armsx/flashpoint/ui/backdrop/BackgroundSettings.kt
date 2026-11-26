@@ -1,5 +1,6 @@
 package com.armsx.flashpoint.ui.backdrop
 
+import com.armsx.flashpoint.ui.ArrowSlider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -116,15 +117,16 @@ fun BackgroundSettings() {
             }
             listOf(Triple("Red", 16, r), Triple("Green", 8, g), Triple("Blue", 0, b)).forEach { (label, shift, value) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("$label $value", color = Fp.Text, fontSize = 13.sp, modifier = Modifier.width(80.dp))
-                    Slider(
-                        value = value.toFloat(),
-                        onValueChange = { v ->
-                            val cleared = argb and (0xFF shl shift).inv()
-                            LibraryBackgroundColorPreferences.set(cleared or (v.toInt().coerceIn(0, 255) shl shift) or (0xFF shl 24))
-                        },
-                        valueRange = 0f..255f,
-                        modifier = Modifier.widthIn(max = 360.dp).sliderPadKeys(),
+                    Text(label, color = Fp.Text, fontSize = 13.sp, modifier = Modifier.width(56.dp))
+                    val setChannel: (Int) -> Unit = { c ->
+                        val cleared = argb and (0xFF shl shift).inv()
+                        LibraryBackgroundColorPreferences.set(cleared or (c.coerceIn(0, 255) shl shift) or (0xFF shl 24))
+                    }
+                    ArrowSlider(
+                        value.toFloat(), { v -> setChannel(v.toInt()) }, valueRange = 0f..255f, step = 1f,
+                        modifier = Modifier.widthIn(max = 460.dp), sliderModifier = Modifier.sliderPadKeys(),
+                        valueText = "$value",
+                        onTyped = { n -> setChannel(n.toInt()) },
                     )
                 }
             }
@@ -157,14 +159,14 @@ fun BackgroundSettings() {
     // How much of the background shows through the bars, panels and game tiles.
     val opacity = LibraryChromePreferences.libraryOpacity.value
     Heading(
-        "Library opacity: $opacity%",
+        "Library opacity",
         "How solid the bars, panels and game tiles are over a background. 100% hides it behind them; lower lets it show through.",
     )
-    Slider(
-        value = opacity.toFloat(),
-        onValueChange = { LibraryChromePreferences.setLibraryOpacity(it.toInt()) },
-        valueRange = 20f..100f,
-        modifier = Modifier.widthIn(max = 420.dp).sliderPadKeys(),
+    ArrowSlider(
+        opacity.toFloat(), { LibraryChromePreferences.setLibraryOpacity(it.toInt()) }, valueRange = 20f..100f, step = 1f,
+        modifier = Modifier.widthIn(max = 500.dp), sliderModifier = Modifier.sliderPadKeys(),
+        valueText = "$opacity%",
+        onTyped = { n -> LibraryChromePreferences.setLibraryOpacity(n.toInt().coerceIn(20, 100)) },
     )
 }
 

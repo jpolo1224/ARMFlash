@@ -194,9 +194,12 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                     if (it) UiMusic.start(ctx) else UiMusic.stop()
                 })
             }
-            Slider(
-                value = vol, onValueChange = { vol = it; UiMusic.volume.floatValue = it; UiMusic.applyVolume() },
-                onValueChangeFinished = { UiMusic.save(ctx) }, enabled = music, modifier = Modifier.widthIn(max = 420.dp).sliderPadKeys(),
+            ArrowSlider(
+                vol, { vol = it; UiMusic.volume.floatValue = it; UiMusic.applyVolume() }, valueRange = 0f..1f, step = 0.05f,
+                modifier = Modifier.widthIn(max = 500.dp), sliderModifier = Modifier.sliderPadKeys(), enabled = music,
+                onValueChangeFinished = { UiMusic.save(ctx) },
+                valueText = "${(vol * 100).toInt()}%",
+                onTyped = { n -> vol = (n / 100.0).toFloat().coerceIn(0f, 1f); UiMusic.volume.floatValue = vol; UiMusic.applyVolume() },
             )
         }
 
