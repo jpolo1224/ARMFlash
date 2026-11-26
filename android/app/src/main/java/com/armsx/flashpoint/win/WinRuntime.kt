@@ -167,20 +167,92 @@ class WinRuntime(private val ctx: Context) {
         return socket.exists()
     }
 
-    /** Make the prefix on first use (several minutes on a phone; only once). */
+    /** There while a Windows setup is under way: still there at the next start, that setup was cut short. */
+    private val settingUp = File(root, "home/.armflash-setting-up")
+
+    /**
+     * Make the prefix on first use (several minutes on a phone; only once), and finish one whose
+     * setup stopped partway.
+     *
+     * Wine stamps a prefix as set up (its .update-timestamp) before it copies Windows' system
+     * files into it, and from then on looks for them only there. A first setup cut short (the
+     * game screen closed, Android stopping the app, or Wine giving up its 5-minute wait on a slow
+     * phone while the copying went on, until the game closed) left a prefix that looked set up,
+     * and every Windows program then failed at once with "could not load kernel32.dll, status
+     * c0000135" (reported on a Mali phone; reproduced on the emulator by stopping a setup 2 s in).
+     * Without the stamp, Wine's next start copies everything again: that is how one is finished.
+     */
     fun ensurePrefix(log: (String) -> Unit): Boolean {
-        if (File(prefix, "system.reg").isFile && File(prefix, "drive_c/windows/syswow64").isDirectory) return true
-        log("Setting up Windows support (first time only)…")
-        val code = run(listOf("wineboot", "-i"), null).waitFor()
-        Log.i(TAG, "wineboot -i exited with $code")
-        // Wine writes the registry files later than wineboot returns: when its server goes idle,
-        // or on its periodic save (every 30 s) while Windows' own services keep it running.
-        val done = { File(prefix, "system.reg").isFile && File(prefix, "user.reg").isFile }
-        if (!done()) log("Finishing Windows setup…")
+        val registry = { File(prefix, "system.reg").isFile && File(prefix, "user.reg").isFile }
+        val missing = missingSystemFiles()
+        if (missing.isEmpty() && registry() && !settingUp.exists()) return true
+        val again = File(prefix, "dosdevices").isDirectory
+        if (again) {
+            val why = if (missing.isEmpty()) "cut short" else "missing " + missing.take(4).joinToString() + if (missing.size > 4) " and ${missing.size - 4} more" else ""
+            Log.w(TAG, "prefix: the last Windows setup did not finish ($why); finishing it")
+            File(prefix, ".update-timestamp").delete()
+        }
+        val what = if (again) "Finishing Windows setup" else "Setting up Windows support (first time only)"
+        log("$what. Keep this screen open…")
+        settingUp.parentFile?.mkdirs()
+        settingUp.writeText("")
+        val started = android.os.SystemClock.elapsedRealtime()
+        val tick = {
+            val mins = (android.os.SystemClock.elapsedRealtime() - started) / 60_000
+            if (mins > 0) log("$what ($mins min so far). Keep this screen open…")
+        }
+        val boot = run(listOf("wineboot", "-i"), null)
+        val booted = waitTicking(boot, SETUP_LIMIT_MS, tick)
+        Log.i(TAG, "wineboot -i ${if (booted) "exited with ${boot.exitValue()}" else "still running"}")
+        // Wine waits only 5 minutes for its own setup and then goes on without it, while a slow
+        // phone is still copying. Its server ends once every Wine program has, the setup's too,
+        // and saves the registry as it ends.
+        val ended = booted && waitForServer(SETUP_LIMIT_MS, tick)
         val deadline = System.currentTimeMillis() + 75_000
-        while (!done() && System.currentTimeMillis() < deadline) Thread.sleep(500)
-        if (!done()) Log.w(TAG, "no registry after wineboot (exit $code)")
-        return done()
+        while (ended && !registry() && System.currentTimeMillis() < deadline) Thread.sleep(500)
+        val left = missingSystemFiles()
+        val done = ended && registry() && left.isEmpty()
+        if (done) {
+            settingUp.delete()
+            // The setup's own commands may have run before the files were there.
+            cannotStart = false
+            Log.i(TAG, "prefix: set up in ${(android.os.SystemClock.elapsedRealtime() - started) / 1000} s")
+        } else {
+            Log.w(TAG, "prefix: setup did not finish (server ${if (ended) "ended" else "still running"}, registry ${registry()}, missing ${left.take(4)})")
+        }
+        return done
+    }
+
+    /**
+     * Windows files every program needs, in the prefix's system folders (each copied there from
+     * the runtime by Wine's setup, at the runtime's size): the ones of [SYSTEM_FILES] the runtime
+     * has that are missing or empty.
+     */
+    private fun missingSystemFiles(): List<String> {
+        val win = File(prefix, "drive_c/windows")
+        val pe = File(root, "opt/wine/lib/wine")
+        return listOf("system32" to "x86_64-windows", "syswow64" to "i386-windows").flatMap { (dir, arch) ->
+            SYSTEM_FILES.filter { File(pe, "$arch/$it").isFile && File(win, "$dir/$it").length() == 0L }.map { "$dir/$it" }
+        }
+    }
+
+    /** Wait for [p] to end, up to [limitMs], calling [tick] every 30 s. False if it is still running then. */
+    private fun waitTicking(p: Process, limitMs: Long, tick: () -> Unit): Boolean {
+        val until = android.os.SystemClock.elapsedRealtime() + limitMs
+        while (!p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (android.os.SystemClock.elapsedRealtime() >= until) return false
+            tick()
+        }
+        return true
+    }
+
+    /** Wait until Wine's server has ended (every Wine program with it), up to [limitMs]. */
+    private fun waitForServer(limitMs: Long, tick: () -> Unit): Boolean {
+        val pb = ProcessBuilder(listOf("$lib/libbox64.so", "${root.path}/opt/wine/bin/wineserver", "-w")).redirectErrorStream(true)
+        pb.environment().putAll(env)
+        pb.environment().putAll(extra)
+        val p = pb.start().also { drain(it, "wineserver") }
+        return waitTicking(p, limitMs, tick).also { if (!it) p.destroy() }
     }
 
     /**
@@ -413,9 +485,10 @@ class WinRuntime(private val ctx: Context) {
     }.apply { isDaemon = true }.start()
 
     /**
-     * Wine could not load its own kernel32.dll: no Windows program can run on this device, the
-     * setup commands included (seen on a Mali phone: every Wine command failed at once, while the
-     * same runtime works on others). The game screen says so instead of closing like a crash.
+     * Wine could not load its own kernel32.dll: no Windows program can run, the setup commands
+     * included. The game screen says so instead of closing like a crash. (On the Mali phone where
+     * it was first seen, the prefix's setup had been cut short; [ensurePrefix] now finishes such
+     * a prefix, so this is left for causes not seen yet.)
      */
     @Volatile var cannotStart = false
         private set
@@ -496,6 +569,15 @@ class WinRuntime(private val ctx: Context) {
                 what = "no crash without network adapters",
             ),
         )
+        /** See [missingSystemFiles]: what loads first in every Windows program, and Wine's own setup commands. */
+        private val SYSTEM_FILES = listOf(
+            "ntdll.dll", "kernel32.dll", "kernelbase.dll", "user32.dll", "win32u.dll", "gdi32.dll",
+            "advapi32.dll", "sechost.dll", "msvcrt.dll", "ucrtbase.dll", "rpcrt4.dll", "combase.dll",
+            "ole32.dll", "shell32.dll", "ws2_32.dll", "wininet.dll", "winex11.drv", "cmd.exe", "reg.exe",
+            "wineboot.exe", "services.exe", "wow64.dll", "wow64win.dll", "wow64cpu.dll",
+        )
+        /** How long a Windows setup may take (a slow phone takes minutes; the emulator 20 s). */
+        private const val SETUP_LIMIT_MS = 30 * 60_000L
         const val DISPLAY_NO = 1
         private const val SIGSTOP = 19
         private const val SIGCONT = 18
