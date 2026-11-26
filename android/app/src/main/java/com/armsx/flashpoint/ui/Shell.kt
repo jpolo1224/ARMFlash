@@ -305,8 +305,7 @@ private fun MiniCard(vm: BrowseVm, g: Game, onClick: () -> Unit) {
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
-            GameArt(vm, g, peek, Modifier.fillMaxSize(), localPadding = 22.dp)
+        GameTile(vm, g, peek, localPadding = 22.dp) {
             PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(4.dp).size(20.dp))
         }
         Text(g.title, color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 2, modifier = Modifier.padding(top = 4.dp))

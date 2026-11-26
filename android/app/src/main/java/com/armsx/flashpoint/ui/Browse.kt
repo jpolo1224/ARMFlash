@@ -336,11 +336,8 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(Fp.Card)) {
-            if (g != null) {
-                GameArt(vm, g, peek, Modifier.fillMaxSize(), localPadding = 28.dp)
-                PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(6.dp))
-            }
+        GameTile(vm, g, peek, localPadding = 28.dp) {
+            if (g != null) PlatformBadge(g.primaryPlatform, Modifier.align(Alignment.BottomEnd).padding(6.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -352,29 +349,54 @@ private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> U
 }
 
 /**
- * A game's picture on a card. Config, Screenshot Preview: Always shows the game's screenshot in
- * place of its logo, Long Press swaps a card between the two ([peek]). A game with no screenshot
- * keeps its logo, an Extreme game's screenshot stays hidden while Hide Extreme Screenshots is on,
- * and an imported game (My Games) shows its platform's picture.
+ * A game's picture on a card, in a square slot (so a grid's rows and titles line up) with the
+ * tile itself the picture's shape: a logo wider than tall fills the width and sits on the title,
+ * with no bands of tile colour above and below it, and [badge] goes on the picture's own corner.
+ * Square until the picture has loaded, and for an imported game (My Games), which shows its
+ * platform's picture inside [localPadding].
+ *
+ * Config, Screenshot Preview: Always shows the game's screenshot in place of its logo, Long Press
+ * swaps a card between the two ([peek]). A game with no screenshot keeps its logo, and an Extreme
+ * game's screenshot stays hidden while Hide Extreme Screenshots is on.
  */
 @Composable
-fun GameArt(vm: BrowseVm, g: Game, peek: Boolean, modifier: Modifier, localPadding: androidx.compose.ui.unit.Dp) {
-    val mode = vm.prefs2.screenshotPreviewMode.value
-    var noShot by remember(g.id) { mutableStateOf(false) }
-    val local = com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
-    val shot = !local && !noShot && (mode == "2" || mode == "1" && peek) &&
-        !(vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g))
-    AsyncImage(
-        model = when {
-            local -> LogoSets.image(g.primaryPlatform)
-            shot -> vm.library.screenshotUrl(g.id)
-            else -> vm.library.logoUrl(g.id)
-        },
-        contentDescription = null,
-        onError = { if (shot) noShot = true },
-        contentScale = ContentScale.Fit,
-        modifier = modifier.then(if (local) Modifier.padding(localPadding) else Modifier),
-    )
+fun GameTile(
+    vm: BrowseVm, g: Game?, peek: Boolean, localPadding: androidx.compose.ui.unit.Dp,
+    badge: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.BottomCenter) {
+        if (g == null) {
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(Fp.Card))
+            return@Box
+        }
+        val mode = vm.prefs2.screenshotPreviewMode.value
+        var noShot by remember(g.id) { mutableStateOf(false) }
+        val local = com.armsx.flashpoint.data.LocalGames.isLocal(g.id)
+        val shot = !local && !noShot && (mode == "2" || mode == "1" && peek) &&
+            !(vm.prefs2.hideExtremeScreenshots.value && com.armsx.flashpoint.core.Extreme.isExtreme(g))
+        val painter = coil.compose.rememberAsyncImagePainter(
+            model = when {
+                local -> LogoSets.image(g.primaryPlatform)
+                shot -> vm.library.screenshotUrl(g.id)
+                else -> vm.library.logoUrl(g.id)
+            },
+            onError = { if (shot) noShot = true },
+        )
+        val loaded = (painter.state as? coil.compose.AsyncImagePainter.State.Success)?.painter?.intrinsicSize
+        val ratio = if (!local && loaded != null && loaded.width > 0f && loaded.height > 0f)
+            (loaded.width / loaded.height).coerceIn(0.4f, 3f) else 1f
+        Box(
+            Modifier.then(if (ratio >= 1f) Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxHeight().aspectRatio(ratio, matchHeightConstraintsFirst = true))
+                .clip(RoundedCornerShape(4.dp)).background(Fp.Card),
+        ) {
+            androidx.compose.foundation.Image(
+                painter, null,
+                Modifier.fillMaxSize().then(if (local) Modifier.padding(localPadding) else Modifier),
+                contentScale = ContentScale.Fit,
+            )
+            badge()
+        }
+    }
 }
 
 /** What a long press on a card does: with Screenshot Preview on Long Press, [toggle] the screenshot. */
