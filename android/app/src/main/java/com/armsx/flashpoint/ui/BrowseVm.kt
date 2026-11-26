@@ -131,6 +131,7 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
 
     init {
         if (library.hasDatabase()) openDatabase()
+        resumeSync()
     }
 
     fun openDatabase(): kotlinx.coroutines.Job {
@@ -186,9 +187,42 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                     listOf("", "-wal", "-shm").forEach { java.io.File(library.database.path + it).delete() }
                     prefs.edit().remove("lastSync").apply()
                 }
+                prefs.edit().putBoolean("syncIsUpdate", update).apply()
                 FpCore.open(library.database.path)
-                FpCore.startSync(library.metadataBase, lastSync)
+                // Where the server picks up: the last sync's newest change, or, when none was kept
+                // (an imported database, a sync the launcher was left during), the newest change
+                // already in the database, so an update never fetches all 220,000 games again.
+                val after = lastSync.ifBlank { if (update) newestInDatabase().orEmpty() else "" }
+                FpCore.startSync(library.metadataBase, after)
             }
+        } catch (e: Exception) {
+            status = "${if (update) "Game info update" else "Database download"} failed: ${e.message}"
+            return@launch
+        }
+        watchSync(update)
+    }
+
+    /** The newest game change the database holds (its games' dateModified, as the server writes them). */
+    private fun newestInDatabase(): String? = runCatching {
+        android.database.sqlite.SQLiteDatabase.openDatabase(library.database.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT max(dateModified) FROM game", null).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /**
+     * A sync this launcher did not see through: still running (it carries on in the background
+     * when the launcher is left), or finished meanwhile. Follow it, or keep its result.
+     */
+    private fun resumeSync() = viewModelScope.launch {
+        val st = withContext(Dispatchers.IO) { runCatching { FpCore.sync() }.getOrNull() } ?: return@launch
+        val update = prefs.getBoolean("syncIsUpdate", true)
+        if (st.running) watchSync(update)
+        else if (st.phase == "Done" && st.failure == null && st.lastUpdate != null && st.lastUpdate != lastSync) { sync = st; finishSync(st, update) }
+    }
+
+    /** Follow the running sync to its end, with the time left, then keep its result. */
+    private suspend fun watchSync(update: Boolean) {
+        try {
             // The game list is nearly all of the work, so time left comes from its rate,
             // measured from when that phase began (earlier phases would skew it).
             var gamesStart = 0L
@@ -212,25 +246,29 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
                 }
                 delay(500)
             }
-            val st = sync
-            if (st?.failure != null) {
-                status = if (st.failure == "cancelled") "Update cancelled." else "${if (update) "Game info update" else "Database download"} failed: ${st.failure}"
-            } else {
-                st?.lastUpdate?.let { prefs.edit().putString("lastSync", it).apply() }
-                val today = java.time.LocalDate.now().toString()
-                prefs.edit().putString("lastChecked", today).apply()
-                lastChecked = today
-                openDatabase()
-                if (update) status = when (val n = st?.done ?: 0L) {
-                    0L -> "Game info is up to date."
-                    1L -> "Game info updated: 1 game."
-                    else -> "Game info updated: $n games."
-                }
-            }
+            sync?.let { finishSync(it, update) }
         } catch (e: Exception) {
             status = "${if (update) "Game info update" else "Database download"} failed: ${e.message}"
         } finally {
             sync = sync?.copy(running = false)
+        }
+    }
+
+    /** Keep a finished sync's result: where the next one starts, the day checked, and say how it went. */
+    private fun finishSync(st: com.armsx.flashpoint.core.SyncStatus, update: Boolean) {
+        if (st.failure != null) {
+            status = if (st.failure == "cancelled") "Update cancelled." else "${if (update) "Game info update" else "Database download"} failed: ${st.failure}"
+            return
+        }
+        st.lastUpdate?.let { prefs.edit().putString("lastSync", it).apply() }
+        val today = java.time.LocalDate.now().toString()
+        prefs.edit().putString("lastChecked", today).apply()
+        lastChecked = today
+        openDatabase()
+        if (update) status = when (val n = st.done) {
+            0L -> "Game info is up to date."
+            1L -> "Game info updated: 1 game."
+            else -> "Game info updated: $n games."
         }
     }
 
