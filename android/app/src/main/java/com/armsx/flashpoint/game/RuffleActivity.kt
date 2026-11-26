@@ -65,6 +65,10 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         override fun menuOpen(open: Boolean) {
             screen?.onMenu(open)
             nativeSetPlaying(!open)
+            // The menu gets the screen's full rate at once, and the game its own back on closing.
+            menuUp = open
+            ticker.removeCallbacks(frameRateTick)
+            frameRateTick.run()
         }
         override fun display(scale: String, quality: String) = nativeDisplay(scaleCode(scale), qualityCode(quality))
         override val hasShaders get() = true
@@ -254,6 +258,18 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
     private var votedHz = 0f
 
+    /**
+     * The quick menu or the touch editor is up. The game's vote below holds the whole app to the
+     * game's rate (Android applies it to every window of the app), so a 20 fps game with frame
+     * generation drew the menu at 40 fps; the menu gets the screen's fastest rate instead.
+     */
+    private var menuUp = false
+
+    @Suppress("DEPRECATION")
+    private fun fastestHz(): Float = runCatching {
+        (if (android.os.Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay)?.supportedModes?.maxOfOrNull { it.refreshRate }
+    }.getOrNull() ?: 0f
+
     @Suppress("DEPRECATION")
     private fun displayHz(): Float = runCatching {
         (if (android.os.Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay)?.refreshRate
@@ -267,7 +283,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
      */
     private val frameRateTick = object : Runnable {
         override fun run() {
-            val want = runCatching { nativeFrameGenTick(displayHz()) }.getOrDefault(0f)
+            val game = runCatching { nativeFrameGenTick(displayHz()) }.getOrDefault(0f)
+            val want = if (menuUp) fastestHz() else game
             if (android.os.Build.VERSION.SDK_INT >= 30 && want != votedHz) {
                 val surface = mSurfaceView.holder.surface
                 if (surface != null && surface.isValid) {
