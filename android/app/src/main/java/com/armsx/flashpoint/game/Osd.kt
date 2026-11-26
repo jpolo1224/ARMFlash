@@ -87,6 +87,8 @@ private data class Reading(
     val battery: Int? = null,
     val tempC: Double? = null,
     val charging: Boolean = false,
+    /** Frame generation's line ("LSFG: 60.00 · 1.23 ms"), "" while it is off. */
+    val frameGen: String = "",
 )
 
 /**
@@ -95,9 +97,10 @@ private data class Reading(
  * battery and temperature, and the time. Sampled twice a second; costs nothing when hidden.
  *
  * [frames] returns the game's running frame count, or -1 when the player cannot say.
+ * [frameGen] is frame generation's line (frames reaching the screen, its GPU time), "" while off.
  */
 @Composable
-fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
+fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier, frameGen: () -> String = { "" }) {
     if (OsdPrefs.mode.value == OsdPrefs.Mode.OFF) return
     val ctx = LocalContext.current
     var r by remember { mutableStateOf(Reading()) }
@@ -128,6 +131,7 @@ fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
                 battery = bat?.let { b -> val l = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1); val s = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100); if (l >= 0) l * 100 / s else null },
                 tempC = bat?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)?.takeIf { it != Int.MIN_VALUE }?.div(10.0),
                 charging = bat?.getIntExtra(BatteryManager.EXTRA_STATUS, 0) == BatteryManager.BATTERY_STATUS_CHARGING,
+                frameGen = frameGen(),
             )
         }
     }
@@ -135,6 +139,9 @@ fun OsdOverlay(frames: () -> Long, modifier: Modifier = Modifier) {
     val lines = buildList {
         if (OsdPrefs.Stat.FPS in stats) add("FPS " + (r.fps?.let { "%.0f".format(it) } ?: "--"))
         if (OsdPrefs.Stat.FRAME in stats) add("Frame " + (r.fps?.takeIf { it > 0.5 }?.let { "%.1f ms".format(1000 / it) } ?: "--"))
+        // Whenever frame generation is switched on, whatever the stats: it says so when it is
+        // not running too, since "on but silent" looks the same as "on and broken".
+        if (r.frameGen.isNotEmpty()) add(r.frameGen)
         if (OsdPrefs.Stat.CPU in stats) add("CPU " + (r.cpu?.let { "%.0f%%".format(it) } ?: "--"))
         if (OsdPrefs.Stat.GPU in stats) add("GPU " + (r.gpu?.let { "$it%" } ?: "--") + (r.gpuMhz?.let { "  $it MHz" } ?: ""))
         if (OsdPrefs.Stat.RAM in stats) add("RAM " + (r.ramMb?.let { "$it MB" } ?: "--"))

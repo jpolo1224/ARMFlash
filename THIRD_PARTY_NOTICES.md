@@ -61,6 +61,9 @@ ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1). Source: Debi
 ## App libraries
 
 - **libadrenotools** (custom GPU drivers): BSD 2-Clause, Billy Laws. https://github.com/bylaws/libadrenotools
+- **Frame generation** (GitHub build only, `libarmflash_lsfg.so`): ARMSX2's port of the frame generation
+  from Eden (eden-emu, PR #4263) and lsfg-vk, GPL-3.0-or-later. Its interpolation shaders are not
+  included: they are read at run time from the user's own copy of Lossless Scaling.
 - **Discord Social SDK** (Discord presence and friends): Discord's SDK, used under Discord's developer terms.
   https://discord.com/developers/docs/discord-social-sdk/overview
 - **AndroidX, Jetpack Compose, Kotlin and kotlinx libraries**: Apache-2.0.
@@ -77,5 +80,5 @@ ncurses (MIT), libedit (BSD), libffi (MIT) and GNU libc (LGPL-2.1). Source: Debi
 ## From ARMSX2
 
 Touch control sprites, the in-game menu, the battery indicator, the custom driver manager, Discord
-presence, home screen shortcuts and the controller focus ring come from ARMSX2, by the ARMSX2 team
+presence, home screen shortcuts, the controller focus ring and frame generation come from ARMSX2, by the ARMSX2 team
 (GPL-3.0, the license ARMFlash itself uses).

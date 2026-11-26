@@ -1241,6 +1241,7 @@ dependencies = [
  "futures",
  "indexmap",
  "jni",
+ "libloading",
  "librashader-common",
  "librashader-runtime",
  "librashader-runtime-wgpu",

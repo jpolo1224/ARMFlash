@@ -85,6 +85,13 @@ interface OverlayHost {
     /** Errors Ruffle reported running this game (0 when it never struggled, or not Ruffle). */
     fun flashTrouble(): Long = 0
     fun shaderChanged(full: Boolean) {}
+    /** Whether this player has frame generation (native Flash), and how to tell it the settings changed. */
+    val hasFrameGen: Boolean get() = false
+    fun frameGenChanged() {}
+    /** Frame generation's overlay line, "" while it is off. */
+    fun frameGenStatus(): String = ""
+    /** Why frame generation cannot run here (see FrameGenPrefs.Reason), 0 when it can. */
+    fun frameGenReason(): Int = 1
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()
@@ -317,7 +324,7 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
             OsdPrefs.Corner.BOTTOM_RIGHT -> Alignment.BottomEnd
         }
         // Top right sits under the menu button.
-        OsdOverlay(host::frames, Modifier.align(osdAt).padding(top = if (OsdPrefs.corner.value == OsdPrefs.Corner.TOP_RIGHT) 56.dp else 0.dp))
+        OsdOverlay(host::frames, Modifier.align(osdAt).padding(top = if (OsdPrefs.corner.value == OsdPrefs.Corner.TOP_RIGHT) 56.dp else 0.dp), host::frameGenStatus)
         if (st.menu) QuickMenu(st, host)
         WelcomeBannerOverlay(this)
         com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))

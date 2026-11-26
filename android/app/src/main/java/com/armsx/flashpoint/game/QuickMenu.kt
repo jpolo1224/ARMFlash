@@ -434,6 +434,8 @@ private fun DisplayPane(st: OverlayState, host: OverlayHost) {
     if (host.usesDriver) DriverCard(host)
     if (host.isFlash) RendererCard(host)
     if (host.hasShaders) ShaderCard(host)
+    // Frame generation (the GitHub build's FrameGenUi; the Play build's draws nothing).
+    if (host.hasFrameGen) FrameGenCard(host)
     if (!host.usesDriver) SectionCard("GPU driver") {
         Text(
             "Browser games draw through Android's built-in browser, which always uses the device's own driver. " +
@@ -887,7 +889,7 @@ private fun FriendsPane() {
 
 /** The launcher's controller ring (ARMSX2's), on a menu control. */
 @Composable
-private fun Modifier.menuFocus(shape: androidx.compose.ui.graphics.Shape): Modifier {
+internal fun Modifier.menuFocus(shape: androidx.compose.ui.graphics.Shape): Modifier {
     // Each control registers where it sits, so the menu can come back to the one last used.
     val mem = LocalMenuMemory.current
     val req = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -960,7 +962,7 @@ private fun ActionGrid(actions: List<MenuAction>) {
 
 /** A line of explanation under a setting. */
 @Composable
-private fun Hint(text: String) {
+internal fun Hint(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 3.dp, bottom = 2.dp))
 }
 
@@ -976,7 +978,7 @@ private fun PercentSlider(title: String, value: Int, range: IntRange, onChange: 
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(17.dp),
@@ -992,7 +994,7 @@ private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Un
 }
 
 @Composable
-private fun <T> HorizontalOptions(title: String, options: List<Pair<T, String>>, selected: T, description: String = "", first: Boolean = false, onSelect: (T) -> Unit) {
+internal fun <T> HorizontalOptions(title: String, options: List<Pair<T, String>>, selected: T, description: String = "", first: Boolean = false, onSelect: (T) -> Unit) {
     SectionCard(title) {
         if (description.isNotEmpty()) {
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1011,7 +1013,7 @@ private fun <T> HorizontalOptions(title: String, options: List<Pair<T, String>>,
 }
 
 @Composable
-private fun OptionChip(label: String, selected: Boolean, dot: Color? = null, onClick: () -> Unit) {
+internal fun OptionChip(label: String, selected: Boolean, dot: Color? = null, onClick: () -> Unit) {
     Surface(
         onClick = { MenuSfx.play(MenuSfx.Event.SELECT); onClick() },
         modifier = Modifier.menuFocus(RoundedCornerShape(12.dp)),
@@ -1031,7 +1033,7 @@ private fun OptionChip(label: String, selected: Boolean, dot: Color? = null, onC
 }
 
 @Composable
-private fun MenuSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+internal fun MenuSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Surface(
         onClick = {
             MenuSfx.play(if (checked) MenuSfx.Event.TOGGLE_OFF else MenuSfx.Event.TOGGLE_ON)
@@ -1052,7 +1054,7 @@ private fun MenuSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boo
 }
 
 @Composable
-private fun MenuCycleRow(title: String, valueLabel: String, onClick: () -> Unit) {
+internal fun MenuCycleRow(title: String, valueLabel: String, onClick: () -> Unit) {
     Surface(
         onClick = { MenuSfx.play(MenuSfx.Event.SELECT); onClick() },
         modifier = Modifier.fillMaxWidth().menuFocus(RoundedCornerShape(16.dp)),

@@ -70,6 +70,10 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         override val hasShaders get() = true
         override fun flashTrouble(): Long = nativeTrouble()
         override fun shaderChanged(full: Boolean) = nativeShaderChanged(full)
+        override val hasFrameGen get() = true
+        override fun frameGenChanged() = nativeFrameGenChanged()
+        override fun frameGenStatus(): String = nativeFrameGenStatus()
+        override fun frameGenReason(): Int = nativeFrameGenReason()
         override var menuLeft: Boolean
             get() = layouts.menuLeft
             set(v) { layouts.menuLeft = v }
@@ -132,6 +136,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         mSurfaceView.post { input.moveCursor(mSurfaceView.width / 2f, mSurfaceView.height / 2f) }
+        frameRateTick.run()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 overlay.editing = false
@@ -175,6 +180,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     }
 
     override fun onDestroy() {
+        ticker.removeCallbacks(frameRateTick)
         closeCamera()
         screen?.onDestroy()
         super.onDestroy()
@@ -213,6 +219,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "shaderParams" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
             ?.let { com.armsx.flashpoint.shaders.ShaderPrefs.paramLines(this, it.path) }.orEmpty()
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
+        // Frame generation's settings and the screen's refresh rate (FrameGenPrefs.native).
+        "frameGen" -> FrameGenPrefs.native(this, displayHz())
         "scale" -> scaleCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).scale).toString()
         "quality" -> qualityCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).quality).toString()
         // The cameras webcam games can use, one name per line, front first.
@@ -232,6 +240,51 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeShaderChanged(full: Boolean)
     /** Errors Ruffle has reported (script errors, failed loads, panics). */
     external fun nativeTrouble(): Long
+    /** Frame generation's settings changed (it reads them again through getString("frameGen")). */
+    external fun nativeFrameGenChanged()
+    /** Why frame generation cannot run (FrameGenPrefs.Reason), 0 when it can. */
+    external fun nativeFrameGenReason(): Int
+    /** Frame generation's overlay line, "" while it is off. */
+    external fun nativeFrameGenStatus(): String
+    /** The screen's refresh rate now; returns the rate frame generation would like it at (0: none). */
+    external fun nativeFrameGenTick(displayHz: Float): Float
+
+    // ---- the screen's refresh rate, for frame generation ---------------------------------
+
+    private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
+    private var votedHz = 0f
+
+    @Suppress("DEPRECATION")
+    private fun displayHz(): Float = runCatching {
+        (if (android.os.Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay)?.refreshRate
+    }.getOrNull()?.takeIf { it > 1f } ?: 60f
+
+    /**
+     * Every two seconds: tell frame generation the screen's rate (it makes no more frames than the
+     * screen can show), and ask Android for the rate it would like, the game's rate times the
+     * multiplier. Without that vote the Odin 3 keeps a game at 60 Hz on its 120 Hz panel
+     * (game_default_frame_rate_override). Seamless changes only, so the screen never blanks.
+     */
+    private val frameRateTick = object : Runnable {
+        override fun run() {
+            val want = runCatching { nativeFrameGenTick(displayHz()) }.getOrDefault(0f)
+            if (android.os.Build.VERSION.SDK_INT >= 30 && want != votedHz) {
+                val surface = mSurfaceView.holder.surface
+                if (surface != null && surface.isValid) {
+                    runCatching {
+                        if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            surface.setFrameRate(want, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                                android.view.Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
+                        } else {
+                            surface.setFrameRate(want, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                        }
+                        votedHz = want
+                    }
+                }
+            }
+            ticker.postDelayed(this, 2000)
+        }
+    }
     /** A camera frame's Y, U and V planes (YUV_420_888) and how far it turns to stand up. */
     external fun nativeCameraFrame(y: java.nio.ByteBuffer, u: java.nio.ByteBuffer, v: java.nio.ByteBuffer, width: Int, height: Int, yStride: Int, uvStride: Int, uvStep: Int, rotation: Int)
     /** The camera permission: 1 allowed, 0 asking, -1 refused. */

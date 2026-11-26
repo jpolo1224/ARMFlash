@@ -107,6 +107,11 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             ConfigShaders()
         }
 
+        // Native Flash's frame generation (the GitHub build's FrameGenUi; the Play build's is a note).
+        Section("Frame Generation") {
+            com.armsx.flashpoint.game.FrameGenConfig()
+        }
+
         Section("Preferences") {
             Toggle("Show Extreme Games", "Shows games Flashpoint tags as Extreme: adult, sexual, gory and other content unsuitable for children. Off by default.", p.extremeGames) { vm.refreshAll() }
             Toggle("Hide Extreme Screenshots", "An Extreme game's screenshot shows only after a tap.", p.hideExtremeScreenshots)

@@ -22,4 +22,6 @@ pub enum RuffleEvent {
     Display { scale: i32, quality: i32 },
     /** The shader settings changed: reload the preset (`full`) or only its parameters. */
     ShaderChanged { full: bool },
+    /// Frame generation's settings changed (the app's "frameGen" string has the new ones).
+    FrameGenChanged,
 }

@@ -148,6 +148,60 @@ pub struct PhysicalDeviceFeatures {
     shader_draw_parameters: Option<vk::PhysicalDeviceShaderDrawParametersFeatures<'static>>,
 }
 
+/// ARMFlash: what frame generation (LSFG, `libarmflash_lsfg.so`) wants of the next device.
+/// Bit 0: run frame generation on it (the Vulkan memory model and `nullDescriptor`, which its
+/// shaders require); bit 1: also `shaderFloat16`, for its half-precision shaders. Set by the
+/// player before it asks for a device; nothing is enabled while it is 0.
+pub static ARMFLASH_FRAME_GENERATION_WANTED: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+/// ARMFlash: what the last device opened with frame generation wanted actually enabled. Bit 0
+/// the Vulkan memory model, bit 1 `nullDescriptor`, bit 2 `shaderFloat16`. A feature counts
+/// only when the device was created with it, never because the driver lists it.
+pub static ARMFLASH_FRAME_GENERATION_ENABLED: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0);
+
+/// ARMFlash: turns on the features frame generation needs, where the driver has them and
+/// [`ARMFLASH_FRAME_GENERATION_WANTED`] asks. wgpu itself never asks for them (it wants the memory
+/// model only for cooperative matrices), and none of them changes how wgpu's own shaders run.
+fn armflash_frame_generation_features(enabled: &mut PhysicalDeviceFeatures, supported: &PhysicalDeviceFeatures) {
+    use core::sync::atomic::Ordering;
+    let wanted = ARMFLASH_FRAME_GENERATION_WANTED.load(Ordering::Relaxed);
+    if wanted & 1 == 0 {
+        return;
+    }
+    let mut got = 0u32;
+    if let (Some(on), Some(has)) = (enabled.vulkan_memory_model.as_mut(), supported.vulkan_memory_model) {
+        if has.vulkan_memory_model == vk::TRUE {
+            on.vulkan_memory_model = vk::TRUE;
+            // Device scope too where it exists (wgpu's own note above on the validation error
+            // the memory model without it gives).
+            if has.vulkan_memory_model_device_scope == vk::TRUE {
+                on.vulkan_memory_model_device_scope = vk::TRUE;
+            }
+            got |= 1;
+        }
+    }
+    // Only when VK_EXT_robustness2 is enabled (wgpu enables it wherever the driver has it).
+    if let (Some(on), Some(has)) = (enabled.robustness2.as_mut(), supported.robustness2) {
+        if has.null_descriptor == vk::TRUE {
+            on.null_descriptor = vk::TRUE;
+            got |= 2;
+        }
+    }
+    if wanted & 2 != 0 {
+        if let Some(has) = supported.shader_float16_int8 {
+            if has.shader_float16 == vk::TRUE {
+                let on = enabled
+                    .shader_float16_int8
+                    .get_or_insert_with(vk::PhysicalDeviceShaderFloat16Int8Features::default);
+                on.shader_float16 = vk::TRUE;
+                got |= 4;
+            }
+        }
+    }
+    ARMFLASH_FRAME_GENERATION_ENABLED.store(got, Ordering::Relaxed);
+}
+
 impl PhysicalDeviceFeatures {
     pub fn get_core(&self) -> vk::PhysicalDeviceFeatures {
         self.core
@@ -2549,14 +2603,16 @@ impl super::Adapter {
         enabled_extensions: &[&'static CStr],
         features: wgt::Features,
     ) -> PhysicalDeviceFeatures {
-        PhysicalDeviceFeatures::from_extensions_and_requested_features(
+        let mut enabled = PhysicalDeviceFeatures::from_extensions_and_requested_features(
             &self.phd_capabilities,
             &self.phd_features,
             enabled_extensions,
             features,
             self.downlevel_flags,
             &self.private_caps,
-        )
+        );
+        armflash_frame_generation_features(&mut enabled, &self.phd_features);
+        enabled
     }
 
     /// # Safety

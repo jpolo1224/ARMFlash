@@ -46,6 +46,8 @@ url = "2.5.2"
 indexmap = "2"
 wgpu-hal = { version = "30.0.2", features = ["vulkan"] }
 ash = "0.38"
+# Frame generation's library (GitHub build only) is opened at run time (src/framegen.rs).
+libloading = "0.8"
 futures = "0.3.34"
 async-channel = "2.5.0"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }

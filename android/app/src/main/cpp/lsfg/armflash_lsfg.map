@@ -1,0 +1,7 @@
+/* libarmflash_lsfg.so exports its C entry points and nothing else (see armflash_lsfg.h). */
+{
+    global:
+        armflash_lsfg_*;
+    local:
+        *;
+};

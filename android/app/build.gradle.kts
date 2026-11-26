@@ -83,6 +83,9 @@ android {
             buildConfigField("boolean", "STORAGE_ALL_FILES", "true")
             // The in-app updater (src/github): never in the Play build.
             buildConfigField("boolean", "IN_APP_UPDATER", "true")
+            // LSFG frame generation (libarmflash_lsfg.so and src/github's settings): never in the
+            // Play build either, which gets neither the library nor its strings.
+            externalNativeBuild { cmake { arguments += listOf("-DARMFLASH_LSFG=ON") } }
         }
         create("play") {
             dimension = "store"

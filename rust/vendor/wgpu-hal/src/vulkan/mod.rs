@@ -36,6 +36,8 @@ mod semaphore_list;
 mod swapchain;
 
 pub use adapter::PhysicalDeviceFeatures;
+// ARMFlash: the device features frame generation asks for (see adapter.rs).
+pub use adapter::{ARMFLASH_FRAME_GENERATION_ENABLED, ARMFLASH_FRAME_GENERATION_WANTED};
 
 use alloc::{boxed::Box, ffi::CString, sync::Arc, vec::Vec};
 use core::{borrow::Borrow, ffi::CStr, fmt, marker::PhantomData, mem, num::NonZeroU32};

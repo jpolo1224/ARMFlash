@@ -14,6 +14,7 @@ mod audio;
 mod camera;
 mod custom_event;
 mod driver;
+mod framegen;
 mod shader;
 mod vkcount;
 mod java;
@@ -148,6 +149,8 @@ async fn run(app: AndroidApp) {
         shader_params: String,
         /// The device cameras for webcam games, one name per line (front first).
         cameras: String,
+        /// Frame generation's settings (framegen::Settings), and the screen's refresh rate.
+        frame_gen: String,
     }
     let settings = vm
         .attach_current_thread(|env| -> jni::errors::Result<_> {
@@ -165,6 +168,7 @@ async fn run(app: AndroidApp) {
                 sdk: JavaInterface::get_string(env, &activity, "sdk").parse().unwrap_or(30),
                 shader_preset: JavaInterface::get_string(env, &activity, "shaderPreset"),
                 shader_params: JavaInterface::get_string(env, &activity, "shaderParams"),
+                frame_gen: JavaInterface::get_string(env, &activity, "frameGen"),
             };
             let _ = unsafe { env.set_rust_field(&*activity, jni_str!("eventLoopHandle"), sender.clone()) };
             Ok(s)
@@ -221,7 +225,7 @@ async fn run(app: AndroidApp) {
                             if window.width() > 0 && window.height() > 0 {
                                 let mut player = player.player.lock().unwrap();
                                 let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player.renderer_mut()).unwrap();
-                                if let Err(e) = renderer.target().recreate(renderer.descriptors(), unsafe { surface_target(window) }, (window.width() as u32, window.height() as u32)) {
+                                if let Err(e) = renderer.target().recreate(renderer.descriptors(), window, (window.width() as u32, window.height() as u32)) {
                                     log::warn!("surface: {e}");
                                 }
                             }
@@ -237,13 +241,17 @@ async fn run(app: AndroidApp) {
                         if let Some(active) = &playerbox {
                             let mut player_lock = active.player.lock().unwrap();
                             let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player_lock.renderer_mut()).unwrap();
-                            if let Err(e) = renderer.target().recreate(renderer.descriptors(), unsafe { surface_target(window) }, (window.width() as u32, window.height() as u32)) {
+                            if let Err(e) = renderer.target().recreate(renderer.descriptors(), window, (window.width() as u32, window.height() as u32)) {
                                 log::warn!("surface: {e}");
                             }
                             // Back from the background: stay paused if the pause menu is open.
                             player_lock.set_is_playing(!MENU_PAUSED.load(std::sync::atomic::Ordering::Relaxed));
                         } else {
                             let wanted = backends(&settings.backend);
+                            // Frame generation's device features, asked for before the device is made.
+                            let fg_settings = framegen::Settings::parse(&settings.frame_gen);
+                            framegen::set_display_rate_from(&settings.frame_gen);
+                            framegen::prepare_device(fg_settings.fp16);
                             // A custom Vulkan driver first, when one was loaded.
                             let custom = if settings.vk_gipa != 0 && wanted.contains(wgpu::Backends::VULKAN) {
                                 match unsafe {
@@ -274,6 +282,10 @@ async fn run(app: AndroidApp) {
                                 Err(e) => panic!("no renderer: {e}"),
                             };
                             { let i = renderer.descriptors().adapter.get_info(); log::info!("renderer: {:?} on {} ({})", i.backend, i.name, i.driver_info); }
+                            // Frame generation on this device (Vulkan, and a build that has it).
+                            let fg_features = framegen::device_made();
+                            renderer.target().frame_gen_attach(renderer.descriptors(), fg_features);
+                            renderer.target().update_frame_gen(renderer.descriptors(), Some(window), Some(fg_settings));
                             // A RetroArch shader preset, when one is chosen.
                             if !settings.shader_preset.is_empty() {
                                 match renderer.target().set_preset(renderer.descriptors(), Some(&settings.shader_preset)) {
@@ -433,6 +445,15 @@ async fn run(app: AndroidApp) {
                     }
                     needs_redraw = true;
                 }
+                RuffleEvent::FrameGenChanged => {
+                    let text = with_activity(&app, |env, act| java::JavaInterface::get_string(env, act, "frameGen")).unwrap_or_default();
+                    framegen::set_display_rate_from(&text);
+                    let mut p = player.player.lock().unwrap();
+                    if let Some(r) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(p.renderer_mut()) {
+                        r.target().update_frame_gen(r.descriptors(), native_window.as_ref(), Some(framegen::Settings::parse(&text)));
+                    }
+                    needs_redraw = true;
+                }
             }
         }
 
@@ -456,11 +477,22 @@ async fn run(app: AndroidApp) {
         if needs_redraw {
             if let Some(player) = playerbox.as_ref() {
                 if let Ok(mut player) = player.player.lock() {
+                    // The game's frame rate: frame generation makes no more frames than the
+                    // screen can show between two of the game's.
+                    let content_rate = player.frame_rate() as f32;
+                    framegen::set_content_rate(content_rate);
                     player.render();
                     FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     // Let wgpu free what finished GPU work no longer needs, every frame.
                     if let Some(r) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(player.renderer_mut()) {
                         let _ = r.descriptors().device.poll(wgpu::PollType::Poll);
+                        // Frame generation lost its window or device: wgpu presents again.
+                        if r.target().frame_gen_broken() {
+                            r.target().update_frame_gen(r.descriptors(), native_window.as_ref(), None);
+                        }
+                        // The refresh rate frame generation would like (the app asks Android for it).
+                        let vote = if r.target().frame_gen_active() { content_rate * r.target().frame_gen_multiplier() as f32 } else { 0.0 };
+                        FG_VOTE.store(vote.to_bits(), std::sync::atomic::Ordering::Relaxed);
                     }
                 }
             }
@@ -622,6 +654,50 @@ pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeSet
     env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::SetPlaying(playing))) })
         .resolve::<ThrowRuntimeExAndDefault>()
 }
+
+/// Frame generation's settings changed in the pause menu.
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFrameGenChanged<'local>(
+    mut env: EnvUnowned<'local>,
+    this: JObject<'local>,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> { with_sender(env, &this, |s| s.send(RuffleEvent::FrameGenChanged)) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Why frame generation cannot run (0 when it can; see framegen::reason).
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFrameGenReason<'local>(
+    _env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+) -> jint {
+    framegen::reason()
+}
+
+/// The performance overlay's frame generation line ("" while it is off).
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFrameGenStatus<'local>(
+    mut env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+) -> jni::sys::jstring {
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jstring> { Ok(env.new_string(framegen::status())?.into_raw()) })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// The screen's refresh rate now ([display_hz]); returns the rate frame generation would like
+/// the screen to run at (the game's rate times the multiplier), 0 while it is off.
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeFrameGenTick<'local>(
+    _env: EnvUnowned<'local>,
+    _this: JObject<'local>,
+    display_hz: jni::sys::jfloat,
+) -> jni::sys::jfloat {
+    framegen::set_display_rate(display_hz);
+    f32::from_bits(FG_VOTE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// What nativeFrameGenTick returns (f32 bits), written by the player loop.
+static FG_VOTE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Frames drawn so far, for the performance overlay's FPS (the overlay samples the difference).
 static FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
