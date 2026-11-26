@@ -153,7 +153,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             ConfigRow("Live Web Fallback", "Off by default: games play from Flashpoint's archive. When on, a file in neither the game's data nor Legacy is asked for from the game's own original site, like Flashpoint's curation mode.") {
                 Switch(live, { live = it; lib.liveWeb = it })
             }
-            Action("Update Game Info", "Last updated: ${vm.lastSync.take(10).ifBlank { "never" }}", "Update") { vm.syncDatabase() }
+            GameInfoRow(vm)
             Action("Import Database", "Replace the game database with a flashpoint.sqlite from a desktop install.", "Import", onImport)
         }
 
@@ -321,6 +321,21 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun Toggle(title: String, desc: String, pref: AppPrefs.Pref<Boolean>, after: () -> Unit = {}) {
     ConfigRow(title, desc) { Switch(pref.state.value, { pref.value = it; after() }) }
+}
+
+/** Update Game Info: its progress while it runs (with Cancel), else when it last checked. */
+@Composable
+private fun GameInfoRow(vm: BrowseVm) {
+    val s = vm.sync
+    val running = s?.running == true
+    ConfigRow(
+        "Update Game Info",
+        if (running) "${s!!.phase}" + (if (s.total > 0) ": ${s.done} of ${s.total} games" else "") +
+            (if (vm.syncEta.isNotEmpty()) ". ${vm.syncEta}" else "")
+        else "Last checked: ${vm.lastChecked.ifBlank { "never" }}",
+    ) {
+        Chip(if (running) "Cancel" else "Update", on = false) { if (running) vm.cancelSync() else vm.syncDatabase() }
+    }
 }
 
 @Composable

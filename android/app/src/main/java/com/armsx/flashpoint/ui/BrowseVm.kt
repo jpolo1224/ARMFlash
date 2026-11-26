@@ -83,7 +83,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
     var importing by mutableStateOf<Long?>(null)
     var sync by mutableStateOf<com.armsx.flashpoint.core.SyncStatus?>(null)
         private set
+    /** Where the next sync picks up: the newest change the last one brought (server time). */
     val lastSync: String get() = prefs.getString("lastSync", "")!!
+    /** The day game info was last checked for updates (shown in Config and on Home). */
+    var lastChecked by mutableStateOf(prefs.getString("lastChecked", null) ?: lastSync.take(10))
+        private set
     /** Time left in a database download, as shown under its progress bar ("" while unknown). */
     var syncEta by mutableStateOf("")
         private set
@@ -171,9 +175,11 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
      */
     fun syncDatabase(fresh: Boolean = false) = viewModelScope.launch {
         if (sync?.running == true) return@launch
+        var update = false
         try {
             withContext(Dispatchers.IO) {
-                if (fresh || !library.hasDatabase()) {
+                update = !fresh && library.hasDatabase()
+                if (!update) {
                     library.database.parentFile!!.mkdirs()
                     listOf("", "-wal", "-shm").forEach { java.io.File(library.database.path + it).delete() }
                     prefs.edit().remove("lastSync").apply()
@@ -206,13 +212,21 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
             }
             val st = sync
             if (st?.failure != null) {
-                status = "Database download failed: ${st.failure}"
+                status = if (st.failure == "cancelled") "Update cancelled." else "${if (update) "Game info update" else "Database download"} failed: ${st.failure}"
             } else {
                 st?.lastUpdate?.let { prefs.edit().putString("lastSync", it).apply() }
+                val today = java.time.LocalDate.now().toString()
+                prefs.edit().putString("lastChecked", today).apply()
+                lastChecked = today
                 openDatabase()
+                if (update) status = when (val n = st?.done ?: 0L) {
+                    0L -> "Game info is up to date."
+                    1L -> "Game info updated: 1 game."
+                    else -> "Game info updated: $n games."
+                }
             }
         } catch (e: Exception) {
-            status = "Database download failed: ${e.message}"
+            status = "${if (update) "Game info update" else "Database download"} failed: ${e.message}"
         } finally {
             sync = sync?.copy(running = false)
         }

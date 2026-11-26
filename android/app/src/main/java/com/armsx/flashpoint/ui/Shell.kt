@@ -251,7 +251,7 @@ private fun UpdatesBox(vm: BrowseVm) {
                 }
             }
             else -> {
-                Text("Game info last updated: ${vm.lastSync.take(10).ifBlank { "never" }}", color = Fp.Text, fontSize = 14.sp)
+                Text("Game info last checked: ${vm.lastChecked.ifBlank { "never" }}", color = Fp.Text, fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
                 Chip("Check for game info updates", on = true) { vm.syncDatabase() }
             }
