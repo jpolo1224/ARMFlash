@@ -90,22 +90,23 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             installed -> "Play" to Fp.Play
             else -> "Download & Play" to Fp.Download
         }
-        // Not downloaded yet: Download fetches it without starting it, for getting many games in a row.
-        val canDownload = full != null && dl == null && !installed && (plan == null || plan.runner.ready)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(
+            Modifier.fillMaxWidth().height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(color)
+                .clickable(enabled = full != null && dl == null) { onPlay(full!!) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp, maxLines = 1)
+        }
+        // Not downloaded yet: Download fetches it without starting it, for getting many games in a
+        // row. A row like the ones under it, so the big bar keeps the whole width.
+        if (full != null && dl == null && !installed && (plan == null || plan.runner.ready)) {
+            Spacer(Modifier.height(6.dp))
             Box(
-                Modifier.weight(1f).height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(color)
-                    .clickable(enabled = full != null && dl == null) { onPlay(full!!) },
+                Modifier.fillMaxWidth().height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable { vm.download(full) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
-            }
-            if (canDownload) Box(
-                Modifier.height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(Fp.Field)
-                    .clickable { vm.download(full!!) }.padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Download", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Download without playing", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
         // Playlists: put the game in one of yours, or a new one.
