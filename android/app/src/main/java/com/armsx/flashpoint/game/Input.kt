@@ -171,8 +171,15 @@ data class TouchLayout(
     val visible: Boolean = true,
     val opacity: Float = 0.7f,
     val buttons: List<TouchButton> = DEFAULT_BUTTONS,
-    /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*). */
+    /** Controller button keycode -> keyboard keycode (or Keys.MOUSE_*): player 1's, and everyone's while [multiplayer] is off. */
     val pad: Map<Int, Int> = DEFAULT_PAD,
+    /**
+     * Local multiplayer (GitHub issue #1): each controller is its own player, in the order Android
+     * numbers them, with its own buttons ([players] for players 2 to 4). Off: every controller is player 1.
+     */
+    val multiplayer: Boolean = false,
+    /** Players 2, 3 and 4's buttons, as [pad] is player 1's. */
+    val players: List<Map<Int, Int>> = DEFAULT_PLAYERS,
     /** Old setting (both sticks moved the cursor); kept so saved layouts still read. */
     val leftStickCursor: Boolean = true,
     /** Which stick moves the mouse cursor, "right" or "left"; the other sends the arrow keys. */
@@ -191,6 +198,14 @@ data class TouchLayout(
     /** Flash quality: "low", "medium", "high", "best". */
     val quality: String = "high",
 ) {
+    /** Player [n]'s buttons (1 to 4). */
+    fun padFor(n: Int): Map<Int, Int> = if (n <= 1) pad else players.getOrElse(n - 2) { defaultPad(n) }
+
+    /** This layout with player [n]'s buttons replaced. */
+    fun withPad(n: Int, map: Map<Int, Int>): TouchLayout =
+        if (n <= 1) copy(pad = map)
+        else copy(players = List(maxOf(players.size, n - 1)) { i -> if (i == n - 2) map else players.getOrElse(i) { defaultPad(i + 2) } })
+
     companion object {
         val DEFAULT_BUTTONS = listOf(
             TouchButton("arrows", x = 0.12f, y = 0.70f, size = 150f),
@@ -202,6 +217,30 @@ data class TouchLayout(
             // A held left button for drag, and a click where the cursor is in touchpad and point modes.
             TouchButton("mouse", Keys.MOUSE_LEFT, x = 0.70f, y = 0.88f, size = 62f),
         )
+        /** Player [n]'s defaults (1 to 4). */
+        fun defaultPad(n: Int): Map<Int, Int> = if (n <= 1) DEFAULT_PAD else DEFAULT_PLAYERS.getOrElse(n - 2) { emptyMap() }
+
+        private fun playerPad(up: Int, left: Int, down: Int, right: Int, a: Int, b: Int, x: Int, y: Int) = mapOf(
+            KeyEvent.KEYCODE_DPAD_UP to up, KeyEvent.KEYCODE_DPAD_LEFT to left,
+            KeyEvent.KEYCODE_DPAD_DOWN to down, KeyEvent.KEYCODE_DPAD_RIGHT to right,
+            KeyEvent.KEYCODE_BUTTON_A to a, KeyEvent.KEYCODE_BUTTON_B to b,
+            KeyEvent.KEYCODE_BUTTON_X to x, KeyEvent.KEYCODE_BUTTON_Y to y,
+        )
+
+        /**
+         * Players 2 to 4 out of the box, the keys two- and more-player Flash games mostly use:
+         * WASD with F G R T, IJKL with U O Y P, and the digit row laid out like a number pad
+         * (8 4 5 6) with 1 2 3 7. Start, Select and the shoulders stay player 1's.
+         */
+        val DEFAULT_PLAYERS: List<Map<Int, Int>> = listOf(
+            playerPad(KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_D,
+                KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_G, KeyEvent.KEYCODE_R, KeyEvent.KEYCODE_T),
+            playerPad(KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_L,
+                KeyEvent.KEYCODE_U, KeyEvent.KEYCODE_O, KeyEvent.KEYCODE_Y, KeyEvent.KEYCODE_P),
+            playerPad(KeyEvent.KEYCODE_8, KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_5, KeyEvent.KEYCODE_6,
+                KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_3, KeyEvent.KEYCODE_7),
+        )
+
         val DEFAULT_PAD = mapOf(
             KeyEvent.KEYCODE_BUTTON_A to KeyEvent.KEYCODE_SPACE,
             KeyEvent.KEYCODE_BUTTON_B to KeyEvent.KEYCODE_Z,

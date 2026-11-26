@@ -113,6 +113,8 @@ class OverlayState(layout: TouchLayout) {
     var tab by mutableStateOf(MenuTab.SESSION)
     /** Controller button being remapped (its keycode), while the key picker is open for it. */
     var padPick by mutableStateOf<Int?>(null)
+    /** Whose buttons the Controller card shows and edits, with local multiplayer on (1 to 4). */
+    var padPlayer by mutableStateOf(1)
     var editing by mutableStateOf(false)
     var selected by mutableStateOf<Int?>(null)
     var picking by mutableStateOf(false)

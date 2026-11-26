@@ -9,6 +9,11 @@ import android.view.MotionEvent
  * game's layout), left stick as arrows or cursor, right stick moves the cursor, analog
  * triggers as clicks, Back / Home opens the in-game menu.
  *
+ * With the layout's local multiplayer on (GitHub issue #1), each controller is a player of its
+ * own, numbered as Android numbers controllers (else in the order they were first used), and
+ * presses its own player's keys ([TouchLayout.padFor]): players 2 to 4 move with their D-pad and
+ * both sticks, and their triggers are their L2 / R2 buttons. Player 1 is as described above.
+ *
  * Every key the game sees has one owner here. A press is recorded per source (a button, the
  * D-pad hat, the stick), the game gets a key down when the first source presses it and a key up
  * when the last one lets go, so a D-pad that reports as both keys and a hat, or a stick and a
@@ -60,16 +65,35 @@ class PadMapper(
     }
 
     /** What each button pressed down, so its release lets go of the same key even if the mapping changed meanwhile. */
-    private val buttonTarget = HashMap<Int, Int>()
+    private val buttonTarget = HashMap<String, Int>()
 
     /** Let go of everything the pad holds (menu opened, game paused or left). */
     fun reset() {
         holders.clear()
         buttonTarget.clear()
         hatMask = 0; stickMask = 0; trig = 0
+        others.clear()
         aimX = 0f; aimY = 0f
         inj.releaseAll()
     }
+
+    // ---- players -------------------------------------------------------------------------
+
+    /** Controllers Android gave no number, in the order they were first used. */
+    private val firstUsed = ArrayList<Int>()
+
+    /** The player [e] comes from, 1 to 4: always 1 while the layout's local multiplayer is off. */
+    private fun player(e: android.view.InputEvent): Int {
+        if (!overlay.layout.multiplayer) return 1
+        val n = e.device?.controllerNumber ?: 0
+        if (n > 0) return n.coerceAtMost(4)
+        if (e.deviceId !in firstUsed) firstUsed += e.deviceId
+        return (firstUsed.indexOf(e.deviceId) + 1).coerceIn(1, 4)
+    }
+
+    /** Players 2 to 4's D-pad hat, sticks and triggers. */
+    private class Other { var hat = 0; var left = 0; var right = 0; var trig = 0 }
+    private val others = HashMap<Int, Other>()
 
     private val menuOpen get() = overlay.menu || overlay.padPick != null || overlay.picking
 
@@ -87,13 +111,16 @@ class PadMapper(
         if (menuOpen) return menuKey(event, code, down)
 
         if (event.repeatCount > 0) return true
+        val who = player(event)
+        val map = overlay.layout.padFor(who)
+        val source = "k$who:$code"
         if (down) {
-            val target = overlay.layout.pad[code] ?: return false
-            buttonTarget[code] = target
-            press("k$code", target)
+            val target = map[code] ?: return false
+            buttonTarget[source] = target
+            press(source, target)
         } else {
-            val target = buttonTarget.remove(code) ?: return overlay.layout.pad.containsKey(code)
-            release("k$code", target)
+            val target = buttonTarget.remove(source) ?: return map.containsKey(code)
+            release(source, target)
         }
         return true
     }
@@ -161,11 +188,12 @@ class PadMapper(
     private var trig = 0
     private val arrows = intArrayOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT)
 
-    private fun applyMask(source: String, old: Int, new: Int) {
+    /** Press or let go of [keys] (up, down, left, right; 0 = none) as the direction bits change. */
+    private fun applyMask(source: String, old: Int, new: Int, keys: IntArray = arrows) {
         for (i in 0..3) {
             val b = 1 shl i
-            if ((old and b) != (new and b)) {
-                if (new and b != 0) press(source, arrows[i]) else release(source, arrows[i])
+            if ((old and b) != (new and b) && keys[i] != 0) {
+                if (new and b != 0) press(source, keys[i]) else release(source, keys[i])
             }
         }
     }
@@ -174,6 +202,8 @@ class PadMapper(
         if (!isPad(ev) || ev.action != MotionEvent.ACTION_MOVE) return false
         // In the menu, leave the hat and stick to Android, which turns them into D-pad keys for focus.
         if (menuOpen) { if (holders.isNotEmpty()) reset(); return false }
+        val who = player(ev)
+        if (who > 1) return otherMotion(who, ev)
 
         val hat = hatMask(ev.getAxisValue(MotionEvent.AXIS_HAT_X), ev.getAxisValue(MotionEvent.AXIS_HAT_Y))
         applyMask("hat", hatMask, hat); hatMask = hat
@@ -198,6 +228,31 @@ class PadMapper(
         // Only a real push counts as using the pad (resting sticks still send small moves).
         if (hat != 0 || stickMask != 0 || t != 0 || aimX * aimX + aimY * aimY > 0.09f) com.armsx.flashpoint.ui.PadInput.active.value = true
         if (aimX * aimX + aimY * aimY > 0.04f) startAim()
+        return true
+    }
+
+    /** Players 2 to 4: D-pad hat and both sticks press their D-pad keys, triggers their L2 / R2. */
+    private fun otherMotion(who: Int, ev: MotionEvent): Boolean {
+        val s = others.getOrPut(who) { Other() }
+        val map = overlay.layout.padFor(who)
+        val dirs = intArrayOf(
+            map[KeyEvent.KEYCODE_DPAD_UP] ?: 0, map[KeyEvent.KEYCODE_DPAD_DOWN] ?: 0,
+            map[KeyEvent.KEYCODE_DPAD_LEFT] ?: 0, map[KeyEvent.KEYCODE_DPAD_RIGHT] ?: 0,
+        )
+        val hat = hatMask(ev.getAxisValue(MotionEvent.AXIS_HAT_X), ev.getAxisValue(MotionEvent.AXIS_HAT_Y))
+        applyMask("hat$who", s.hat, hat, dirs); s.hat = hat
+        val l = stickDirections(ev.getAxisValue(MotionEvent.AXIS_X), ev.getAxisValue(MotionEvent.AXIS_Y), s.left)
+        applyMask("stick$who", s.left, l, dirs); s.left = l
+        val r = stickDirections(ev.getAxisValue(MotionEvent.AXIS_Z), ev.getAxisValue(MotionEvent.AXIS_RZ), s.right)
+        applyMask("rstick$who", s.right, r, dirs); s.right = r
+        val t = (if (ev.getAxisValue(MotionEvent.AXIS_RTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_GAS) > 0.5f) 1 else 0) or
+            (if (ev.getAxisValue(MotionEvent.AXIS_LTRIGGER) > 0.5f || ev.getAxisValue(MotionEvent.AXIS_BRAKE) > 0.5f) 2 else 0)
+        if (t != s.trig) {
+            map[KeyEvent.KEYCODE_BUTTON_R2]?.let { k -> if ((t xor s.trig) and 1 != 0) { if (t and 1 != 0) press("rt$who", k) else release("rt$who", k) } }
+            map[KeyEvent.KEYCODE_BUTTON_L2]?.let { k -> if ((t xor s.trig) and 2 != 0) { if (t and 2 != 0) press("lt$who", k) else release("lt$who", k) } }
+            s.trig = t
+        }
+        if (hat != 0 || l != 0 || r != 0 || t != 0) com.armsx.flashpoint.ui.PadInput.active.value = true
         return true
     }
 

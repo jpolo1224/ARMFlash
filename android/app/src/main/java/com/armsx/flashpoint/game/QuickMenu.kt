@@ -777,20 +777,42 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         }
     }
     SectionCard("Controller") {
-        MenuCycleRow("Mouse cursor", if (st.layout.mouseStick == "left") "Left stick" else "Right stick") {
-            st.layout = st.layout.copy(mouseStick = if (st.layout.mouseStick == "left") "right" else "left"); host.save(false)
+        // Local multiplayer (GitHub issue #1): a player per controller, each with its own keys.
+        MenuSwitchRow("Local multiplayer", st.layout.multiplayer) {
+            st.layout = st.layout.copy(multiplayer = it); host.save(false)
+            if (!it) st.padPlayer = 1
         }
         Text(
-            "The other stick works like the D-pad (arrow keys).",
+            if (st.layout.multiplayer) "Each controller is its own player, in the order they connected, with buttons of its own. " +
+                "Player 2 starts on WASD, player 3 on IJKL and player 4 on the number keys."
+            else "Every controller is player 1. Turn this on for games two or more people play at once.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, top = 2.dp),
         )
         Spacer(Modifier.height(6.dp))
-        PAD_BUTTONS.forEach { (code, name) ->
-            MenuCycleRow(name, keyName(st.layout.pad[code])) { st.padPick = code }
+        val who = if (st.layout.multiplayer) st.padPlayer else 1
+        if (st.layout.multiplayer) {
+            MenuCycleRow("Buttons for", "Player $who") { st.padPlayer = st.padPlayer % 4 + 1 }
             Spacer(Modifier.height(6.dp))
         }
-        MenuCycleRow("Reset buttons", "Defaults") { st.layout = st.layout.copy(pad = TouchLayout.DEFAULT_PAD); host.save(false) }
+        if (who == 1) {
+            MenuCycleRow("Mouse cursor", if (st.layout.mouseStick == "left") "Left stick" else "Right stick") {
+                st.layout = st.layout.copy(mouseStick = if (st.layout.mouseStick == "left") "right" else "left"); host.save(false)
+            }
+        }
+        Text(
+            if (who == 1) "The other stick works like the D-pad (arrow keys)."
+            else "Player $who moves with the D-pad and both sticks, which press the D-pad's keys below.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        val map = st.layout.padFor(who)
+        PAD_BUTTONS.forEach { (code, name) ->
+            MenuCycleRow(name, keyName(map[code])) { st.padPick = code }
+            Spacer(Modifier.height(6.dp))
+        }
+        MenuCycleRow("Reset buttons", "Defaults") { st.layout = st.layout.withPad(who, TouchLayout.defaultPad(who)); host.save(false) }
     }
 }
 
@@ -1103,8 +1125,11 @@ private fun keyName(code: Int?): String = when (code) {
 /** Pick what a controller button sends, in the same sheet style. */
 @Composable
 fun PadKeyPicker(st: OverlayState, button: Int, host: OverlayHost) {
-    KeySheet("${PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"} sends", st.layout.pad[button], { st.padPick = null }) { code ->
-        st.layout = st.layout.copy(pad = st.layout.pad.toMutableMap().apply { if (code == null) remove(button) else put(button, code) })
+    val who = if (st.layout.multiplayer) st.padPlayer else 1
+    val map = st.layout.padFor(who)
+    val name = PAD_BUTTONS.firstOrNull { it.first == button }?.second ?: "Button"
+    KeySheet(if (st.layout.multiplayer) "Player $who: $name sends" else "$name sends", map[button], { st.padPick = null }) { code ->
+        st.layout = st.layout.withPad(who, map.toMutableMap().apply { if (code == null) remove(button) else put(button, code) })
         host.save(false)
         st.padPick = null
     }
