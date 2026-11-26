@@ -229,8 +229,7 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
                 .unwrap_or_else(|| text(StatusCode::BAD_GATEWAY, "fp-proxy: the game's site did not answer"));
         }
         if let Some((bytes, ct)) = fetch(&format!("http://{rel}{q}"), "live-first").await {
-            let len = bytes.len() as u64;
-            let mut r = ok_file(&key.path, len, if head { empty() } else { full(bytes) });
+            let mut r = memory_file(&key.path, bytes, req.headers(), head);
             if let Some(ct) = ct {
                 r.headers_mut().insert(header::CONTENT_TYPE, ct);
             }
@@ -264,6 +263,11 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
             let mut ct = content_type(&name);
             // The pack's own date: every file in it is as old as the pack.
             let modified = std::fs::metadata(&mount.path).and_then(|m| m.modified()).ok();
+            let range = match byte_range(req.headers(), size, head) {
+                Err(()) => return unsatisfiable(size),
+                Ok(r) => r,
+            };
+            let (start, len) = range.unwrap_or((0, size));
             let body = if head {
                 empty()
             } else if size <= SMALL {
@@ -272,18 +276,22 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
                         if ct == "application/octet-stream" {
                             if let Some(t) = crate::sniff(&v[..v.len().min(512)]) { ct = t.to_string(); }
                         }
-                        full(v.into())
+                        let end = ((start + len) as usize).min(v.len());
+                        full(Bytes::from(v).slice((start as usize).min(end)..end))
                     }
                     _ => return text(StatusCode::INTERNAL_SERVER_ERROR, "fp-proxy: zip read failed"),
                 }
             } else {
-                stream_blocking(size, move |send| {
+                stream_blocking(len, move |send| {
                     let mut a = mount.reader();
                     let mut f = a.by_index(index).map_err(io::Error::other)?;
-                    pump(&mut f, send)
+                    // A deflated entry cannot seek: unpack up to the range and drop it.
+                    io::copy(&mut (&mut f).take(start), &mut io::sink())?;
+                    let sent = pump(&mut (&mut f).take(len), send);
+                    sent
                 })
             };
-            file_response(&ct, size, modified, body)
+            file_response(&ct, size, modified, range, body)
         }
         // A POST and the like to the game's own site (a level server's API): passed on live, as
         // the game's web version does, unless a pack has it. Never answered from the folder of
@@ -313,12 +321,21 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
                 let n = std::fs::File::open(&p).and_then(|mut f| f.read(&mut buf)).unwrap_or(0);
                 if let Some(t) = crate::sniff(&buf[..n]) { ct = t.to_string(); }
             }
+            let range = match byte_range(req.headers(), size, head) {
+                Err(()) => return unsatisfiable(size),
+                Ok(r) => r,
+            };
+            let (start, len) = range.unwrap_or((0, size));
             let body = if head {
                 empty()
             } else {
-                stream_blocking(size, move |send| pump(&mut std::fs::File::open(&p)?, send))
+                stream_blocking(len, move |send| {
+                    let mut f = std::fs::File::open(&p)?;
+                    io::Seek::seek(&mut f, io::SeekFrom::Start(start))?;
+                    pump(&mut f.take(len), send)
+                })
             };
-            file_response(&ct, size, modified, body)
+            file_response(&ct, size, modified, range, body)
         }
         Resolved::AddSlash => {
             let mut loc = format!("{}/", uri.path());
@@ -332,8 +349,7 @@ async fn serve(srv: Arc<GameServer>, port: u16, req: Request<Incoming>, https: b
         }
         Resolved::NotFound => match remote(&srv, &key, query).await {
             Some((bytes, ct)) => {
-                let len = bytes.len() as u64;
-                let mut r = ok_file(&key.path, len, if head { empty() } else { full(bytes) });
+                let mut r = memory_file(&key.path, bytes, req.headers(), head);
                 if let Some(ct) = ct {
                     r.headers_mut().insert(header::CONTENT_TYPE, ct);
                 }
@@ -738,19 +754,92 @@ fn with(status: StatusCode, ct: &str, body: Body) -> Response<Body> {
     r
 }
 
-fn ok_file(name: &str, size: u64, body: Body) -> Response<Body> {
-    file_response(&content_type(name), size, Some(std::time::SystemTime::now()), body)
+/// A file fetched into memory (from Flashpoint's servers or a live site), the part asked for.
+fn memory_file(name: &str, bytes: Bytes, headers: &hyper::HeaderMap, head: bool) -> Response<Body> {
+    let size = bytes.len() as u64;
+    let range = match byte_range(headers, size, head) {
+        Err(()) => return unsatisfiable(size),
+        Ok(r) => r,
+    };
+    let body = match range {
+        _ if head => empty(),
+        Some((start, len)) => full(bytes.slice(start as usize..(start + len) as usize)),
+        None => full(bytes),
+    };
+    file_response(&content_type(name), size, Some(std::time::SystemTime::now()), range, body)
 }
 
-/// A file's answer. `modified` goes out as Last-Modified, as desktop Flashpoint's game server
-/// sends it: Shockwave keeps a download for a second use only when the answer has one, and
-/// without it a game that preloads an image and then loads it into a member waits forever
-/// (Slipstream's sponsor banners: "Media not ready" on every frame, stuck at 100% loading).
-fn file_response(ct: &str, size: u64, modified: Option<std::time::SystemTime>, body: Body) -> Response<Body> {
-    let mut r = with(StatusCode::OK, ct, body);
-    r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(size));
+/// The single byte range a GET asks for (`Range: bytes=a-b`, `bytes=a-`, `bytes=-n`), as start
+/// and length within a file of `size` bytes. `Ok(None)` sends the whole file: no Range, a HEAD,
+/// several ranges at once, or one this cannot read (a server may always ignore Range).
+/// `Err` when it starts past the end (416).
+///
+/// A browser can seek a video only when its server answers ranges: Humany's soundboard pages
+/// (Tennis Ball Says Fun Facts, Spongy Goes Travelling) jump their video to a tenth per number
+/// key, and with every answer whole the video stayed at its start, so every key played 0's.
+fn byte_range(headers: &hyper::HeaderMap, size: u64, head: bool) -> Result<Option<(u64, u64)>, ()> {
+    let Some(spec) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) else { return Ok(None) };
+    let Some(spec) = spec.trim().strip_prefix("bytes=") else { return Ok(None) };
+    if head || spec.contains(',') {
+        return Ok(None);
+    }
+    let Some((a, b)) = spec.split_once('-') else { return Ok(None) };
+    let (a, b) = (a.trim(), b.trim());
+    if a.is_empty() {
+        // The last n bytes.
+        let Ok(n) = b.parse::<u64>() else { return Ok(None) };
+        if n == 0 || size == 0 {
+            return Err(());
+        }
+        let n = n.min(size);
+        return Ok(Some((size - n, n)));
+    }
+    let Ok(start) = a.parse::<u64>() else { return Ok(None) };
+    if start >= size {
+        return Err(());
+    }
+    let end = if b.is_empty() {
+        size - 1
+    } else {
+        match b.parse::<u64>() {
+            Ok(e) if e >= start => e.min(size - 1),
+            _ => return Ok(None),
+        }
+    };
+    Ok(Some((start, end - start + 1)))
+}
+
+/// 416: the range asked for starts past the end of the file.
+fn unsatisfiable(size: u64) -> Response<Body> {
+    let mut r = with(StatusCode::RANGE_NOT_SATISFIABLE, "text/plain", empty());
+    if let Ok(v) = HeaderValue::from_str(&format!("bytes */{size}")) {
+        r.headers_mut().insert(header::CONTENT_RANGE, v);
+    }
+    r
+}
+
+/// A file's answer: whole, or the `range` (start, length) of it as 206 Partial Content.
+/// `modified` goes out as Last-Modified, as desktop Flashpoint's game server sends it:
+/// Shockwave keeps a download for a second use only when the answer has one, and without it a
+/// game that preloads an image and then loads it into a member waits forever (Slipstream's
+/// sponsor banners: "Media not ready" on every frame, stuck at 100% loading).
+fn file_response(ct: &str, size: u64, modified: Option<std::time::SystemTime>, range: Option<(u64, u64)>, body: Body) -> Response<Body> {
+    let mut r = with(if range.is_some() { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK }, ct, body);
+    let h = r.headers_mut();
+    h.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    match range {
+        Some((start, len)) => {
+            h.insert(header::CONTENT_LENGTH, HeaderValue::from(len));
+            if let Ok(v) = HeaderValue::from_str(&format!("bytes {start}-{}/{size}", start + len - 1)) {
+                h.insert(header::CONTENT_RANGE, v);
+            }
+        }
+        None => {
+            h.insert(header::CONTENT_LENGTH, HeaderValue::from(size));
+        }
+    }
     if let Some(v) = modified.and_then(|t| HeaderValue::from_str(&http_date(t)).ok()) {
-        r.headers_mut().insert(header::LAST_MODIFIED, v);
+        h.insert(header::LAST_MODIFIED, v);
     }
     r
 }
@@ -823,6 +912,45 @@ mod date_tests {
         assert_eq!(http_date(UNIX_EPOCH), "Thu, 01 Jan 1970 00:00:00 GMT");
         assert_eq!(http_date(UNIX_EPOCH + Duration::from_secs(851_470_320)), "Tue, 24 Dec 1996 23:32:00 GMT");
         assert_eq!(http_date(UNIX_EPOCH + Duration::from_secs(1_772_236_801)), "Sat, 28 Feb 2026 00:00:01 GMT");
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::byte_range;
+    use hyper::header::{HeaderMap, HeaderValue, RANGE};
+
+    fn r(spec: &str, size: u64) -> Result<Option<(u64, u64)>, ()> {
+        let mut h = HeaderMap::new();
+        h.insert(RANGE, HeaderValue::from_str(spec).unwrap());
+        byte_range(&h, size, false)
+    }
+
+    #[test]
+    fn single_ranges() {
+        // What Chrome asks a video for while seeking.
+        assert_eq!(r("bytes=0-", 4_125_173), Ok(Some((0, 4_125_173))));
+        assert_eq!(r("bytes=2062586-", 4_125_173), Ok(Some((2_062_586, 2_062_587))));
+        assert_eq!(r("bytes=0-15", 100), Ok(Some((0, 16))));
+        assert_eq!(r("bytes=90-200", 100), Ok(Some((90, 10))));
+        assert_eq!(r("bytes=-10", 100), Ok(Some((90, 10))));
+        assert_eq!(r("bytes=-500", 100), Ok(Some((0, 100))));
+    }
+
+    #[test]
+    fn whole_file_or_416() {
+        assert_eq!(byte_range(&HeaderMap::new(), 100, false), Ok(None));
+        assert_eq!(r("bytes=0-1,5-9", 100), Ok(None));
+        assert_eq!(r("items=0-1", 100), Ok(None));
+        assert_eq!(r("bytes=9-3", 100), Ok(None));
+        assert_eq!(r("bytes=x-", 100), Ok(None));
+        assert_eq!(r("bytes=100-", 100), Err(()));
+        assert_eq!(r("bytes=-0", 100), Err(()));
+        assert_eq!(r("bytes=0-", 0), Err(()));
+        // A HEAD gets the whole file's headers.
+        let mut h = HeaderMap::new();
+        h.insert(RANGE, HeaderValue::from_static("bytes=0-15"));
+        assert_eq!(byte_range(&h, 100, true), Ok(None));
     }
 }
 
