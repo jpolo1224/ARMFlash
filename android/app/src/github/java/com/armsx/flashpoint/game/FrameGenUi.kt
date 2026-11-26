@@ -130,6 +130,9 @@ private fun importDll(ctx: Context, uri: Uri): String? {
 }
 
 /** The pause menu's frame generation card (native Flash). Changes apply at once, except Half Precision. */
+/** This build has frame generation (the Play build's FrameGenUi says false). */
+const val HAS_FRAME_GEN = true
+
 @Composable
 fun FrameGenCard(host: OverlayHost) {
     val ctx = LocalContext.current

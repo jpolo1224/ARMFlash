@@ -107,8 +107,8 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             ConfigShaders()
         }
 
-        // Native Flash's frame generation (the GitHub build's FrameGenUi; the Play build's is a note).
-        Section("Frame Generation") {
+        // Native Flash's frame generation: the GitHub build only (the Play build has none of it).
+        if (com.armsx.flashpoint.game.HAS_FRAME_GEN) Section("Frame Generation") {
             com.armsx.flashpoint.game.FrameGenConfig()
         }
 
