@@ -69,4 +69,27 @@ class Playlists(private val dir: File) {
     fun delete(p: Playlist) {
         if (p.file.isNotBlank()) File(p.file).delete()
     }
+
+    /** A new, empty playlist of the player's own in [library] ("arcade" or "theatre"). */
+    fun create(title: String, library: String): Playlist =
+        write(Playlist(id = java.util.UUID.randomUUID().toString(), title = title, library = library))
+
+    /** [p] with [gameId] at its end (unchanged when it is already in it), saved. */
+    fun add(p: Playlist, gameId: String): Playlist {
+        if (p.games.any { it.gameId == gameId }) return p
+        val next = (p.games.mapNotNull { it.order }.maxOrNull() ?: (p.games.size - 1)) + 1
+        return write(p.copy(games = p.games + PlaylistGame(gameId, order = next)))
+    }
+
+    /** [p] without [gameId], saved. */
+    fun remove(p: Playlist, gameId: String): Playlist = write(p.copy(games = p.games.filter { it.gameId != gameId }))
+
+    /** Save [p] to its file (a new one named after its id when it has none), in Flashpoint's playlist format. */
+    private fun write(p: Playlist): Playlist {
+        val f = if (p.file.isNotBlank()) File(p.file) else File(dir, p.id.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".json")
+        val tmp = File(f.path + ".part")
+        tmp.writeText(FpCore.json.encodeToString(Playlist.serializer(), p))
+        if (!tmp.renameTo(f)) { f.writeText(tmp.readText()); tmp.delete() }
+        return p.copy(file = f.path)
+    }
 }

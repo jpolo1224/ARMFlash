@@ -135,6 +135,23 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
         androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> if (uris.isNotEmpty()) vm.importPlaylists(uris) }
     val pls = vm.playlists.filter { it.library == vm.lib && (!it.extreme || vm.prefs2.extremeGames.value) }
+    // New Playlist asks for a name; a long press on a playlist offers to delete it.
+    var naming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<com.armsx.flashpoint.data.Playlist?>(null) }
+    if (naming) PlaylistNameDialog(onDismiss = { naming = false }) { name -> naming = false; vm.createPlaylist(name); onPicked() }
+    deleting?.let { p ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete ${p.title}?") },
+            text = { Text("The playlist goes; its games stay in your library.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { deleting = null; vm.deletePlaylist(p) }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Delete") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { deleting = null }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Cancel") }
+            },
+        )
+    }
     LazyColumn(modifier.background(Fp.Sidebar).padding(vertical = 8.dp)) {
         items(Shelf.entries.filter { vm.lib != "theatre" || it != Shelf.MY_GAMES }) { s ->
             SidebarRow(
@@ -146,11 +163,15 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
             Text("Playlists", color = Fp.TextDim, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 4.dp))
         }
         items(pls, key = { it.id }) { p ->
-            SidebarRow(p.title, on = vm.playlist?.id == p.id, sub = p.author.takeIf { it.isNotBlank() }?.let { "by $it" }, icon = p.iconBytes) {
+            SidebarRow(
+                p.title, on = vm.playlist?.id == p.id, sub = p.author.takeIf { it.isNotBlank() }?.let { "by $it" }, icon = p.iconBytes,
+                onLongClick = { deleting = p },
+            ) {
                 vm.pickPlaylist(p); onPicked()
             }
         }
         item {
+            SidebarRow("New Playlist", on = false) { naming = true }
             SidebarRow("Import Playlist", on = false) { importer.launch(arrayOf("application/json", "*/*")) }
             if (vm.dbGames > 0) Text(
                 "${"%,d".format(vm.dbGames)} games", color = Fp.TextDim, fontSize = 12.sp,
@@ -160,10 +181,11 @@ private fun Sidebar(vm: BrowseVm, modifier: Modifier, onPicked: () -> Unit = {})
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: ByteArray? = null, onClick: () -> Unit) {
+private fun SidebarRow(label: String, on: Boolean, sub: String? = null, icon: ByteArray? = null, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padFocus(RoundedCornerShape(0.dp)).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().padFocus(RoundedCornerShape(0.dp)).combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(if (on) Color(0x33FFFFFF) else Color.Transparent)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -416,4 +438,26 @@ fun PlatformBadge(platform: String, modifier: Modifier = Modifier) {
     ) {
         Text(Fp.platformGlyph(platform), color = Color.White, fontWeight = FontWeight.Black, fontSize = 13.sp)
     }
+}
+
+/** Asks for a new playlist's name. */
+@Composable
+fun PlaylistNameDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Playlist") },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                name, { name = it }, singleLine = true, label = { Text("Name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onCreate(name) }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Create") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Cancel") }
+        },
+    )
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,12 +90,67 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
             installed -> "Play" to Fp.Play
             else -> "Download & Play" to Fp.Download
         }
-        Box(
-            Modifier.fillMaxWidth().height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(color)
-                .clickable(enabled = full != null && dl == null) { onPlay(full!!) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(label, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+        // Not downloaded yet: Download fetches it without starting it, for getting many games in a row.
+        val canDownload = full != null && dl == null && !installed && (plan == null || plan.runner.ready)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier.weight(1f).height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(color)
+                    .clickable(enabled = full != null && dl == null) { onPlay(full!!) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+            }
+            if (canDownload) Box(
+                Modifier.height(52.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp)).background(Fp.Field)
+                    .clickable { vm.download(full!!) }.padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Download", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+        // Playlists: put the game in one of yours, or a new one.
+        if (full != null && !mine) {
+            var picking by remember { mutableStateOf(false) }
+            var naming by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(6.dp))
+            val inCount = vm.playlists.count { full.id in it.gameIds }
+            Box(
+                Modifier.fillMaxWidth().height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable { picking = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (inCount > 0) "Playlists ($inCount)" else "Add to Playlist", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            if (picking) {
+                val mineLists = vm.playlists.filter { it.library == vm.lib }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { picking = false },
+                    title = { Text("Playlists") },
+                    text = {
+                        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                            if (mineLists.isEmpty()) Text("No playlists yet.", color = Fp.TextDim)
+                            mineLists.forEach { pl ->
+                                val on = full.id in pl.gameIds
+                                Row(
+                                    Modifier.fillMaxWidth().padFocus(RoundedCornerShape(6.dp)).clickable { vm.togglePlaylist(pl, full) }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(if (on) "\u2713" else "", color = Fp.Play, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
+                                    Text(pl.title, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = { picking = false; naming = true }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("New Playlist") }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { picking = false }, modifier = Modifier.padFocus(RoundedCornerShape(20.dp))) { Text("Done") }
+                    },
+                )
+            }
+            if (naming) PlaylistNameDialog(onDismiss = { naming = false }) { name -> naming = false; vm.createPlaylist(name, first = full) }
         }
         if (dl != null && dl.total > 0) {
             Box(Modifier.fillMaxWidth().height(4.dp).background(Fp.Field)) {
