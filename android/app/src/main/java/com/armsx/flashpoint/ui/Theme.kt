@@ -147,12 +147,23 @@ private fun Color.lighten(f: Float) = Color(red + (1 - red) * f, green + (1 - gr
 object Fp {
     val theme = androidx.compose.runtime.mutableStateOf(FpThemes.all.first())
 
-    val Header get() = theme.value.header
-    val Sidebar get() = theme.value.sidebar
-    val Browse get() = theme.value.browse
-    val Card get() = theme.value.card
+    // With a background behind the library (ui/backdrop), pages let it show and bars, panels
+    // and tiles take the library opacity; the top bar can have a colour of its own.
+    private val behind get() = com.armsx.flashpoint.ui.backdrop.LibraryBackground.active
+    private fun Color.overBackground() =
+        if (behind) copy(alpha = alpha * com.armsx.flashpoint.ui.backdrop.LibraryChromePreferences.libraryOpacity.value / 100f) else this
+
+    val Header get() = (com.armsx.flashpoint.ui.backdrop.LibraryChromePreferences.barColor.value.takeIf { it != 0 }?.let { Color(it) }
+        ?: theme.value.header).overBackground()
+    val Sidebar get() = theme.value.sidebar.overBackground()
+    val Browse get() = if (behind) Color.Transparent else theme.value.browse
+    /** Under the whole launcher: the theme's header colour, or nothing when a background shows. */
+    val Base get() = if (behind) Color.Transparent else theme.value.header
+    val Card get() = theme.value.card.overBackground()
     val CardSelected = Color(0xFFBDBDC2)
-    val Panel get() = theme.value.panel
+    val Panel get() = theme.value.panel.overBackground()
+    /** Panels of dialogs, which stay opaque over a background. */
+    val PanelSolid get() = theme.value.panel
     val Field get() = theme.value.field
     val Text get() = theme.value.text
     val TextDim get() = theme.value.textDim
@@ -198,14 +209,14 @@ object Fp {
 fun FpTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (Fp.theme.value.light) androidx.compose.material3.lightColorScheme(
-            primary = Fp.Play, onPrimary = Color.White, secondary = Fp.Accent, background = Fp.Browse,
-            surface = Fp.Panel, onSurface = Fp.Text, onBackground = Fp.Text, surfaceVariant = Fp.Field,
+            primary = Fp.Play, onPrimary = Color.White, secondary = Fp.Accent, background = Fp.theme.value.browse,
+            surface = Fp.PanelSolid, onSurface = Fp.Text, onBackground = Fp.Text, surfaceVariant = Fp.Field,
         ) else darkColorScheme(
             primary = Fp.Play,
             onPrimary = Color.White,
             secondary = Fp.Accent,
-            background = Fp.Browse,
-            surface = Fp.Panel,
+            background = Fp.theme.value.browse,
+            surface = Fp.PanelSolid,
             onSurface = Fp.Text,
             onBackground = Fp.Text,
             surfaceVariant = Fp.Field,

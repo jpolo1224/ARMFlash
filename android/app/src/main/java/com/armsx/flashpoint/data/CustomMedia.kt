@@ -16,6 +16,8 @@ object CustomMedia {
         BOOT_INTRO("bootintro", 200L * 1024 * 1024, "Boot intro"),
         UI_MUSIC("uimusic", 60L * 1024 * 1024, "Launcher music"),
         PAUSE_MUSIC("pausemusic", 60L * 1024 * 1024, "Pause menu music"),
+        /** The library's background picture (a still, GIF or animated WebP); see ui/backdrop. */
+        BACKGROUND("background", 50L * 1024 * 1024, "Background"),
     }
 
     enum class Result { OK, TOO_LARGE, UNREADABLE }

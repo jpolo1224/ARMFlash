@@ -185,6 +185,16 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             )
         }
 
+        Section("Background") {
+            com.armsx.flashpoint.ui.backdrop.BackgroundChoice()
+            CustomMediaRow(
+                com.armsx.flashpoint.data.CustomMedia.Kind.BACKGROUND, arrayOf("image/*"),
+                "A picture of your own behind the library: a still, a GIF or an animated WebP. It takes the wave's place.",
+                onChanged = { com.armsx.flashpoint.ui.backdrop.LibraryBackground.pictureChanged(ctx) },
+            )
+            com.armsx.flashpoint.ui.backdrop.BackgroundSettings()
+        }
+
         Section("Discord") {
             DiscordSection()
         }

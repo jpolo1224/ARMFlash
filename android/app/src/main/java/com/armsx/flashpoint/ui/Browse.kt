@@ -85,7 +85,7 @@ fun BrowseScreen(vm: BrowseVm, onPlay: (Game) -> Unit, onConfig: () -> Unit) {
                 drawerState = drawer,
                 gesturesEnabled = !sidebar,
                 drawerContent = {
-                    if (!sidebar) ModalDrawerSheet(drawerContainerColor = Fp.Sidebar) {
+                    if (!sidebar) ModalDrawerSheet(drawerContainerColor = Fp.theme.value.sidebar) {
                         Sidebar(vm, Modifier.fillMaxHeight().width(260.dp)) { scope.launch { drawer.close() } }
                     }
                 },
@@ -109,7 +109,7 @@ fun BrowseScreen(vm: BrowseVm, onPlay: (Game) -> Unit, onConfig: () -> Unit) {
             ModalNavigationDrawer(
                 drawerState = drawer,
                 drawerContent = {
-                    ModalDrawerSheet(drawerContainerColor = Fp.Sidebar) {
+                    ModalDrawerSheet(drawerContainerColor = Fp.theme.value.sidebar) {
                         Sidebar(vm, Modifier.fillMaxHeight().width(280.dp)) { scope.launch { drawer.close() } }
                     }
                 },
@@ -120,7 +120,7 @@ fun BrowseScreen(vm: BrowseVm, onPlay: (Game) -> Unit, onConfig: () -> Unit) {
                 }
                 val sel = vm.selected
                 if (sel != null) {
-                    Box(Modifier.fillMaxSize().background(Fp.Panel)) {
+                    Box(Modifier.fillMaxSize().background(Fp.PanelSolid)) {
                         Details(vm, sel, onPlay, onClose = { vm.clearSelection() })
                     }
                 }

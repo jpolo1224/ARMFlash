@@ -91,7 +91,7 @@ fun Shell(vm: BrowseVm, onPlay: (Game) -> Unit, configPage: @Composable () -> Un
         go(tabs[(i + ShellNav.dir + tabs.size) % tabs.size])
     }
 
-    Column(Modifier.fillMaxSize().background(Fp.Header)) {
+    Column(Modifier.fillMaxSize().background(Fp.Base)) {
         // The pad enters the tab row on the tab that is open, not whichever is nearest.
         val openTab = remember { androidx.compose.ui.focus.FocusRequester() }
         var rowFocused by remember { mutableStateOf(false) }
@@ -155,7 +155,7 @@ private fun HomePage(vm: BrowseVm, onPlay: (Game) -> Unit, go: (Tab) -> Unit) {
         ) {
             Box(
                 Modifier.fillMaxWidth(0.62f).widthIn(min = 340.dp).fillMaxHeight(0.94f)
-                    .clip(RoundedCornerShape(8.dp)).background(Fp.Panel),
+                    .clip(RoundedCornerShape(8.dp)).background(Fp.PanelSolid),
             ) {
                 Details(vm, vm.selected ?: g, onPlay = { picked = null; onPlay(it) }, onClose = close)
             }

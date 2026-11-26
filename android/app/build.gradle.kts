@@ -138,6 +138,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.games.activity)
     implementation(libs.androidx.appcompat)

@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
         alive++
         enableEdgeToEdge()
         UiMusic.load(this)
+        com.armsx.flashpoint.ui.backdrop.LibraryBackground.load(this)
         com.armsx.flashpoint.discord.DiscordPresence.attachActivity(this)
         com.armsx.flashpoint.discord.DiscordPresence.start()
         setContent {
@@ -231,7 +232,9 @@ private fun App(vm: BrowseVm) {
     // Check on Launch (Config, Updates): one quiet check at start, GitHub build only.
     if (com.armsx.flashpoint.BuildConfig.IN_APP_UPDATER) com.armsx.flashpoint.update.AutoUpdateGate()
 
-    Box(Modifier.fillMaxSize().background(Fp.Header).safeDrawingPadding()) {
+    // The library's background (ui/backdrop), edge to edge under the system bars too.
+    if (com.armsx.flashpoint.ui.backdrop.LibraryBackground.active) com.armsx.flashpoint.ui.backdrop.LibraryBackdrop()
+    Box(Modifier.fillMaxSize().background(Fp.Base).safeDrawingPadding()) {
         if (!vm.dbReady) {
             if (vm.opening) Opening() else Setup(vm, onImport = { pickDb.launch(arrayOf("*/*")) }, onCustomFolder = onCustomFolder)
         } else {
