@@ -1022,6 +1022,37 @@ private fun KeyPicker(st: OverlayState) {
 }
 
 /** Add the picked key, or (when changing one) put it in place of the selected key, keeping its spot and size. */
+/**
+ * [b] moved to the free spot nearest where it asks to go, so keys added one after another (the
+ * number row, say) each get a place of their own instead of all landing in the middle on top of
+ * each other. Spirals out a key's width at a time; where the screen is full, it stays put.
+ */
+private fun freeSpot(st: OverlayState, b: TouchButton): TouchButton {
+    val w = st.screenW
+    val h = st.screenH
+    if (w <= 0f || h <= 0f) return b
+    val dens = android.content.res.Resources.getSystem().displayMetrics.density
+    val gap = 6f * dens
+    fun halfW(t: TouchButton) = t.size * dens / 2f * (if (t.kind == "key" && isWideKey(t.code)) 1.9f else 1f)
+    fun halfH(t: TouchButton) = t.size * dens / 2f
+    fun clear(x: Float, y: Float) = st.layout.buttons.none { o ->
+        kotlin.math.abs(o.x * w - x * w) < halfW(o) + halfW(b) + gap && kotlin.math.abs(o.y * h - y * h) < halfH(o) + halfH(b) + gap
+    }
+    fun inside(x: Float, y: Float) = x * w >= halfW(b) && x * w <= w - halfW(b) && y * h >= halfH(b) && y * h <= h - halfH(b)
+    if (clear(b.x, b.y)) return b
+    val stepX = (halfW(b) * 2 + gap) / w
+    val stepY = (halfH(b) * 2 + gap) / h
+    for (ring in 1..14) {
+        for (dy in -ring..ring) for (dx in -ring..ring) {
+            if (kotlin.math.abs(dx) != ring && kotlin.math.abs(dy) != ring) continue
+            val x = b.x + dx * stepX
+            val y = b.y + dy * stepY
+            if (inside(x, y) && clear(x, y)) return b.copy(x = x, y = y)
+        }
+    }
+    return b
+}
+
 private fun add(st: OverlayState, b: TouchButton) {
     val i = st.swapping
     if (i != null && i in st.layout.buttons.indices) {
@@ -1032,7 +1063,7 @@ private fun add(st: OverlayState, b: TouchButton) {
         st.layout = st.layout.copy(buttons = st.layout.buttons.toMutableList().also { it[i] = repl })
         st.selected = i
     } else {
-        st.layout = st.layout.copy(buttons = st.layout.buttons + b)
+        st.layout = st.layout.copy(buttons = st.layout.buttons + freeSpot(st, b))
         st.selected = st.layout.buttons.lastIndex
     }
     st.swapping = null
