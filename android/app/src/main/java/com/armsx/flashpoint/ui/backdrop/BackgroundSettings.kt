@@ -48,7 +48,7 @@ import com.armsx.flashpoint.ui.sliderPadKeys
 fun BackgroundChoice() {
     ConfigRow(
         "Library Background",
-        "The PS3 XMB wave behind the library, as in ARMSX2. A picture of your own (below) takes its place. Off keeps the theme's colours.",
+        "The PS3 XMB wave behind the library, as in ARMSX2. A picture of your own (below) takes its place. Off shows the theme's colours instead.",
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Chip("Off", !LibraryBackground.wave.value) { LibraryBackground.setWave(false) }
@@ -66,8 +66,8 @@ fun BackgroundSettings() {
     ) { Switch(LibraryBackground.animated2D.value, { LibraryBackground.setAnimated2D(it) }) }
 
     // Library background (wave) colour. Separate from the theme, which colours the UI chrome; this
-    // recolours the animated backdrop itself, with the white waves riding over it. Unset = the
-    // built-in blue. Live: XmbGlView's GL thread reads the new colour on its next frame.
+    // recolours the animated backdrop itself, with the white waves riding over it. Unset = ARMFlash's
+    // #454859. Live: XmbGlView's GL thread reads the new colour on its next frame.
     Heading(
         "Background Color",
         "Recolor the animated library background. The white waves ride over your color; the theme stays separate. Updates live as you drag. Applies to both the 3D GL wave and the simpler 2D wave.",

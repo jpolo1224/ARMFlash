@@ -52,7 +52,7 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
-    Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().background(Fp.Browse).padVerticalScroll(vm.configScroll).padding(16.dp)) {
         Text("Config", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 24.sp)
 
         // New versions from ARMFlash's GitHub releases (GitHub build only; see update/Updater.kt).
@@ -70,6 +70,16 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
             LogoSets.current.value?.let { set ->
                 LogoPreview(set)
             }
+        }
+
+        Section("Background") {
+            com.armsx.flashpoint.ui.backdrop.BackgroundChoice()
+            CustomMediaRow(
+                com.armsx.flashpoint.data.CustomMedia.Kind.BACKGROUND, arrayOf("image/*"),
+                "A picture of your own behind the library: a still, a GIF or an animated WebP. It takes the wave's place.",
+                onChanged = { com.armsx.flashpoint.ui.backdrop.LibraryBackground.pictureChanged(ctx) },
+            )
+            com.armsx.flashpoint.ui.backdrop.BackgroundSettings()
         }
 
         Section("Graphics Driver") {
@@ -183,16 +193,6 @@ fun ConfigPage(vm: BrowseVm, onImport: () -> Unit) {
                 value = vol, onValueChange = { vol = it; UiMusic.volume.floatValue = it; UiMusic.applyVolume() },
                 onValueChangeFinished = { UiMusic.save(ctx) }, enabled = music, modifier = Modifier.widthIn(max = 420.dp).sliderPadKeys(),
             )
-        }
-
-        Section("Background") {
-            com.armsx.flashpoint.ui.backdrop.BackgroundChoice()
-            CustomMediaRow(
-                com.armsx.flashpoint.data.CustomMedia.Kind.BACKGROUND, arrayOf("image/*"),
-                "A picture of your own behind the library: a still, a GIF or an animated WebP. It takes the wave's place.",
-                onChanged = { com.armsx.flashpoint.ui.backdrop.LibraryBackground.pictureChanged(ctx) },
-            )
-            com.armsx.flashpoint.ui.backdrop.BackgroundSettings()
         }
 
         Section("Discord") {

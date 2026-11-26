@@ -56,18 +56,16 @@ fun LibraryWaveBackground(modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val t = timeSec.floatValue
         // Base colour: the RGB cycle sweeps the hue wheel (~28s/turn, matching the GL peripheral
-        // vibe); otherwise the picked colour, or the built-in royal blue when unset.
+        // vibe); otherwise the picked colour, or ARMFlash's default (#454859) when unset.
         val base: Color = when {
             rgbCycle -> Color.hsv(((t / 28f) * 360f) % 360f, 0.72f, 0.96f)
-            colorArgb == 0 -> DEFAULT_WAVE
+            colorArgb == 0 -> Color(LibraryBackgroundColorPreferences.DefaultDisplayColor)
             else -> Color(colorArgb)
         }
         drawWaveScene(t, base)
     }
 }
 
-/** The built-in wave colour — matches XmbGlView.BG_BOT / LibraryBackgroundColorPreferences default. */
-private val DEFAULT_WAVE = Color(0xFF2E75F5)
 
 private fun DrawScope.drawWaveScene(t: Float, base: Color) {
     val w = size.width

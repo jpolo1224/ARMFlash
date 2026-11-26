@@ -53,6 +53,8 @@ const val DEFAULT_FLASH_PLAYER = "FPSoftware\\Flash\\flashplayer_32_sa.exe"
 class BrowseVm(app: Application) : AndroidViewModel(app) {
     val library = (app as FpApp).library
     val prefs2 = AppPrefs(app)
+    /** Config's scroll position, kept while the library is open, so Config opens where it was left. */
+    val configScroll = androidx.compose.foundation.ScrollState(0)
 
     /** Which browse tab: "arcade" (Games) or "theatre" (Animations, Flash ones). */
     var lib by mutableStateOf("arcade")

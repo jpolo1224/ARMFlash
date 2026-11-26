@@ -98,8 +98,9 @@ fun Modifier.padScrollTop(state: ScrollState): Modifier = composed {
  * screen away, the page scrolls by most of a screen instead of getting stuck.
  */
 @androidx.compose.runtime.Composable
-fun Modifier.padVerticalScroll(): Modifier {
-    val state = androidx.compose.foundation.rememberScrollState()
+fun Modifier.padVerticalScroll(kept: androidx.compose.foundation.ScrollState? = null): Modifier {
+    // [kept]: a page's own state held elsewhere, so it is where it was when the page comes back.
+    val state = kept ?: androidx.compose.foundation.rememberScrollState()
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val scope = rememberCoroutineScope()
     var viewport by remember { mutableStateOf(0) }
