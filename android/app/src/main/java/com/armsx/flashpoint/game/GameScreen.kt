@@ -23,8 +23,18 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     }
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** This run's playtime, saved as it goes (see [PlaytimeLedger]). */
+    private val playtime = PlaytimeLedger.Session(act, act.intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
+    private val playtimeTick = object : Runnable {
+        override fun run() {
+            playtime.write(final = false)
+            handler.postDelayed(this, 30_000)
+        }
+    }
+
     fun onCreate() {
         handler.postDelayed(census, 5_000)
+        handler.postDelayed(playtimeTick, 30_000)
         MenuSfx.load(act)
         PauseMusic.load(act)
         OsdPrefs.load(act)
@@ -46,6 +56,8 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     }
 
     fun onPause() {
+        // Final when the game is closing: the launcher adds it as soon as it is back.
+        playtime.write(final = act.isFinishing)
         SleepWake.onPause(act)
         PauseMusic.setForeground(false, act, overlay.menu)
         com.armsx.flashpoint.discord.DiscordPresence.stopWatchingFriends()
@@ -55,6 +67,8 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     }
 
     fun onDestroy() {
+        playtime.write(final = true)
+        handler.removeCallbacks(playtimeTick)
         handler.removeCallbacks(census)
         im.unregisterInputDeviceListener(this)
         PauseMusic.stop()

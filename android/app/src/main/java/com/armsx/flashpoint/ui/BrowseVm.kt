@@ -286,6 +286,33 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         loadPlaylists()
     }
 
+    /** A new playlist of the player's own in this library, with [first] in it when given. */
+    fun createPlaylist(title: String, first: Game? = null) = viewModelScope.launch {
+        val name = title.trim().ifBlank { "New Playlist" }
+        val made = withContext(Dispatchers.IO) {
+            library.playlists.create(name, lib).let { pl -> if (first != null) library.playlists.add(pl, first.id) else pl }
+        }
+        loadPlaylists()
+        status = if (first != null) "Added ${first.title} to $name" else "Created $name"
+        if (first == null) pickPlaylist(made)
+    }
+
+    /** Put [game] in [p], or take it out when it is already there. */
+    fun togglePlaylist(p: com.armsx.flashpoint.data.Playlist, game: Game) = viewModelScope.launch {
+        val inIt = game.id in p.gameIds
+        val now = withContext(Dispatchers.IO) { if (inIt) library.playlists.remove(p, game.id) else library.playlists.add(p, game.id) }
+        loadPlaylists()
+        status = if (inIt) "Removed from ${p.title}" else "Added to ${p.title}"
+        if (playlist?.id == p.id) { playlist = now; refresh(immediate = true) }
+    }
+
+    fun deletePlaylist(p: com.armsx.flashpoint.data.Playlist) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { library.playlists.delete(p) }
+        if (playlist?.id == p.id) pickPlaylist(null)
+        loadPlaylists()
+        status = "Deleted ${p.title}"
+    }
+
     fun pickPlaylist(p: com.armsx.flashpoint.data.Playlist?) {
         playlist = p
         if (p != null) shelf = Shelf.ALL
@@ -695,6 +722,12 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         onReady(Ready(game, plan, zips, winApp, args))
     }
 
+    /**
+     * Download [game] without starting it (Details' Download button), for getting many games in a
+     * row: the same downloads as Play, then a message instead of the game.
+     */
+    fun download(game: Game) = prepare(game) { ready -> status = "${ready.game.title} is downloaded" }
+
     /** A game started: count the play and its date now, so it is in Play History even if it never returns cleanly. */
     fun recordPlay(game: Game) = viewModelScope.launch(Dispatchers.IO) {
         if (com.armsx.flashpoint.data.LocalGames.isLocal(game.id)) {
@@ -704,6 +737,14 @@ class BrowseVm(app: Application) : AndroidViewModel(app) {
         }
         if (!tracks(game)) return@launch
         runCatching { FpCore.playtime(game.id, 0) }
+    }
+
+    /** Add the playtime of every game run that is over (PlaytimeLedger), however it ended. */
+    fun collectPlaytime() = viewModelScope.launch(Dispatchers.IO) {
+        val ctx = getApplication<Application>()
+        val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+        val gameRunning = runCatching { am.runningAppProcesses?.any { it.processName == ctx.packageName + ":game" } == true }.getOrDefault(false)
+        com.armsx.flashpoint.game.PlaytimeLedger.collect(ctx, gameRunning).forEach { (id, secs) -> addPlaytime(id, secs) }
     }
 
     fun addPlaytime(id: String, seconds: Long) = viewModelScope.launch(Dispatchers.IO) {

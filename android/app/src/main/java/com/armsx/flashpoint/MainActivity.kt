@@ -139,6 +139,12 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra("status")?.let { vm.status = it }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Playtime of games that ended without coming back here (closed by Android, crashed).
+        vm.collectPlaytime()
+    }
+
     override fun onStop() {
         UiMusic.pause()
         com.armsx.flashpoint.discord.DiscordPresence.setForeground(false)
@@ -156,11 +162,8 @@ private fun App(vm: BrowseVm) {
         // Back from a game: Discord shows the library again.
         MainActivity.playing = null
         com.armsx.flashpoint.discord.DiscordPresence.setPlaying(null)
-        if (r.resultCode == Activity.RESULT_OK) {
-            val id = r.data?.getStringExtra(GameActivity.EXTRA_GAME_ID)
-            val secs = r.data?.getLongExtra(GameActivity.EXTRA_SECONDS, 0) ?: 0
-            if (id != null && secs > 0) vm.addPlaytime(id, secs)
-        }
+        // The game's time comes from its playtime file (PlaytimeLedger), however it ended.
+        vm.collectPlaytime()
     }
 
     // Setup's Custom folder (GitHub build, as in ARMSX2): all-files access first, then the folder.
