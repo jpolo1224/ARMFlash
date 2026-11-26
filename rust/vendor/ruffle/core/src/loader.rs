@@ -788,6 +788,16 @@ impl<'gc> MovieLoader<'gc> {
                 let mut activation =
                     Activation::from_nothing(uc, ActivationIdentifier::root("unknown"), root);
                 for key in root_object.get_keys(&mut activation, true) {
+                    // ARMFlash patch: only the root's own variables (FlashVars, what its scripts
+                    // set). `get_keys` also lists MovieClip.prototype's methods and the root's
+                    // children; read in the old movie's SWF version, a method newer than it
+                    // (createEmptyMovieClip in a SWF 5 loader) came back undefined, and was then
+                    // set on the new root, hiding the real one. BFDIA 5b, started from
+                    // c.swf?path=5b.swf, never got its level layers: no tiles, no characters
+                    // (ruffle-rs/ruffle#16969).
+                    if !root_object.has_own_property(&mut activation, key) {
+                        continue;
+                    }
                     let val = root_object
                         .get_stored(key, &mut activation)
                         .unwrap_or(Value::Undefined);
