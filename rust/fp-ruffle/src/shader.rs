@@ -3,7 +3,8 @@
 //!
 //! [`ShaderTarget`] is Ruffle's swap-chain target with two differences: when a shader preset is
 //! loaded, Ruffle draws each frame into an offscreen texture and the preset's filter chain
-//! draws that onto the window; and while frame generation runs, wgpu's surface is let go, Ruffle
+//! draws that onto the window (at a share of the window's size first, below 100% Shader
+//! Resolution); and while frame generation runs, wgpu's surface is let go, Ruffle
 //! (or the chain) draws into frame generation's input texture, and frame generation's library
 //! presents it and the frames it makes between it and the last one. Without either, Ruffle draws
 //! straight into the window, exactly as `SwapChainTarget` does. The surface sits behind a lock so
@@ -18,7 +19,7 @@ use ruffle_render_wgpu::backend::{create_wgpu_instance, request_adapter_and_devi
 use ruffle_render_wgpu::descriptors::Descriptors;
 use ruffle_render_wgpu::target::{RenderTarget, RenderTargetFrame};
 use ruffle_render_wgpu::utils::remove_srgb;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct ShaderTarget {
@@ -30,8 +31,198 @@ pub struct ShaderTarget {
     chain: Mutex<Option<FilterChainWgpu>>,
     /// Ruffle's frame when a chain runs: same size and format as the window.
     offscreen: Mutex<Option<(wgpu::Texture, wgpu::TextureView)>>,
+    /// Shader Resolution: the share of the window's size the chain runs at, in percent.
+    scale: AtomicU32,
+    /// The chain's input and output below 100% (see [`Scaled`]).
+    scaled: Mutex<Option<Scaled>>,
     frames: AtomicUsize,
     fg: Mutex<FrameGen>,
+}
+
+/// The chain run smaller than the window, at both ends: Ruffle's frame is shrunk going in and the
+/// chain's picture is scaled up to the window. Every pass costs what its pixels cost, and a heavy
+/// preset's passes are most of a phone GPU's frame.
+struct Scaled {
+    input: (wgpu::Texture, wgpu::TextureView),
+    output: (wgpu::Texture, wgpu::TextureView),
+    blit: Blit,
+}
+
+impl Scaled {
+    /// [slot]'s textures at these sizes, made again when the sizes or the format change.
+    fn fit<'a>(
+        slot: &'a mut Option<Scaled>,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        input: (u32, u32),
+        output: (u32, u32),
+    ) -> &'a Scaled {
+        let size = |t: &wgpu::Texture| (t.width(), t.height());
+        let fits = slot.as_ref().is_some_and(|s| s.blit.format == format && size(&s.input.0) == input && size(&s.output.0) == output);
+        if !fits {
+            let blit = match slot.take() {
+                Some(s) if s.blit.format == format => s.blit,
+                _ => Blit::new(device, format),
+            };
+            let texture = |label, (width, height): (u32, u32), usage| {
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage,
+                    view_formats: &[],
+                });
+                let view = texture.create_view(&Default::default());
+                (texture, view)
+            };
+            // The input is used as the chain uses Ruffle's frame at full size.
+            let input = texture(
+                "ARMFlash shader input, scaled",
+                input,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            );
+            let output = texture(
+                "ARMFlash shader output, scaled",
+                output,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            );
+            *slot = Some(Scaled { input, output, blit });
+        }
+        slot.as_ref().unwrap()
+    }
+}
+
+/// Draws one view over the whole of another of a different size, filtered both ways. (wgpu's
+/// TextureBlitter filters only when it enlarges, and shrinking Ruffle's frame needs it too.)
+struct Blit {
+    format: wgpu::TextureFormat,
+    pipeline: wgpu::RenderPipeline,
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+}
+
+const BLIT_WGSL: &str = "
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
+    var out: VertexOutput;
+    out.tex_coords = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
+    out.position = vec4<f32>(out.tex_coords * 2.0 - 1.0, 0.0, 1.0);
+    out.tex_coords.y = 1.0 - out.tex_coords.y;
+    return out;
+}
+
+@group(0) @binding(0)
+var picture: texture_2d<f32>;
+@group(0) @binding(1)
+var picture_sampler: sampler;
+
+@fragment
+fn fs_main(vs: VertexOutput) -> @location(0) vec4<f32> {
+    return textureSample(picture, picture_sampler, vs.tex_coords);
+}
+";
+
+impl Blit {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            source: wgpu::ShaderSource::Wgsl(BLIT_WGSL.into()),
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self { format, pipeline, layout, sampler }
+    }
+
+    /// [source] over the whole of [target], which must be in this blit's format.
+    fn draw(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView) {
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(source) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+            ],
+        });
+        // Every pixel is drawn, so nothing is loaded.
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("ARMFlash shader resolution"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.draw(0..3, 0..1);
+    }
 }
 
 /// Frame generation's side of the target.
@@ -111,6 +302,8 @@ impl ShaderTarget {
             config: Mutex::new(config),
             chain: Mutex::new(None),
             offscreen: Mutex::new(None),
+            scale: AtomicU32::new(100),
+            scaled: Mutex::new(None),
             frames: AtomicUsize::new(0),
             fg: Mutex::new(FrameGen::default()),
         }
@@ -130,6 +323,7 @@ impl ShaderTarget {
         }
         *self.surface.lock().unwrap() = None;
         *self.offscreen.lock().unwrap() = None;
+        *self.scaled.lock().unwrap() = None;
     }
 
     /// A new window (the old one, if still here, is let go first). Frame generation takes it
@@ -259,6 +453,7 @@ impl ShaderTarget {
         };
         *self.chain.lock().unwrap() = chain;
         *self.offscreen.lock().unwrap() = None;
+        *self.scaled.lock().unwrap() = None;
         Ok(())
     }
 
@@ -267,6 +462,11 @@ impl ShaderTarget {
         if let Some(chain) = self.chain.lock().unwrap().as_mut() {
             let _ = chain.parameters().set_parameter_value(name, value);
         }
+    }
+
+    /// Shader Resolution, in percent of the window's size (25 to 100). Read each frame.
+    pub fn set_scale(&self, percent: u32) {
+        self.scale.store(percent.clamp(25, 100), Ordering::Relaxed);
     }
 
     fn offscreen_view(&self, device: &wgpu::Device) -> wgpu::TextureView {
@@ -389,15 +589,32 @@ impl RenderTarget for ShaderTarget {
     ) -> wgpu::SubmissionIndex {
         let mut index = queue.submit(command_buffers);
         if frame.chained {
-            let input = self.offscreen.lock().unwrap().as_ref().map(|(t, _)| t.clone());
-            if let (Some(input), Some(chain)) = (input, self.chain.lock().unwrap().as_mut()) {
+            let input = self.offscreen.lock().unwrap().as_ref().map(|(t, v)| (t.clone(), v.clone()));
+            if let (Some((input, input_view)), Some(chain)) = (input, self.chain.lock().unwrap().as_mut()) {
                 let config = self.config.lock().unwrap().clone();
+                let format = remove_srgb(config.format);
                 let size = Size::new(config.width, config.height);
-                let output = WgpuOutputView::new_from_raw(&frame.surface_view, size, remove_srgb(config.format));
-                let viewport = librashader_common::Viewport { x: 0.0, y: 0.0, mvp: None, output, size };
                 let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ARMFlash shader chain") });
                 let n = self.frames.fetch_add(1, Ordering::Relaxed);
-                if let Err(e) = chain.frame(&input, &viewport, &mut encoder, n, None) {
+                let percent = self.scale.load(Ordering::Relaxed);
+                let shrink = |v: u32| (v * percent / 100).max(1);
+                let small = Size::new(shrink(size.width), shrink(size.height));
+                let mut scaled = self.scaled.lock().unwrap();
+                let result = if percent < 100 && (small.width < size.width || small.height < size.height) {
+                    let s = Scaled::fit(&mut scaled, device, format, (shrink(input.width()), shrink(input.height())), (small.width, small.height));
+                    s.blit.draw(device, &mut encoder, &input_view, &s.input.1);
+                    let output = WgpuOutputView::new_from_raw(&s.output.1, small, format);
+                    let viewport = librashader_common::Viewport { x: 0.0, y: 0.0, mvp: None, output, size: small };
+                    let result = chain.frame(&s.input.0, &viewport, &mut encoder, n, None);
+                    s.blit.draw(device, &mut encoder, &s.output.1, &frame.surface_view);
+                    result
+                } else {
+                    *scaled = None;
+                    let output = WgpuOutputView::new_from_raw(&frame.surface_view, size, format);
+                    let viewport = librashader_common::Viewport { x: 0.0, y: 0.0, mvp: None, output, size };
+                    chain.frame(&input, &viewport, &mut encoder, n, None)
+                };
+                if let Err(e) = result {
                     log::warn!("shader frame: {e}");
                 }
                 index = queue.submit([encoder.finish()]);

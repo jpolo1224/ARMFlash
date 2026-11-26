@@ -222,6 +222,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "shaderPreset" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())?.path.orEmpty()
         "shaderParams" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
             ?.let { com.armsx.flashpoint.shaders.ShaderPrefs.paramLines(this, it.path) }.orEmpty()
+        // Shader Resolution, in percent of the window's size.
+        "shaderScale" -> com.armsx.flashpoint.shaders.ShaderPrefs.scale(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).toString()
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path
         // Frame generation's settings and the screen's refresh rate (FrameGenPrefs.native).
         "frameGen" -> FrameGenPrefs.native(this, displayHz())
@@ -240,7 +242,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     external fun nativeFrames(): Long
     external fun nativeVolume(volume: Float)
     external fun nativeDisplay(scale: Int, quality: Int)
-    /** The shader settings changed: reload the preset ([full]) or only its parameters. */
+    /** The shader settings changed: reload the preset ([full]) or only its parameters and
+     *  Shader Resolution. */
     external fun nativeShaderChanged(full: Boolean)
     /** Errors Ruffle has reported (script errors, failed loads, panics). */
     external fun nativeTrouble(): Long

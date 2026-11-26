@@ -43,6 +43,22 @@ object ShaderPrefs {
     fun setGlobalPreset(ctx: Context, rel: String) = prefs(ctx).edit().putString("shader.preset", rel).apply()
     fun setGamePreset(ctx: Context, id: String, rel: String) = prefs(ctx).edit().putString("shader.preset.$id", rel).apply()
 
+    /**
+     * Shader Resolution: the share of the window's size the chain runs at, in percent. Ruffle's
+     * frame is shrunk by it going in and the chain's picture is scaled up from it to the screen.
+     * 67 by default, about 0.44 of the pixels, which keeps a heavy preset smooth on a phone GPU.
+     * Config sets it for every game; the pause menu can set it for one (0 = same as Config).
+     */
+    const val DEFAULT_SCALE = 67
+    /** What Shader Resolution offers. */
+    val SCALES = listOf(100, 75, 67, 50)
+    fun globalScale(ctx: Context) = prefs(ctx).getInt("shader.scale", DEFAULT_SCALE).coerceIn(25, 100)
+    fun setGlobalScale(ctx: Context, percent: Int) = prefs(ctx).edit().putInt("shader.scale", percent.coerceIn(25, 100)).apply()
+    fun gameScale(ctx: Context, id: String) = prefs(ctx).getInt("shader.scale.$id", 0)
+    fun setGameScale(ctx: Context, id: String, percent: Int) = prefs(ctx).edit().putInt("shader.scale.$id", percent).apply()
+    /** The Shader Resolution this game runs at. */
+    fun scale(ctx: Context, id: String) = gameScale(ctx, id).takeIf { it in 25..100 } ?: globalScale(ctx)
+
     /** The preset file this game runs, or null for none. */
     fun presetFile(ctx: Context, id: String): File? {
         val rel = gamePreset(ctx, id).ifEmpty { if (globalEnabled(ctx)) globalPreset(ctx) else "" }

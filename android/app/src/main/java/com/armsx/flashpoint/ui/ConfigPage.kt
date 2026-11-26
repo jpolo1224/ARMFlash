@@ -564,6 +564,7 @@ private fun ConfigShaders() {
     var enabled by remember { mutableStateOf(sp.globalEnabled(ctx)) }
     var preset by remember { mutableStateOf(sp.globalPresetPath(ctx)) }
     var params by remember { mutableStateOf(sp.allOverrides(ctx)) }
+    var scale by remember { mutableStateOf(sp.globalScale(ctx)) }
     Text("Runs on native Flash. A game can pick its own preset in its pause menu.", color = Fp.TextDim, fontSize = 12.sp)
     com.armsx.flashpoint.shaders.ui.ShaderChainSection(
         enabled = enabled,
@@ -572,6 +573,8 @@ private fun ConfigShaders() {
         onEnabledChange = { enabled = it; sp.setGlobalEnabled(ctx, it) },
         onPresetChange = { preset = it; sp.setGlobalPresetPath(ctx, it) },
         onParamsChange = { params = it; sp.setAllOverrides(ctx, it) },
+        scale = scale,
+        onScaleChange = { scale = it; sp.setGlobalScale(ctx, it) },
     )
     ShaderPackRow()
     com.armsx.flashpoint.shaders.ui.ShaderParamsEditorHost()

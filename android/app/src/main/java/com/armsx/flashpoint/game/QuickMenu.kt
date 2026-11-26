@@ -1549,6 +1549,34 @@ private fun KeySheet(title: String, current: Int?, dismiss: () -> Unit, pick: (I
 
 
 /**
+ * Shader Resolution for this game, or Config's (ShaderPrefs.scale). Changes the running chain at
+ * once, as it reads the value each frame.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShaderScaleChoice(host: OverlayHost) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sp = com.armsx.flashpoint.shaders.ShaderPrefs
+    var own by remember { mutableStateOf(sp.gameScale(ctx, host.gameId)) }
+    val config = remember { sp.globalScale(ctx) }
+    fun pick(percent: Int) {
+        own = percent
+        sp.setGameScale(ctx, host.gameId, percent)
+        host.shaderChanged(false)
+    }
+    Text("Shader Resolution", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+    Text(
+        "Runs the shader at a lower resolution, then scales its picture up to the screen. Lower is much faster with heavy presets and looks a little softer.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OptionChip("Same as Config ($config%)", own !in 25..100) { pick(0) }
+        sp.SCALES.forEach { s -> OptionChip("$s%", own == s) { pick(s) } }
+    }
+}
+
+/**
  * RetroArch shaders for native Flash (librashader): get RetroArch's shader pack, pick a preset
  * for this game by folder, and change its parameters while the game runs. The pack, index and
  * parameter reading are ARMSX2's (ShaderRepo, ShaderIndex, ShaderParams).
@@ -1641,6 +1669,10 @@ private fun ShaderCard(host: OverlayHost) {
                     here.filter { '/' !in it }.forEach { file ->
                         MenuCycleRow(file.removeSuffix(".slangp"), "") { pick(prefix + file) }
                     }
+                }
+                if (current != null) {
+                    Spacer(Modifier.height(8.dp))
+                    ShaderScaleChoice(host)
                 }
                 if (params.isNotEmpty() && current != null) {
                     Spacer(Modifier.height(8.dp))
