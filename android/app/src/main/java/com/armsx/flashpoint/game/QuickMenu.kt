@@ -1674,38 +1674,21 @@ private fun ShaderCard(host: OverlayHost) {
                 // looked missing; with none on, the choice waits for the next one.
                 Spacer(Modifier.height(8.dp))
                 ShaderScaleChoice(host)
+                // Parameters get a screen of their own, ARMSX2's editor (ShaderParamsEditor): a
+                // preset can have hundreds, too many for rows in a card. It saves each change for
+                // this preset and the running chain takes it at once (RuffleActivity's live hook).
                 if (params.isNotEmpty() && current != null) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Parameters", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                    params.forEach { p ->
-                        if (!p.isAdjustable) {
-                            Text(p.description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 6.dp))
-                            return@forEach
-                        }
-                        val v = values[p.name] ?: p.initial
-                        Text(p.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                        val snap: (Float) -> Float = { nv -> if (p.step > 0f) (Math.round((nv - p.minimum) / p.step) * p.step + p.minimum) else nv }
-                        val save = {
-                            sp.setOverrides(ctx, current.path, values)
-                            host.shaderChanged(false)
-                        }
-                        ArrowSlider(
-                            v, { nv -> values = values + (p.name to snap(nv)) },
-                            valueRange = p.minimum..p.maximum,
-                            step = if (p.step > 0f) p.step else (p.maximum - p.minimum) / 100f,
-                            sliderModifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
-                            onValueChangeFinished = save,
-                            valueText = "%.2f".format(v),
-                            onTyped = { n -> values = values + (p.name to snap(n.toFloat().coerceIn(p.minimum, p.maximum))) },
+                    val adjustable = params.count { it.isAdjustable }
+                    MenuCycleRow("Parameters", if (values.isEmpty()) "$adjustable" else "$adjustable, ${values.size} changed") {
+                        com.armsx.flashpoint.shaders.ui.ShaderParamsEditor.open(
+                            current.path, values,
+                            onChange = { m -> values = m; sp.setOverrides(ctx, current.path, m) },
+                            onPresetSaved = { path ->
+                                val rel = runCatching { java.io.File(path).relativeTo(root).path }.getOrNull()
+                                if (rel != null && !rel.startsWith("..")) pick(rel)
+                            },
                         )
-                    }
-                    MenuCycleRow("Reset parameters", "") {
-                        // Push the author's values explicitly: a live chain keeps what it has.
-                        values = params.associate { it.name to it.initial }
-                        sp.setOverrides(ctx, current.path, values)
-                        host.shaderChanged(false)
-                        values = emptyMap(); sp.setOverrides(ctx, current.path, emptyMap())
                     }
                 }
             }

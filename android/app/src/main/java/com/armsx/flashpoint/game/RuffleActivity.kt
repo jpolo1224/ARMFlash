@@ -90,7 +90,19 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     @Suppress("unused")
     private val eventLoopHandle: Long = 0
 
+    /**
+     * The shader parameter editor's last values for a preset: every parameter, the author's
+     * defaults included, as "name value" lines. The player loop reads the parameters back some
+     * time after it is told they changed, so it gets this full set: a value put back to its
+     * default is sent too (a running chain otherwise keeps the last one it was given).
+     */
+    @Volatile private var pushedParams: Pair<String, String>? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        com.armsx.flashpoint.shaders.ShaderParams.live = { preset, names, values ->
+            pushedParams = preset to names.indices.joinToString("\n") { "${names[it]} ${values[it]}" }
+            nativeShaderChanged(false)
+        }
         // The game server must be up before super.onCreate starts the native player loop.
         com.armsx.flashpoint.core.Php.ensure(this)
         try {
@@ -184,6 +196,8 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
     }
 
     override fun onDestroy() {
+        com.armsx.flashpoint.shaders.ShaderParams.live = null
+        com.armsx.flashpoint.shaders.ui.ShaderParamsEditor.close()
         ticker.removeCallbacks(frameRateTick)
         closeCamera()
         screen?.onDestroy()
@@ -221,7 +235,7 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         // parameters, one "name value" per line.
         "shaderPreset" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())?.path.orEmpty()
         "shaderParams" -> com.armsx.flashpoint.shaders.ShaderPrefs.presetFile(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty())
-            ?.let { com.armsx.flashpoint.shaders.ShaderPrefs.paramLines(this, it.path) }.orEmpty()
+            ?.let { f -> pushedParams?.takeIf { it.first == f.path }?.second ?: com.armsx.flashpoint.shaders.ShaderPrefs.paramLines(this, f.path) }.orEmpty()
         // Shader Resolution, in percent of the window's size.
         "shaderScale" -> com.armsx.flashpoint.shaders.ShaderPrefs.scale(this, intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).toString()
         "storageDir" -> File(filesDir, "ruffle/shared_objects").apply { mkdirs() }.path

@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -327,7 +328,15 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         }
         // Top right sits under the menu button.
         OsdOverlay(host::frames, Modifier.align(osdAt).padding(top = if (OsdPrefs.corner.value == OsdPrefs.Corner.TOP_RIGHT) 56.dp else 0.dp), host::frameGenStatus)
-        if (st.menu) QuickMenu(st, host)
+        if (st.menu) {
+            // While the shader parameter editor is up, the menu steps aside so the game shows
+            // behind the editor (tuning a shader is watching it change). It stays composed, so
+            // it comes back scrolled to the Shader card as it was.
+            val editorUp = com.armsx.flashpoint.shaders.ui.ShaderParamsEditor.visible
+            Box(Modifier.fillMaxSize().then(Modifier.graphicsLayer { alpha = if (editorUp) 0f else 1f })) {
+                QuickMenu(st, host)
+            }
+        }
         WelcomeBannerOverlay(this)
         com.armsx.flashpoint.discord.FriendOnlineBanner(Modifier.align(Alignment.TopCenter))
         DataPrepBanner(host.title, Modifier.align(Alignment.BottomCenter))
@@ -353,6 +362,10 @@ fun GameOverlay(st: OverlayState, inj: GameInput, host: OverlayHost) {
         if (st.profiles) ProfilesPanel(st)
         st.padPick?.let { PadKeyPicker(st, it, host) }
         st.gesturePick?.let { GestureKeyPicker(st, it) }
+        // The Shader card's parameter editor, over everything (the pad reaches it through
+        // PadMapper.menuKey); and the name box its Save As opens.
+        com.armsx.flashpoint.shaders.ui.ShaderParamsEditorHost()
+        com.armsx.flashpoint.shaders.ui.LibraryKeyboardHost()
     }
 }
 

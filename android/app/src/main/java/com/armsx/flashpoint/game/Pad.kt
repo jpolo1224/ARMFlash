@@ -97,7 +97,11 @@ class PadMapper(
         val code = event.keyCode
         val down = event.action == KeyEvent.ACTION_DOWN
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_BUTTON_MODE) {
-            if (event.action == KeyEvent.ACTION_UP) toggleMenu()
+            if (event.action == KeyEvent.ACTION_UP) {
+                // The shader parameter editor first, then the menu.
+                val editor = com.armsx.flashpoint.shaders.ui.ShaderParamsEditor
+                if (editor.visible) { editor.back(); MenuSfx.play(MenuSfx.Event.BACK) } else toggleMenu()
+            }
             return true
         }
         if (menuOpen) return menuKey(event, code, down)
@@ -127,6 +131,22 @@ class PadMapper(
 
     private fun menuKey(event: KeyEvent, code: Int, down: Boolean): Boolean {
         if (holders.isNotEmpty()) reset()
+        val editor = com.armsx.flashpoint.shaders.ui.ShaderParamsEditor
+        if (editor.visible) {
+            // The shader parameter editor is index driven, as in ARMSX2: up and down pick a row,
+            // left and right change it (held, they repeat), A confirms, B and Start go back.
+            when (code) {
+                KeyEvent.KEYCODE_DPAD_UP -> if (down) editor.move(0, -1)
+                KeyEvent.KEYCODE_DPAD_DOWN -> if (down) editor.move(0, 1)
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (down) editor.move(-1, 0)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (down) editor.move(1, 0)
+                KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER ->
+                    if (down && event.repeatCount == 0) editor.confirm()
+                KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_START ->
+                    if (event.action == KeyEvent.ACTION_UP) { editor.back(); MenuSfx.play(MenuSfx.Event.BACK) }
+            }
+            return true
+        }
         val first = down && event.repeatCount == 0
         return when (code) {
             // Focus moves go straight to the menu (see OverlayState.menuInput); held keys repeat.
