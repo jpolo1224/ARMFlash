@@ -33,6 +33,8 @@ class GameScreen(private val act: Activity, private val overlay: OverlayState, p
     }
 
     fun onCreate() {
+        // Which phone a game's log came from (testers send these).
+        Thread { android.util.Log.i("ARMFlash", DeviceInfo.line(act)) }.start()
         handler.postDelayed(census, 5_000)
         handler.postDelayed(playtimeTick, 30_000)
         MenuSfx.load(act)

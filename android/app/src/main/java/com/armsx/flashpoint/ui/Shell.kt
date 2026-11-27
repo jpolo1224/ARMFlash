@@ -337,13 +337,15 @@ private fun QuickLink(prefix: String, link: String, onClick: () -> Unit) {
 /** Logs tab: this app's own log lines (launcher, game server, game pages). */
 @Composable
 private fun LogsPage() {
+    val ctx = LocalContext.current
     var lines by remember { mutableStateOf<List<String>>(emptyList()) }
     var tick by remember { mutableStateOf(0) }
     LaunchedEffect(tick) {
         lines = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
                 val p = ProcessBuilder("logcat", "-d", "-v", "time", "-t", "2000").redirectErrorStream(true).start()
-                p.inputStream.bufferedReader().readLines().filter { l ->
+                // The phone first, so a copied log always says where it came from.
+                listOf(com.armsx.flashpoint.game.DeviceInfo.line(ctx)) + p.inputStream.bufferedReader().readLines().filter { l ->
                     listOf("fpcore", "fpgame", "fpruffle", "ARMFlash", "AndroidRuntime", "chromium").any { it in l }
                 }.takeLast(1000)
             }.getOrDefault(listOf("Could not read logs"))
@@ -354,7 +356,6 @@ private fun LogsPage() {
             Text("Logs", color = Fp.Strong, fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.weight(1f))
             Chip("Refresh", on = false) { tick++ }
             Spacer(Modifier.width(6.dp))
-            val ctx = LocalContext.current
             Chip("Copy", on = false) {
                 val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("ARMFlash logs", lines.joinToString("\n")))
