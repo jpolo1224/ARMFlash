@@ -1670,10 +1670,10 @@ private fun ShaderCard(host: OverlayHost) {
                         MenuCycleRow(file.removeSuffix(".slangp"), "") { pick(prefix + file) }
                     }
                 }
-                if (current != null) {
-                    Spacer(Modifier.height(8.dp))
-                    ShaderScaleChoice(host)
-                }
+                // Always here, a preset on or not: it was hidden until one was picked, so it
+                // looked missing; with none on, the choice waits for the next one.
+                Spacer(Modifier.height(8.dp))
+                ShaderScaleChoice(host)
                 if (params.isNotEmpty() && current != null) {
                     Spacer(Modifier.height(8.dp))
                     Text("Parameters", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
