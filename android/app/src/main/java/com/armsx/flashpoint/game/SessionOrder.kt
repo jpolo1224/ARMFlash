@@ -11,7 +11,9 @@ import androidx.compose.ui.geometry.Rect
  * top. Holding a row, or a card's title, opens the arrange view, where rows are dragged into place;
  * with a controller, A picks the focused row up, up and down move it, and A puts it down.
  *
- * Saved as the rows' keys. A row a later version adds goes in after its default neighbour.
+ * Saved as the rows' keys. A row a later version adds goes in after its default neighbour, and a
+ * row that is not shown right now keeps its place after the row it followed, for the games that
+ * show it.
  */
 internal object SessionOrder {
     private const val PREFS = "quickmenu"
@@ -37,6 +39,9 @@ internal object SessionOrder {
     private var defaults: List<String> = emptyList()
     private var beforeLift: List<String>? = null
 
+    // Set by Reset order: the rows not shown right now give up their saved places as well.
+    private var forgetHidden = false
+
     /** Where each arrange row sits on screen, for working out where a dragged row belongs. */
     internal val rowBounds = HashMap<String, Rect>()
 
@@ -59,6 +64,7 @@ internal object SessionOrder {
         if (arranging) return
         working = merge(saved.orEmpty(), defaults)
         rowBounds.clear()
+        forgetHidden = false
         arranging = true
         lifted = null
         MenuSfx.play(MenuSfx.Event.SELECT)
@@ -70,14 +76,16 @@ internal object SessionOrder {
         lifted = null
         beforeLift = null
         arranging = false
-        val order = working + saved.orEmpty().filter { it !in working }
+        val order = if (forgetHidden) working else keepHidden(working, saved.orEmpty())
         saved = order
         prefs?.edit()?.putString(KEY, order.joinToString(","))?.apply()
     }
 
-    /** Back to the default order, still in the arrange view so it can be adjusted from there. */
+    /** Back to the default order, still in the arrange view so it can be adjusted from there. A row
+     *  not shown right now gives up its saved place too, and takes its default one when it shows. */
     fun resetOrder() {
         working = defaults
+        forgetHidden = true
         lifted = null
         beforeLift = null
         MenuSfx.play(MenuSfx.Event.SELECT)
@@ -130,6 +138,20 @@ internal object SessionOrder {
         if (to == from) return
         working = working.toMutableList().apply { add(to, removeAt(from)) }
         MenuSfx.play(MenuSfx.Event.NAV)
+    }
+
+    /** [shown] as arranged, with each key of [saved] that is not shown right now put back after the
+     *  key it followed there (the nearest one before it that is in the result), or first. Appending
+     *  them instead would move them to the bottom of the tab, below the cards, in every game that
+     *  shows them. */
+    internal fun keepHidden(shown: List<String>, saved: List<String>): List<String> {
+        val out = shown.toMutableList()
+        saved.forEachIndexed { i, key ->
+            if (key in out) return@forEachIndexed
+            val above = (i - 1 downTo 0).map { saved[it] }.firstOrNull { it in out }
+            out.add(if (above == null) 0 else out.indexOf(above) + 1, key)
+        }
+        return out
     }
 
     /** The saved keys that are in [defaults], in their saved order, with any row the saved order
