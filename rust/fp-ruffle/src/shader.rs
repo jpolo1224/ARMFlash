@@ -19,8 +19,30 @@ use ruffle_render_wgpu::backend::{create_wgpu_instance, request_adapter_and_devi
 use ruffle_render_wgpu::descriptors::Descriptors;
 use ruffle_render_wgpu::target::{RenderTarget, RenderTargetFrame};
 use ruffle_render_wgpu::utils::remove_srgb;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// wgpu errors while a preset loads. librashader builds a preset's passes on worker threads, where
+/// an error scope cannot catch them, and wgpu's own handler ends the game. A preset can need more
+/// than a driver offers (koko-aio passes 28 values between its shader stages; Adreno's own driver
+/// allows 27), so a failed preset is let go and the game plays on without it.
+static LOADING_PRESET: AtomicBool = AtomicBool::new(false);
+static PRESET_ERROR: Mutex<Option<String>> = Mutex::new(None);
+
+fn catch_preset_errors(device: &wgpu::Device) {
+    device.on_uncaptured_error(Arc::new(|e: wgpu::Error| {
+        if LOADING_PRESET.load(Ordering::SeqCst) {
+            let mut slot = PRESET_ERROR.lock().unwrap_or_else(|p| p.into_inner());
+            if slot.is_none() {
+                *slot = Some(e.to_string());
+            }
+            return;
+        }
+        // As wgpu's own handler.
+        log::error!("Handling wgpu errors as fatal by default");
+        panic!("wgpu error: {e}\n");
+    }));
+}
 
 pub struct ShaderTarget {
     /// None while the app has no window (in the background), and while frame generation owns
@@ -446,10 +468,19 @@ impl ShaderTarget {
     pub fn set_preset(&self, d: &Descriptors, path: Option<&str>) -> Result<(), String> {
         let chain = match path {
             None => None,
-            Some(p) => Some(
-                FilterChainWgpu::load_from_path(p, librashader_common::shader_features::ShaderFeatures::NONE, &d.device, &d.queue, None)
-                    .map_err(|e| format!("shader preset {p}: {e}"))?,
-            ),
+            Some(p) => {
+                catch_preset_errors(&d.device);
+                *PRESET_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                LOADING_PRESET.store(true, Ordering::SeqCst);
+                let loaded = FilterChainWgpu::load_from_path(p, librashader_common::shader_features::ShaderFeatures::NONE, &d.device, &d.queue, None);
+                LOADING_PRESET.store(false, Ordering::SeqCst);
+                let gpu_error = PRESET_ERROR.lock().unwrap_or_else(|e| e.into_inner()).take();
+                let chain = loaded.map_err(|e| format!("shader preset {p}: {e}"))?;
+                if let Some(e) = gpu_error {
+                    return Err(format!("shader preset {p} does not run on this GPU driver: {e}"));
+                }
+                Some(chain)
+            }
         };
         *self.chain.lock().unwrap() = chain;
         *self.offscreen.lock().unwrap() = None;

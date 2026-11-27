@@ -298,7 +298,10 @@ async fn run(app: AndroidApp) {
                                         log::info!("shader preset {}", settings.shader_preset);
                                         apply_shader_params(renderer.target(), &settings.shader_params);
                                     }
-                                    Err(e) => log::warn!("{e}"),
+                                    Err(e) => {
+                                        log::warn!("{e}");
+                                        let _ = with_activity(&app, |env, act| java::JavaInterface::get_string(env, act, "shaderFailed"));
+                                    }
                                 }
                             }
 
@@ -451,6 +454,7 @@ async fn run(app: AndroidApp) {
                         if full {
                             if let Err(e) = r.target().set_preset(r.descriptors(), Some(preset.as_str()).filter(|s| !s.is_empty())) {
                                 log::warn!("{e}");
+                                let _ = with_activity(&app, |env, act| java::JavaInterface::get_string(env, act, "shaderFailed"));
                             }
                         }
                         apply_shader_params(r.target(), &params);

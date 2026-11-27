@@ -256,6 +256,11 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
         "quality" -> qualityCode(LayoutStore(this).load(intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()).quality).toString()
         // The cameras webcam games can use, one name per line, front first.
         "cameras" -> cameras.joinToString("\n") { it.second }
+        // A shader preset that could not load (one needing more than this GPU driver offers).
+        "shaderFailed" -> {
+            runOnUiThread { Toast.makeText(this, "This shader could not load, so the game plays without it.", Toast.LENGTH_LONG).show() }
+            ""
+        }
         else -> null
     }
 

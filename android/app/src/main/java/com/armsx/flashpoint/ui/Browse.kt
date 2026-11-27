@@ -375,10 +375,12 @@ private fun GridHeader(text: String) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun GameCard(vm: BrowseVm, g: Game?, selected: Boolean, onClick: () -> Unit) {
     var peek by remember(g?.id) { mutableStateOf(false) }
+    var settings by remember(g?.id) { mutableStateOf(false) }
+    if (settings && g != null) GameSettingsDialog(g.id, g.title, g.primaryPlatform == "Flash") { settings = false }
     Column(
         Modifier.padFocus().clip(RoundedCornerShape(6.dp))
             .background(if (selected) Fp.CardSelected.copy(alpha = 0.25f) else Color.Transparent)
-            .combinedClickable(enabled = g != null, onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek })
+            .combinedClickable(enabled = g != null, onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek } ?: { settings = true })
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -446,6 +448,7 @@ fun GameTile(
 }
 
 /** What a long press on a card does: with Screenshot Preview on Long Press, [toggle] the screenshot. */
+/** Holding a game peeks at its screenshot when that is set in Config; otherwise it opens its settings. */
 fun peekOnLongPress(vm: BrowseVm, g: Game?, toggle: () -> Unit): (() -> Unit)? =
     if (vm.prefs2.screenshotPreviewMode.value == "1" && g != null && !com.armsx.flashpoint.data.LocalGames.isLocal(g.id)) toggle else null
 

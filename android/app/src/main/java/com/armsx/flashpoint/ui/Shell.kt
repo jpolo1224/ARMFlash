@@ -299,9 +299,11 @@ private fun GameRow(vm: BrowseVm, title: String, games: List<Game>, expanded: Bo
 @Composable
 private fun MiniCard(vm: BrowseVm, g: Game, onClick: () -> Unit) {
     var peek by remember(g.id) { mutableStateOf(false) }
+    var settings by remember(g.id) { mutableStateOf(false) }
+    if (settings) GameSettingsDialog(g.id, g.title, g.primaryPlatform == "Flash") { settings = false }
     Column(
         Modifier.width(120.dp).padFocus()
-            .combinedClickable(onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek })
+            .combinedClickable(onClick = onClick, onLongClick = peekOnLongPress(vm, g) { peek = !peek } ?: { settings = true })
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

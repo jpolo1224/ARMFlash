@@ -109,6 +109,19 @@ fun Details(vm: BrowseVm, game: Game, onPlay: (Game) -> Unit, onClose: (() -> Un
                 Text("Download without playing", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
+        // The game's own settings, reachable without starting it.
+        if (full != null) {
+            var settings by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier.fillMaxWidth().height(38.dp).padFocus(RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .background(Fp.Field).clickable { settings = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Game Settings", color = Fp.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            if (settings) GameSettingsDialog(full.id, full.title, full.primaryPlatform == "Flash") { settings = false }
+        }
         // Playlists: put the game in one of yours, or a new one.
         if (full != null && !mine) {
             var picking by remember { mutableStateOf(false) }
