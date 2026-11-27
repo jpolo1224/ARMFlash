@@ -2,6 +2,8 @@ package com.armsx.flashpoint.shaders.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,6 +28,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.armsx.flashpoint.ui.padFocus
 
@@ -59,6 +63,8 @@ private val STRINGS = mapOf(
     "renderer.shaderChain.passesUnknown" to "cost unknown",
     "renderer.shaderChain.preset.label" to "Shader Preset",
     "renderer.shaderChain.preset.none" to "None",
+    "renderer.shaderChain.scale.label" to "Shader Resolution",
+    "renderer.shaderChain.scale.description" to "Runs the shader at a lower resolution, then scales its picture up to the screen. Lower is much faster with heavy presets and looks a little softer.",
     "renderer.shaderChain.scanning" to "Scanning for presets…",
 )
 
@@ -116,6 +122,43 @@ fun ToggleRow(
             }
             Spacer(Modifier.width(10.dp))
             Switch(checked = value, onCheckedChange = null)
+        }
+    }
+}
+
+/** ARMSX2's chooser row: the label, then one chip per option, each a stop for the pad. */
+@Composable
+fun SegmentedRow(
+    label: String,
+    options: List<String>,
+    selectedIndex: Int,
+    description: String? = null,
+    @Suppress("UNUSED_PARAMETER") field: String? = null,
+    onChange: (Int) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        if (description != null) Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEachIndexed { i, option ->
+                val on = i == selectedIndex
+                Surface(
+                    onClick = { onChange(i) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (on) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f) else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.38f)),
+                    modifier = Modifier.padFocus(RoundedCornerShape(12.dp)),
+                ) {
+                    Text(
+                        option,
+                        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
+                    )
+                }
+            }
         }
     }
 }

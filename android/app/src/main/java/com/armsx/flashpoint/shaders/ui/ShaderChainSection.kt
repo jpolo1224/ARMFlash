@@ -136,6 +136,8 @@ fun ShaderChainSection(
     onEnabledChange: (Boolean) -> Unit,
     onPresetChange: (String) -> Unit,
     onParamsChange: (Map<String, Map<String, Float>>) -> Unit,
+    scale: Int,
+    onScaleChange: (Int) -> Unit,
 ) {
     ToggleRow(
         str("renderer.shaderChain.label"),
@@ -155,9 +157,32 @@ fun ShaderChainSection(
         // section would be a row that opens onto an empty list.
         if (preset.isNotBlank()) {
             SettingsDivider()
+            ShaderScaleRow(scale, onScaleChange)
+            SettingsDivider()
             ShaderParamPicker(preset, params, onParamsChange, onPresetChange)
         }
     }
+}
+
+/**
+ * The share of full size the chain runs at, the game's picture going in and the chain's coming
+ * out, before it is scaled up to the screen (ShaderPrefs.SCALES).
+ */
+@Composable
+private fun ShaderScaleRow(scale: Int, onScaleChange: (Int) -> Unit) {
+    val change = androidx.compose.runtime.rememberUpdatedState(onScaleChange)
+    val scales = com.armsx.flashpoint.shaders.ShaderPrefs.SCALES
+    // Any other value shows as the nearest choice at or below it.
+    val index = scales.indexOf(scale).takeIf { it >= 0 }
+        ?: scales.indexOfFirst { it <= scale }.takeIf { it >= 0 }
+        ?: scales.lastIndex
+    SegmentedRow(
+        label = str("renderer.shaderChain.scale.label"),
+        options = scales.map { "$it%" },
+        selectedIndex = index,
+        description = str("renderer.shaderChain.scale.description"),
+        field = "shaderChainScale",
+    ) { i -> change.value(scales[i]) }
 }
 
 /**

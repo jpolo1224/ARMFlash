@@ -14,6 +14,23 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.toSize
+import com.armsx.flashpoint.ui.ArrowSlider
+import com.armsx.flashpoint.ui.swipeBetweenTabs
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.focusable
@@ -146,16 +163,43 @@ fun QuickMenu(st: OverlayState, host: OverlayHost) {
             shown = false
             scope.launch { delay(220); st.menu = false }
         }
-        androidx.activity.compose.BackHandler(onBack = close)
+        SessionOrder.init(androidx.compose.ui.platform.LocalContext.current)
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { SessionOrder.finishArranging() } }
+        // The menu set aside, the game still paused: to read what is on screen behind the panel. The
+        // rail stays (wide layout) and a Show menu pill brings the panel back, as do tapping the
+        // game, a rail tab, B, or A on the pill.
+        var peeking by remember { mutableStateOf(false) }
+        val showMenu = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(peeking) { if (peeking) { delay(120); runCatching { showMenu.requestFocus() } } }
+        androidx.activity.compose.BackHandler(onBack = {
+            when {
+                peeking -> peeking = false
+                // In the arrange view, B puts a picked-up row back, and otherwise leaves the view.
+                SessionOrder.arranging -> if (SessionOrder.lifted != null) SessionOrder.putBack() else SessionOrder.finishArranging()
+                else -> close()
+            }
+        })
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val compact = maxWidth < 700.dp
-            AnimatedVisibility(shown, enter = fadeIn(tween(190, easing = EaseOut)), exit = fadeOut(tween(190, easing = EaseIn))) {
+            AnimatedVisibility(shown && !peeking, enter = fadeIn(tween(190, easing = EaseOut)), exit = fadeOut(tween(190, easing = EaseIn))) {
                 // A tap outside closes the menu; the scrim is never a focus stop for the pad.
                 Box(
                     Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f))
                         .focusProperties { canFocus = false }
                         .clickable(onClick = close),
+                )
+            }
+            // Peeking: the game is all there is to see, and touching it brings the menu back rather
+            // than closing it.
+            if (peeking) {
+                Box(
+                    Modifier.fillMaxSize()
+                        .focusProperties { canFocus = false }
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { peeking = false },
                 )
             }
             val slideFrom: (Int) -> Int = if (left) { w -> -w } else { w -> w }
@@ -166,14 +210,14 @@ fun QuickMenu(st: OverlayState, host: OverlayHost) {
                 modifier = Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd),
             ) {
                 if (compact) {
-                    Surface(
+                    if (!peeking) Surface(
                         modifier = Modifier.fillMaxHeight().fillMaxWidth(0.96f)
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
                         shape = if (left) RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp) else RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
                         color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                         shadowElevation = 22.dp,
-                    ) { MenuPage(st, host, compact = true, left = left, onLeft = { left = it; host.menuLeft = it }, close = close) }
+                    ) { MenuPage(st, host, compact = true, left = left, onLeft = { left = it; host.menuLeft = it }, close = close, onPeek = { peeking = true }) }
                 } else {
                     Row(
                         Modifier.fillMaxHeight().fillMaxWidth(0.64f).widthIn(max = 900.dp)
@@ -181,15 +225,44 @@ fun QuickMenu(st: OverlayState, host: OverlayHost) {
                             .padding(top = 14.dp, start = if (left) 12.dp else 0.dp, end = if (left) 0.dp else 12.dp, bottom = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        if (left) Rail(st)
-                        Surface(
+                        if (left) Rail(st) { peeking = false }
+                        if (peeking) {
+                            Spacer(Modifier.weight(1f))
+                        } else Surface(
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(28.dp),
                             color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                             shadowElevation = 22.dp,
-                        ) { MenuPage(st, host, compact = false, left = left, onLeft = { left = it; host.menuLeft = it }, close = close) }
-                        if (!left) Rail(st)
+                        ) { MenuPage(st, host, compact = false, left = left, onLeft = { left = it; host.menuLeft = it }, close = close, onPeek = { peeking = true }) }
+                        if (!left) Rail(st) { peeking = false }
+                    }
+                }
+            }
+            // Show menu, while peeking: at the top on the menu's side, clear of the rail in the wide
+            // layout; the one control the pad has while the panel is away.
+            AnimatedVisibility(
+                shown && peeking,
+                enter = fadeIn(tween(160, easing = EaseOut)),
+                exit = fadeOut(tween(120, easing = EaseIn)),
+                modifier = Modifier.align(if (left) Alignment.TopStart else Alignment.TopEnd),
+            ) {
+                val inset = if (compact) 12.dp else 12.dp + 76.dp + 10.dp
+                Surface(
+                    onClick = { peeking = false },
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = 14.dp, start = if (left) inset else 0.dp, end = if (left) 0.dp else inset)
+                        .focusRequester(showMenu)
+                        .menuFocus(RoundedCornerShape(16.dp)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    shadowElevation = 12.dp,
+                ) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("☰", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("Show menu", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -198,18 +271,18 @@ fun QuickMenu(st: OverlayState, host: OverlayHost) {
 }
 
 @Composable
-private fun Rail(st: OverlayState) {
+private fun Rail(st: OverlayState, onPick: () -> Unit = {}) {
     Surface(
         modifier = Modifier.width(76.dp).fillMaxHeight(),
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
         shadowElevation = 18.dp,
-    ) { MenuRail(st.tab) { st.tab = it } }
+    ) { MenuRail(st.tab) { onPick(); st.tab = it } }
 }
 
 @Composable
-private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit) {
+private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit, onPeek: () -> Unit) {
     // With a pad, focus lands on the pane's first control when the menu opens or the tab changes.
     val first = remember { androidx.compose.ui.focus.FocusRequester() }
     val view = androidx.compose.ui.platform.LocalView.current
@@ -220,7 +293,10 @@ private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left
     LaunchedEffect(Unit) {
         for (input in st.menuInput) {
             when (input) {
-                is MenuInput.Move -> if (!focusManager.moveFocus(input.dir)) {
+                // A row picked up in the first tab's arrange view: up and down carry it.
+                is MenuInput.Move -> if (SessionOrder.lifted != null && (input.dir == FocusDirection.Up || input.dir == FocusDirection.Down)) {
+                    SessionOrder.step(if (input.dir == FocusDirection.Up) -1 else 1)
+                } else if (!focusManager.moveFocus(input.dir)) {
                     view.requestFocus()
                     runCatching { (st.menuMemory.restore(st.tab) ?: first).requestFocus() }
                 }
@@ -249,24 +325,32 @@ private fun MenuPage(st: OverlayState, host: OverlayHost, compact: Boolean, left
             if (runCatching { target.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
         }
     }
+    // The arrange view belongs to the first tab; leaving the tab closes it, keeping the order.
+    LaunchedEffect(st.tab) { if (st.tab != MenuTab.SESSION) SessionOrder.finishArranging() }
     androidx.compose.runtime.CompositionLocalProvider(LocalFirstFocus provides first, LocalMenuMemory provides st.menuMemory) {
-        MenuPageBody(st, host, compact, left, onLeft, close)
+        MenuPageBody(st, host, compact, left, onLeft, close, onPeek)
     }
 }
 
 @Composable
-private fun MenuPageBody(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit) {
+private fun MenuPageBody(st: OverlayState, host: OverlayHost, compact: Boolean, left: Boolean, onLeft: (Boolean) -> Unit, close: () -> Unit, onPeek: () -> Unit) {
     val scroll = st.menuMemory.scroll.getOrPut(st.tab) { androidx.compose.foundation.ScrollState(0) }
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 18.dp)) {
+    Column(
+        Modifier.fillMaxSize()
+            .onGloballyPositioned { SessionOrder.viewport = it.boundsInRoot() }
+            // Swipe sideways for the next or previous tab, as well as tapping the rail.
+            .swipeBetweenTabs { d -> val tabs = menuTabs(); st.tab = tabs[((tabs.indexOf(st.tab) + d) % tabs.size + tabs.size) % tabs.size] }
+            .verticalScroll(scroll).padding(bottom = 18.dp),
+    ) {
         if (compact) CompactMenuTabs(st.tab) { st.tab = it }
-        MenuHeader(host, compact)
+        MenuHeader(host, compact, onPeek)
         HorizontalDivider(Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f))
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             when (st.tab) {
-                MenuTab.SESSION -> SessionPane(st, host, close)
+                MenuTab.SESSION -> androidx.compose.runtime.CompositionLocalProvider(LocalMenuScroll provides scroll) { SessionPane(st, host, close) }
                 MenuTab.DISPLAY -> DisplayPane(st, host)
                 MenuTab.CONTROLS -> ControlsPane(st, host)
                 MenuTab.OPTIONS -> OptionsPane(host, left, onLeft)
@@ -342,7 +426,7 @@ private fun MenuTabChip(tab: MenuTab, active: Boolean, onSelect: (MenuTab) -> Un
 }
 
 @Composable
-private fun MenuHeader(host: OverlayHost, compact: Boolean) {
+private fun MenuHeader(host: OverlayHost, compact: Boolean, onPeek: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = if (compact) 12.dp else 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -365,6 +449,18 @@ private fun MenuHeader(host: OverlayHost, compact: Boolean) {
             Text(host.runner, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         StatusClock()
+        // Hide the menu to see the game behind it, still paused, for text that leaves the screen too
+        // quickly to read any other way.
+        Spacer(Modifier.width(10.dp))
+        Surface(
+            onClick = onPeek,
+            modifier = Modifier.menuFocus(RoundedCornerShape(14.dp)).semantics { contentDescription = "Hide menu" },
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        ) {
+            Box(Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) { Text("👁", fontSize = 19.sp) }
+        }
     }
 }
 
@@ -386,26 +482,84 @@ private fun StatusClock() {
 
 // ---- panes ---------------------------------------------------------------------------------
 
-private data class MenuAction(val title: String, val detail: String, val glyph: String, val accent: Color?, val action: () -> Unit)
+// [key]: stable across orderings; the saved order of the first tab uses it.
+private data class MenuAction(val title: String, val detail: String, val glyph: String, val accent: Color?, val key: String = title, val action: () -> Unit)
+
+private const val ROW_TAP_REVEAL = "row.tapReveal"
+private const val CARD_OSD = "card.osd"
+
+/** The tab's scroll, for a dragged row taken near the edge of the arrange view. */
+private val LocalMenuScroll = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.foundation.ScrollState?> { null }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) {
-    ActionGrid(
-        listOf(
-            MenuAction("Resume", "Back to the game", "▶", Success, close),
-            MenuAction("Restart", "Start the game over", "↻", null) { st.menu = false; host.restart() },
-            MenuAction("Keyboard", "Type into the game", "⌨", null) { st.menu = false; host.keyboard() },
-            MenuAction("Edit touch layout", "Move, resize, add or remove keys", "✎", null) {
-                st.menu = false; st.editing = true; st.selected = null
-            },
-            MenuAction("Close", host.title, "■", Danger) { host.exit() },
-        ),
+    val actions = listOf(
+        MenuAction("Resume", "Back to the game", "▶", Success, key = "resume", action = close),
+        MenuAction("Restart", "Start the game over", "↻", null, key = "restart") { st.menu = false; host.restart() },
+        MenuAction("Keyboard", "Type into the game", "⌨", null, key = "keyboard") { st.menu = false; host.keyboard() },
+        MenuAction("Edit touch layout", "Move, resize, add or remove keys", "✎", null, key = "editTouch") {
+            st.menu = false; st.editing = true; st.selected = null
+        },
+        MenuAction("Close", host.title, "■", Danger, key = "close") { host.exit() },
     )
-    MenuSwitchRow("Menu button: tap to reveal", st.layout.pauseTapToReveal) {
-        st.layout = st.layout.copy(pauseTapToReveal = it); host.save(false)
+    val order = SessionOrder.ordered(actions.map { it.key } + listOf(ROW_TAP_REVEAL, CARD_OSD))
+    // Back from the arrange view with the pad: on the tab's first control.
+    val first = LocalFirstFocus.current
+    val arranging = SessionOrder.arranging
+    var seenArranging by remember { mutableStateOf(false) }
+    LaunchedEffect(arranging) {
+        if (arranging) seenArranging = true
+        else if (seenArranging && com.armsx.flashpoint.ui.PadInput.active.value) { delay(120); runCatching { first?.requestFocus() } }
     }
-    SectionCard("Performance overlay") {
+    if (arranging) {
+        val labels = actions.associate { it.key to (it.glyph to it.title) } +
+            mapOf(ROW_TAP_REVEAL to ("☝" to "Menu button: tap to reveal"), CARD_OSD to ("▣" to "Performance overlay"))
+        SessionArrangeView(order, labels)
+    } else {
+        // Runs of actions stay one tight list; the other rows sit between the runs, wherever the
+        // player has put them.
+        val byKey = actions.associateBy { it.key }
+        val segments = buildList<Any> {
+            var run = mutableListOf<MenuAction>()
+            order.forEach { key ->
+                val action = byKey[key]
+                if (action != null) {
+                    run.add(action)
+                } else {
+                    if (run.isNotEmpty()) { add(run); run = mutableListOf() }
+                    add(key)
+                }
+            }
+            if (run.isNotEmpty()) add(run)
+        }
+        var firstRun = true
+        segments.forEach { segment ->
+            if (segment is List<*>) {
+                @Suppress("UNCHECKED_CAST")
+                val run = segment as List<MenuAction>
+                val takesFirst = firstRun
+                firstRun = false
+                androidx.compose.runtime.key("run:${run.first().key}") { ActionGrid(run, takesFirstFocus = takesFirst) }
+            } else {
+                androidx.compose.runtime.key(segment) {
+                    when (segment) {
+                        ROW_TAP_REVEAL -> MenuSwitchRow("Menu button: tap to reveal", st.layout.pauseTapToReveal, onLongPress = { SessionOrder.startArranging() }) {
+                            st.layout = st.layout.copy(pauseTapToReveal = it); host.save(false)
+                        }
+                        CARD_OSD -> OsdCard()
+                    }
+                }
+            }
+        }
+        ArrangeEntry()
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OsdCard() {
+    SectionCard("Performance overlay", onTitleLongPress = { SessionOrder.startArranging() }) {
         // ARMSX2's overlay rows: the mode (Full / Minimal / Custom / Off), its colour and its corner.
         MenuCycleRow("Overlay", OsdPrefs.mode.value.label) { OsdPrefs.cycleMode() }
         if (OsdPrefs.mode.value == OsdPrefs.Mode.CUSTOM) {
@@ -419,6 +573,167 @@ private fun SessionPane(st: OverlayState, host: OverlayHost, close: () -> Unit) 
             MenuCycleRow("Overlay colour", OsdPrefs.Colors[OsdPrefs.color.value].first) { OsdPrefs.cycleColor() }
             Spacer(Modifier.height(6.dp))
             MenuCycleRow("Overlay position", OsdPrefs.corner.value.label) { OsdPrefs.cycleCorner() }
+        }
+    }
+}
+
+/** The controller's way into the arrange view: holding a row is touch only. */
+@Composable
+private fun ArrangeEntry() {
+    Surface(
+        onClick = { SessionOrder.startArranging() },
+        modifier = Modifier.fillMaxWidth().menuFocus(RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.42f)),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("⇅", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text("Rearrange this tab", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/** The first tab as a plain list of its rows, for putting them in order: drag a row (hold it, or
+ *  grab its handle), or with a controller pick one up with A, move it and put it down with A. B
+ *  puts a picked-up row back, and otherwise closes the view, keeping the order. */
+@Composable
+private fun SessionArrangeView(order: List<String>, labels: Map<String, Pair<String, String>>) {
+    val first = LocalFirstFocus.current
+    // Opened with the pad from the button this view replaces: focus goes to the first row.
+    LaunchedEffect(Unit) {
+        if (com.armsx.flashpoint.ui.PadInput.active.value) { delay(120); runCatching { first?.requestFocus() } }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Rearrange this tab", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Hint("Drag a row by its ≡ handle, or hold it and move it. With a controller, A picks a row up, up and down move it, and A puts it down.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ArrangeButton("✓", "Done", Modifier.weight(1f)) { SessionOrder.finishArranging() }
+            ArrangeButton("↺", "Reset order", Modifier.weight(1f)) { SessionOrder.resetOrder() }
+        }
+        order.forEachIndexed { i, key ->
+            androidx.compose.runtime.key(key) {
+                val (glyph, title) = labels[key] ?: ("•" to key)
+                ArrangeRow(key, glyph, title, if (i == 0) first else null)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArrangeButton(glyph: String, title: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.menuFocus(RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.42f)),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(glyph, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+private fun ArrangeRow(key: String, glyph: String, title: String, focus: androidx.compose.ui.focus.FocusRequester?) {
+    val lifted = SessionOrder.lifted == key
+    val scroll = LocalMenuScroll.current
+    val scope = rememberCoroutineScope()
+    val bring = remember { BringIntoViewRequester() }
+    // A row moved with the controller stays in sight as it goes past the fold. Not a dragged one:
+    // scrolling the list under the finger would move the row again, and again.
+    val index = SessionOrder.indexOf(key)
+    LaunchedEffect(lifted, index) { if (lifted && SessionOrder.movedByPad) runCatching { bring.bringIntoView() } }
+
+    // The row's top in root coordinates, unclipped: boundsInRoot is cut to the visible part of the
+    // list, so a row partly scrolled out would report the wrong top and a drag on it would jump.
+    val rowTop = remember { FloatArray(1) }
+    val drag = Modifier.pointerInput(key) {
+        val handleWidth = 52.dp.toPx()
+        val edge = 44.dp.toPx()
+        val stepPx = 7.dp.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            // One gesture per touch. On the handle the row moves as soon as it is dragged; on the rest
+            // of the row only after a hold, so a plain drag there still scrolls the list.
+            val start = (
+                if (down.position.x >= size.width - handleWidth) {
+                    awaitTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
+                } else {
+                    awaitLongPressOrCancellation(down.id)
+                }
+                ) ?: return@awaitEachGesture
+            var fingerY = rowTop[0] + start.position.y
+            fun place() {
+                val others = SessionOrder.arrangedKeys().filter { it != key }
+                val target = others.count { k -> (SessionOrder.rowBounds[k]?.center?.y ?: Float.MAX_VALUE) < fingerY }
+                SessionOrder.moveTo(key, target)
+            }
+            SessionOrder.lift(key)
+            // Near the top or bottom of the visible part of the tab, scroll it, so a row can be taken
+            // past the fold.
+            val edgeScroll = scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                while (true) {
+                    val view = SessionOrder.viewport
+                    if (scroll != null && view != null) {
+                        val step = when {
+                            fingerY < view.top + edge -> -stepPx
+                            fingerY > view.bottom - edge -> stepPx
+                            else -> 0f
+                        }
+                        if (step != 0f && scroll.dispatchRawDelta(step) != 0f) place()
+                    }
+                    delay(16)
+                }
+            }
+            try {
+                place()
+                drag(start.id) { change ->
+                    change.consume()
+                    fingerY = rowTop[0] + change.position.y
+                    place()
+                }
+            } finally {
+                edgeScroll.cancel()
+                SessionOrder.drop()
+            }
+        }
+    }
+    Surface(
+        // A with the pad picks the row up or puts it down. A tap does nothing; a drag moves it.
+        onClick = {
+            if (com.armsx.flashpoint.ui.PadInput.active.value) {
+                if (SessionOrder.lifted == key) SessionOrder.drop() else SessionOrder.lift(key)
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .bringIntoViewRequester(bring)
+            .onGloballyPositioned {
+                val p = it.positionInRoot()
+                rowTop[0] = p.y
+                SessionOrder.rowBounds[key] = androidx.compose.ui.geometry.Rect(p, it.size.toSize())
+            }
+            .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+            .menuFocus(RoundedCornerShape(16.dp))
+            .then(drag),
+        shape = RoundedCornerShape(16.dp),
+        color = if (lifted) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(
+            if (lifted) 2.dp else 1.dp,
+            if (lifted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.34f),
+        ),
+        shadowElevation = if (lifted) 10.dp else 0.dp,
+    ) {
+        Row(Modifier.padding(horizontal = 13.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(glyph, color = MaterialTheme.colorScheme.primary, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(30.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            // The handle: the row's drag above treats a touch on this end as a grab at once.
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                Text("≡", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -707,11 +1022,13 @@ private fun ControlsPane(st: OverlayState, host: OverlayHost) {
         }
         Spacer(Modifier.height(6.dp))
         var op by remember { mutableFloatStateOf(st.layout.opacity) }
-        Text("Opacity  ${(op * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        Slider(
-            op, { op = it; st.layout = st.layout.copy(opacity = it) }, valueRange = 0.15f..1f,
+        Text("Opacity", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        ArrowSlider(
+            op, { op = it; st.layout = st.layout.copy(opacity = it) }, valueRange = 0.15f..1f, step = 0.05f,
+            sliderModifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
             onValueChangeFinished = { host.save(false) },
-            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+            valueText = "${(op * 100).toInt()}%",
+            onTyped = { n -> op = (n / 100.0).toFloat().coerceIn(0.15f, 1f); st.layout = st.layout.copy(opacity = op) },
         )
         Spacer(Modifier.height(2.dp))
         MenuCycleRow("Edit layout", "Open") { st.menu = false; st.editing = true; st.selected = null }
@@ -853,11 +1170,12 @@ private fun OptionsPane(host: OverlayHost, left: Boolean, onLeft: (Boolean) -> U
     ) { v -> act?.let { GamePrefs.setOrientation(it, v) } }
     if (host.hasVolume) SectionCard("Game volume") {
         var v by remember { mutableFloatStateOf(GamePrefs.volume.floatValue) }
-        Text("${(v * 100).toInt()}%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-        Slider(
-            v, { v = it; host.setVolume(it) }, valueRange = 0f..1f,
+        ArrowSlider(
+            v, { v = it; host.setVolume(it) }, valueRange = 0f..1f, step = 0.05f,
+            sliderModifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
             onValueChangeFinished = { GamePrefs.setVolume(v) },
-            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+            valueText = "${(v * 100).toInt()}%",
+            onTyped = { n -> v = (n / 100.0).toFloat().coerceIn(0f, 1f); host.setVolume(v) },
         )
     }
     HorizontalOptions("Menu side", listOf(false to "Right", true to "Left"), left, onSelect = onLeft)
@@ -982,15 +1300,20 @@ internal val LocalMenuMemory = androidx.compose.runtime.staticCompositionLocalOf
 internal val LocalFirstFocus = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.ui.focus.FocusRequester?> { null }
 
 @Composable
-private fun ActionGrid(actions: List<MenuAction>) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun ActionGrid(actions: List<MenuAction>, takesFirstFocus: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val first = LocalFirstFocus.current
-        actions.forEachIndexed { i, item ->
+        actions.forEachIndexed { i, item -> androidx.compose.runtime.key(item.key) {
             Surface(
-                onClick = { MenuSfx.play(MenuSfx.Event.SELECT); item.action() },
                 modifier = Modifier.fillMaxWidth()
-                    .then(if (i == 0 && first != null) Modifier.focusRequester(first) else Modifier)
-                    .menuFocus(RoundedCornerShape(16.dp)),
+                    .then(if (i == 0 && takesFirstFocus && first != null) Modifier.focusRequester(first) else Modifier)
+                    .menuFocus(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .combinedClickable(
+                        onClick = { MenuSfx.play(MenuSfx.Event.SELECT); item.action() },
+                        onLongClick = { SessionOrder.startArranging() },
+                    ),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
@@ -1005,7 +1328,7 @@ private fun ActionGrid(actions: List<MenuAction>) {
                     }
                 }
             }
-        }
+        } }
     }
 }
 
@@ -1018,16 +1341,24 @@ internal fun Hint(text: String) {
 /** A percent setting: its name and value over a slider; saved when the slider is let go of. */
 @Composable
 private fun PercentSlider(title: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
-    Text("$title  $value%", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-    Slider(
-        value.toFloat(), { onChange(it.roundToInt()) }, valueRange = range.first.toFloat()..range.last.toFloat(),
+    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+    ArrowSlider(
+        value.toFloat(), { onChange(it.roundToInt()) }, valueRange = range.first.toFloat()..range.last.toFloat(), step = 1f,
+        sliderModifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
         onValueChangeFinished = { TouchPrefs.save() },
-        modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+        valueText = "$value%",
+        onTyped = { n -> onChange(n.roundToInt().coerceIn(range.first, range.last)) },
     )
 }
 
 @Composable
-internal fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun SectionCard(
+    title: String,
+    // Holding the title, where the card can be moved (the first tab's cards).
+    onTitleLongPress: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val latestLongPress by androidx.compose.runtime.rememberUpdatedState(onTitleLongPress)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(17.dp),
@@ -1035,7 +1366,11 @@ internal fun SectionCard(title: String, content: @Composable ColumnScope.() -> U
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
     ) {
         Column(Modifier.padding(13.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
+                modifier = if (onTitleLongPress == null) Modifier
+                else Modifier.fillMaxWidth().pointerInput(Unit) { detectTapGestures(onLongPress = { latestLongPress?.invoke() }) },
+            )
             Spacer(Modifier.height(8.dp))
             content()
         }
@@ -1082,13 +1417,18 @@ internal fun OptionChip(label: String, selected: Boolean, dot: Color? = null, on
 }
 
 @Composable
-internal fun MenuSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+internal fun MenuSwitchRow(title: String, checked: Boolean, onLongPress: (() -> Unit)? = null, onCheckedChange: (Boolean) -> Unit) {
     Surface(
-        onClick = {
-            MenuSfx.play(if (checked) MenuSfx.Event.TOGGLE_OFF else MenuSfx.Event.TOGGLE_ON)
-            onCheckedChange(!checked)
-        },
-        modifier = Modifier.fillMaxWidth().menuFocus(RoundedCornerShape(16.dp)),
+        modifier = Modifier.fillMaxWidth().menuFocus(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = {
+                    MenuSfx.play(if (checked) MenuSfx.Event.TOGGLE_OFF else MenuSfx.Event.TOGGLE_ON)
+                    onCheckedChange(!checked)
+                },
+                onLongClick = onLongPress,
+            ),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
@@ -1209,6 +1549,34 @@ private fun KeySheet(title: String, current: Int?, dismiss: () -> Unit, pick: (I
 
 
 /**
+ * Shader Resolution for this game, or Config's (ShaderPrefs.scale). Changes the running chain at
+ * once, as it reads the value each frame.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShaderScaleChoice(host: OverlayHost) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sp = com.armsx.flashpoint.shaders.ShaderPrefs
+    var own by remember { mutableStateOf(sp.gameScale(ctx, host.gameId)) }
+    val config = remember { sp.globalScale(ctx) }
+    fun pick(percent: Int) {
+        own = percent
+        sp.setGameScale(ctx, host.gameId, percent)
+        host.shaderChanged(false)
+    }
+    Text("Shader Resolution", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+    Text(
+        "Runs the shader at a lower resolution, then scales its picture up to the screen. Lower is much faster with heavy presets and looks a little softer.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OptionChip("Same as Config ($config%)", own !in 25..100) { pick(0) }
+        sp.SCALES.forEach { s -> OptionChip("$s%", own == s) { pick(s) } }
+    }
+}
+
+/**
  * RetroArch shaders for native Flash (librashader): get RetroArch's shader pack, pick a preset
  * for this game by folder, and change its parameters while the game runs. The pack, index and
  * parameter reading are ARMSX2's (ShaderRepo, ShaderIndex, ShaderParams).
@@ -1302,6 +1670,10 @@ private fun ShaderCard(host: OverlayHost) {
                         MenuCycleRow(file.removeSuffix(".slangp"), "") { pick(prefix + file) }
                     }
                 }
+                if (current != null) {
+                    Spacer(Modifier.height(8.dp))
+                    ShaderScaleChoice(host)
+                }
                 if (params.isNotEmpty() && current != null) {
                     Spacer(Modifier.height(8.dp))
                     Text("Parameters", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
@@ -1312,18 +1684,20 @@ private fun ShaderCard(host: OverlayHost) {
                             return@forEach
                         }
                         val v = values[p.name] ?: p.initial
-                        Text("${p.description}: ${"%.2f".format(v)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-                        Slider(
-                            v, { nv ->
-                                val stepped = if (p.step > 0f) (Math.round((nv - p.minimum) / p.step) * p.step + p.minimum) else nv
-                                values = values + (p.name to stepped)
-                            },
+                        Text(p.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                        val snap: (Float) -> Float = { nv -> if (p.step > 0f) (Math.round((nv - p.minimum) / p.step) * p.step + p.minimum) else nv }
+                        val save = {
+                            sp.setOverrides(ctx, current.path, values)
+                            host.shaderChanged(false)
+                        }
+                        ArrowSlider(
+                            v, { nv -> values = values + (p.name to snap(nv)) },
                             valueRange = p.minimum..p.maximum,
-                            onValueChangeFinished = {
-                                sp.setOverrides(ctx, current.path, values)
-                                host.shaderChanged(false)
-                            },
-                            modifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+                            step = if (p.step > 0f) p.step else (p.maximum - p.minimum) / 100f,
+                            sliderModifier = Modifier.sliderPadKeys().menuFocus(RoundedCornerShape(12.dp)),
+                            onValueChangeFinished = save,
+                            valueText = "%.2f".format(v),
+                            onTyped = { n -> values = values + (p.name to snap(n.toFloat().coerceIn(p.minimum, p.maximum))) },
                         )
                     }
                     MenuCycleRow("Reset parameters", "") {

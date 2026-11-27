@@ -147,6 +147,8 @@ async fn run(app: AndroidApp) {
         sdk: u32,
         shader_preset: String,
         shader_params: String,
+        /// Shader Resolution, in percent of the window's size.
+        shader_scale: u32,
         /// The device cameras for webcam games, one name per line (front first).
         cameras: String,
         /// Frame generation's settings (framegen::Settings), and the screen's refresh rate.
@@ -168,6 +170,7 @@ async fn run(app: AndroidApp) {
                 sdk: JavaInterface::get_string(env, &activity, "sdk").parse().unwrap_or(30),
                 shader_preset: JavaInterface::get_string(env, &activity, "shaderPreset"),
                 shader_params: JavaInterface::get_string(env, &activity, "shaderParams"),
+                shader_scale: JavaInterface::get_string(env, &activity, "shaderScale").parse().unwrap_or(100),
                 frame_gen: JavaInterface::get_string(env, &activity, "frameGen"),
             };
             let _ = unsafe { env.set_rust_field(&*activity, jni_str!("eventLoopHandle"), sender.clone()) };
@@ -286,7 +289,9 @@ async fn run(app: AndroidApp) {
                             let fg_features = framegen::device_made();
                             renderer.target().frame_gen_attach(renderer.descriptors(), fg_features);
                             renderer.target().update_frame_gen(renderer.descriptors(), Some(window), Some(fg_settings));
-                            // A RetroArch shader preset, when one is chosen.
+                            // A RetroArch shader preset, when one is chosen. The scale is set
+                            // either way, for a preset the pause menu picks later.
+                            renderer.target().set_scale(settings.shader_scale);
                             if !settings.shader_preset.is_empty() {
                                 match renderer.target().set_preset(renderer.descriptors(), Some(&settings.shader_preset)) {
                                     Ok(()) => {
@@ -430,12 +435,19 @@ async fn run(app: AndroidApp) {
                     needs_redraw = true;
                 }
                 RuffleEvent::ShaderChanged { full } => {
-                    let (preset, params) = with_activity(&app, |env, act| {
-                        (java::JavaInterface::get_string(env, act, "shaderPreset"), java::JavaInterface::get_string(env, act, "shaderParams"))
+                    let (preset, params, scale) = with_activity(&app, |env, act| {
+                        (
+                            java::JavaInterface::get_string(env, act, "shaderPreset"),
+                            java::JavaInterface::get_string(env, act, "shaderParams"),
+                            java::JavaInterface::get_string(env, act, "shaderScale"),
+                        )
                     })
                     .unwrap_or_default();
                     let mut p = player.player.lock().unwrap();
                     if let Some(r) = <dyn Any>::downcast_mut::<WgpuRenderBackend<ShaderTarget>>(p.renderer_mut()) {
+                        if let Ok(percent) = scale.parse() {
+                            r.target().set_scale(percent);
+                        }
                         if full {
                             if let Err(e) = r.target().set_preset(r.descriptors(), Some(preset.as_str()).filter(|s| !s.is_empty())) {
                                 log::warn!("{e}");
@@ -783,7 +795,8 @@ fn apply_shader_params(target: &ShaderTarget, params: &str) {
     }
 }
 
-/// The pause menu or Config changed the shader: reload the preset (`full`) or its parameters.
+/// The pause menu or Config changed the shader: reload the preset (`full`) or its parameters and
+/// Shader Resolution.
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_armsx_flashpoint_game_RuffleActivity_nativeShaderChanged<'local>(
     mut env: EnvUnowned<'local>,
