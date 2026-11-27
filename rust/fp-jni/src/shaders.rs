@@ -22,7 +22,10 @@ pub fn preset_params(path: &str) -> Result<String, String> {
                 continue;
             }
             let p = &src.parameters[name];
-            let initial = preset.parameters.iter().find(|m| m.name.as_str() == name).map(|m| m.value).unwrap_or(p.initial);
+            // A preset built on others (#reference) lists each file's value, the base's first:
+            // the last one is what the chain runs with. (The first gave koko-aio's base values,
+            // its bezel off among them, to every parameter the editor pushed.)
+            let initial = preset.parameters.iter().rev().find(|m| m.name.as_str() == name).map(|m| m.value).unwrap_or(p.initial);
             out.push(serde_json::json!({
                 "name": name, "description": p.description, "initial": initial,
                 "minimum": p.minimum, "maximum": p.maximum, "step": p.step,
