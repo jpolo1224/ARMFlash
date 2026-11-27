@@ -818,7 +818,7 @@ private fun RendererCard(host: OverlayHost) {
             HorizontalOptions("Graphics", FlashPrefs.backends, backend, onSelect = { backend = it; FlashPrefs.setGameBackend(ctx, host.gameId, it) })
         }
         Spacer(Modifier.height(8.dp))
-        ApplyRestart(changed = (player to backend) != startedWith) { host.restart() }
+        ApplyRestart(changed = (player to backend) != startedWith) { host.restartProcess() }
     }
 }
 
@@ -921,7 +921,7 @@ private fun DriverCard(host: OverlayHost) {
             }
             if (busyId == "import") Text("Installing", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
-            ApplyRestart(changed = pick != startedWith) { host.restart() }
+            ApplyRestart(changed = pick != startedWith) { host.restartProcess() }
         }
     }
 }

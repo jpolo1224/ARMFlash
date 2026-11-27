@@ -104,6 +104,14 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
             android:theme="@style/Theme.Fp.Game" />
 
+        <!-- Starts a game again in a new process (a GPU driver or graphics API change). -->
+        <activity
+            android:name=".game.GameRelaunch"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Native Flash (Ruffle). GameActivity loads libfpruffle.so and runs its android_main. -->
         <activity
             android:name=".game.RuffleActivity"

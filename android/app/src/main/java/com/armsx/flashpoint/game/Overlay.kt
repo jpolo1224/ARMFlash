@@ -96,6 +96,8 @@ interface OverlayHost {
     fun save(asDefault: Boolean)
     fun keyboard()
     fun restart()
+    /** Start again in a new process: for a GPU driver or graphics API change (see GameRelaunch). */
+    fun restartProcess() = restart()
     fun exit()
     /** The quick menu opened or closed: pause or resume the game. */
     fun menuOpen(open: Boolean)

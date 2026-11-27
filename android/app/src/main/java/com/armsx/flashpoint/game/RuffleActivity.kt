@@ -58,6 +58,17 @@ class RuffleActivity : com.google.androidgamesdk.GameActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
             finish()
         }
+        override fun restartProcess() {
+            // A new driver or graphics API needs a new process (GameRelaunch): this one ends
+            // (onDestroy, as when the game is closed) and the launcher starts the game again.
+            val id = intent.getStringExtra(GameActivity.EXTRA_GAME_ID).orEmpty()
+            val target = Intent(intent).setClass(this@RuffleActivity, FlashPrefs.activity(this@RuffleActivity, id))
+            startActivity(Intent(this@RuffleActivity, GameRelaunch::class.java)
+                .putExtra(GameRelaunch.EXTRA_TARGET, target)
+                .putExtra(GameRelaunch.EXTRA_PID, android.os.Process.myPid())
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_FORWARD_RESULT))
+            finish()
+        }
         override fun exit() = quit()
         override fun frames(): Long = nativeFrames()
         override val hasVolume get() = true
