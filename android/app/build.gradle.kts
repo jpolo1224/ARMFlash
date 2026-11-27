@@ -40,8 +40,8 @@ android {
         applicationId = "com.armsx.flasharm"
         minSdk = 28
         targetSdk = 37
-        versionCode = 6
-        versionName = "1.5"
+        versionCode = 7
+        versionName = "1.6"
         ndk { abiFilters.add("arm64-v8a") }
         externalNativeBuild {
             cmake {
